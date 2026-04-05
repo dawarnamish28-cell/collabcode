@@ -1,0 +1,219 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+/* ─── Base Styles ────────────────────────────────────────────────── */
+:root {
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-tertiary: #2d2d2d;
+  --border-color: #3e3e42;
+  --text-primary: #cccccc;
+  --text-secondary: #858585;
+  --accent: #007acc;
+  --accent-hover: #1a8ad4;
+  --success: #9ece6a;
+  --error: #f7768e;
+  --warning: #e0af68;
+  --info: #7aa2f7;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #__next {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar Styles ───────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+/* ─── Monaco Editor Overrides ────────────────────────────────────── */
+.monaco-editor .cursors-layer .cursor {
+  transition: all 80ms ease-out !important;
+}
+
+/* Remote cursor label */
+.yRemoteSelection {
+  opacity: 0.3;
+}
+
+.yRemoteSelectionHead {
+  position: absolute;
+  border-left: 2px solid;
+  border-top: none;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.yRemoteSelectionHead::after {
+  content: attr(data-username);
+  position: absolute;
+  top: -18px;
+  left: -2px;
+  font-size: 10px;
+  font-family: 'Inter', sans-serif;
+  padding: 1px 4px;
+  border-radius: 3px 3px 3px 0;
+  white-space: nowrap;
+  color: white;
+  font-weight: 500;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ─── Chat Message Animations ────────────────────────────────────── */
+.chat-message-enter {
+  animation: slideUp 0.2s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── Typing Indicator ───────────────────────────────────────────── */
+.typing-dots span {
+  animation: typingBounce 1.4s infinite ease-in-out;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #858585;
+  margin: 0 2px;
+}
+
+.typing-dots span:nth-child(1) { animation-delay: 0s; }
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingBounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-8px); }
+}
+
+/* ─── Tooltip ────────────────────────────────────────────────────── */
+.tooltip {
+  position: relative;
+}
+
+.tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background: #333;
+  color: #ccc;
+  font-size: 11px;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.tooltip:hover::after {
+  opacity: 1;
+}
+
+/* ─── Split Panel Resizer ────────────────────────────────────────── */
+.resizer {
+  background: var(--border-color);
+  cursor: col-resize;
+  transition: background 0.2s;
+}
+
+.resizer:hover,
+.resizer.active {
+  background: var(--accent);
+}
+
+.resizer-horizontal {
+  cursor: row-resize;
+}
+
+/* ─── Button Base ────────────────────────────────────────────────── */
+.btn-primary {
+  @apply px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium
+         transition-all duration-150 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-editor-tab hover:bg-editor-hover text-editor-text rounded-md font-medium
+         border border-editor-border transition-all duration-150 active:scale-95;
+}
+
+.btn-success {
+  @apply px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium
+         transition-all duration-150 active:scale-95;
+}
+
+.btn-danger {
+  @apply px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium
+         transition-all duration-150 active:scale-95;
+}
+
+/* ─── Loading Spinner ────────────────────────────────────────────── */
+.spinner {
+  border: 3px solid var(--border-color);
+  border-top: 3px solid var(--accent);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Status Indicator ───────────────────────────────────────────── */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.connected { background-color: var(--success); }
+.status-dot.disconnected { background-color: var(--error); }
+.status-dot.connecting { background-color: var(--warning); animation: pulse 1.5s infinite; }
