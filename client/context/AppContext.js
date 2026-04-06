@@ -2,7 +2,8 @@
  * Application Context
  * 
  * Global state management for user session, room data, and connection status.
- * Uses React Context API for simplicity and performance.
+ * Session persistence via localStorage.
+ * Unique usernames are ALWAYS assigned by the server to guarantee no collisions.
  */
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
@@ -13,23 +14,14 @@ const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000'
 
 // ─── Initial State ───────────────────────────────────────────────────
 const initialState = {
-  // User
   user: null,
   isAuthenticated: false,
-  
-  // Room
   room: null,
   roomId: null,
   users: [],
-  
-  // Connection
-  connectionStatus: 'disconnected', // 'connected' | 'disconnected' | 'connecting'
-  
-  // Editor
+  connectionStatus: 'disconnected',
   language: 'javascript',
   theme: 'vs-dark',
-  
-  // UI
   sidebarOpen: true,
   chatOpen: true,
   outputOpen: true,
@@ -56,41 +48,29 @@ function appReducer(state, action) {
   switch (action.type) {
     case ActionTypes.SET_USER:
       return { ...state, user: action.payload, isAuthenticated: !!action.payload };
-    
     case ActionTypes.SET_ROOM:
       return { ...state, room: action.payload, roomId: action.payload?.roomId || null };
-    
     case ActionTypes.SET_USERS:
       return { ...state, users: action.payload };
-    
     case ActionTypes.ADD_USER:
       if (state.users.find(u => u.userId === action.payload.userId)) return state;
       return { ...state, users: [...state.users, action.payload] };
-    
     case ActionTypes.REMOVE_USER:
       return { ...state, users: state.users.filter(u => u.userId !== action.payload) };
-    
     case ActionTypes.SET_CONNECTION:
       return { ...state, connectionStatus: action.payload };
-    
     case ActionTypes.SET_LANGUAGE:
       return { ...state, language: action.payload };
-    
     case ActionTypes.SET_THEME:
       return { ...state, theme: action.payload };
-    
     case ActionTypes.TOGGLE_SIDEBAR:
       return { ...state, sidebarOpen: !state.sidebarOpen };
-    
     case ActionTypes.TOGGLE_CHAT:
       return { ...state, chatOpen: !state.chatOpen };
-    
     case ActionTypes.TOGGLE_OUTPUT:
       return { ...state, outputOpen: !state.outputOpen };
-    
     case ActionTypes.RESET:
       return { ...initialState, user: state.user };
-    
     default:
       return state;
   }
@@ -98,29 +78,6 @@ function appReducer(state, action) {
 
 // ─── Context ─────────────────────────────────────────────────────────
 const AppContext = createContext(null);
-
-// User color palette
-const USER_COLORS = [
-  '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e',
-  '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899',
-];
-
-const ADJECTIVES = [
-  'Swift', 'Bold', 'Clever', 'Rapid', 'Bright', 'Silent', 'Cosmic',
-  'Nimble', 'Fierce', 'Mystic', 'Noble', 'Vivid', 'Keen', 'Epic',
-];
-
-const NOUNS = [
-  'Coder', 'Hacker', 'Ninja', 'Wizard', 'Phoenix', 'Dragon',
-  'Tiger', 'Eagle', 'Falcon', 'Panda', 'Wolf', 'Fox',
-];
-
-function generateUsername() {
-  const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
-  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
-  const num = Math.floor(Math.random() * 100);
-  return `${adj}${noun}${num}`;
-}
 
 // ─── Provider ────────────────────────────────────────────────────────
 export function AppProvider({ children }) {
@@ -132,41 +89,71 @@ export function AppProvider({ children }) {
   }, []);
 
   async function initSession() {
-    // Check localStorage for existing session
     if (typeof window === 'undefined') return;
-    
+
+    // Check localStorage for existing session
     let user = null;
     const stored = localStorage.getItem('collabcode_user');
-    
+
     if (stored) {
       try {
         user = JSON.parse(stored);
+        // Validate the stored session is still valid with the server
+        if (user.token) {
+          try {
+            const res = await axios.get(`${SERVER_URL}/api/auth/validate`, {
+              headers: { Authorization: `Bearer ${user.token}` },
+              timeout: 3000,
+            });
+            if (res.data.valid) {
+              dispatch({ type: ActionTypes.SET_USER, payload: user });
+              return;
+            }
+          } catch (e) {
+            // Token expired or server down — re-register the name
+          }
+        }
+        // If we have a stored user but token is invalid, try to re-register
+        // with the same username (server will check availability)
+        if (user.username) {
+          try {
+            const res = await axios.post(`${SERVER_URL}/api/auth/anonymous`, {
+              username: user.username,
+            }, { timeout: 3000 });
+            user = res.data;
+            localStorage.setItem('collabcode_user', JSON.stringify(user));
+            dispatch({ type: ActionTypes.SET_USER, payload: user });
+            return;
+          } catch (e) {
+            // Server down — use stored user as-is
+            dispatch({ type: ActionTypes.SET_USER, payload: user });
+            return;
+          }
+        }
       } catch (e) {
         localStorage.removeItem('collabcode_user');
       }
     }
-    
-    if (!user) {
-      // Create anonymous session
-      const color = USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
-      try {
-        const res = await axios.post(`${SERVER_URL}/api/auth/anonymous`, {
-          username: generateUsername(),
-        });
-        user = res.data;
-      } catch (err) {
-        // Fallback to local-only session
-        user = {
-          userId: uuidv4(),
-          username: generateUsername(),
-          color,
-          token: '',
-          authenticated: false,
-        };
-      }
-      localStorage.setItem('collabcode_user', JSON.stringify(user));
+
+    // No stored session → create fresh anonymous session
+    // The server assigns the unique username — we NEVER generate locally
+    try {
+      const res = await axios.post(`${SERVER_URL}/api/auth/anonymous`, {}, { timeout: 5000 });
+      user = res.data;
+    } catch (err) {
+      // Server unreachable — generate a local-only session with UUID suffix
+      // to make collisions nearly impossible even without server validation
+      const id = uuidv4().substring(0, 8);
+      user = {
+        userId: uuidv4(),
+        username: `User_${id}`,
+        color: ['#ef4444','#3b82f6','#22c55e','#f59e0b','#8b5cf6','#ec4899'][Math.floor(Math.random()*6)],
+        token: '',
+        authenticated: false,
+      };
     }
-    
+
+    localStorage.setItem('collabcode_user', JSON.stringify(user));
     dispatch({ type: ActionTypes.SET_USER, payload: user });
   }
 

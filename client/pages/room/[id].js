@@ -170,7 +170,7 @@ export default function RoomPage() {
   }, []);
 
   // ─── Handle Code Execution ──────────────────────────────────────
-  const handleRunCode = useCallback(async (code) => {
+  const handleRunCode = useCallback(async (code, stdin = '') => {
     setIsRunning(true);
     setOutput({ type: 'info', content: 'Running code...' });
 
@@ -186,32 +186,55 @@ export default function RoomPage() {
         body: JSON.stringify({
           code,
           language: state.language,
-          stdin: '',
+          stdin,
         }),
       });
 
       const data = await res.json();
 
-      if (data.success) {
+      if (data.error && !data.success && !data.output) {
+        // Hard error from server (501, 400, etc.)
+        setOutput({
+          type: 'error',
+          content: '',
+          error: data.message || 'Execution failed',
+          status: data.message ? 'Error' : 'Failed',
+        });
+      } else if (data.success) {
         setOutput({
           type: 'success',
-          content: data.output || '(no output)',
+          content: data.output || '',
+          error: data.error || '',
+          exitCode: data.exitCode,
           executionTime: data.executionTime,
           memoryUsed: data.memoryUsed,
           status: data.status,
-          mock: data.mock,
+          engine: data.engine,
+          language: data.language,
+          version: data.version,
+          phase: data.phase,
         });
       } else {
         setOutput({
           type: 'error',
-          content: data.error || data.message || 'Execution failed',
+          content: data.output || '',
+          error: data.error || data.message || 'Execution failed',
+          exitCode: data.exitCode,
+          executionTime: data.executionTime,
+          memoryUsed: data.memoryUsed,
           status: data.status,
+          engine: data.engine,
+          language: data.language,
+          version: data.version,
+          phase: data.phase,
         });
       }
     } catch (err) {
       setOutput({
         type: 'error',
-        content: `Network error: ${err.message}`,
+        content: '',
+        error: `Network error: ${err.message}`,
+        status: 'Network Error',
       });
     } finally {
       setIsRunning(false);
@@ -362,6 +385,13 @@ export default function RoomPage() {
                   output={output}
                   onClear={() => setOutput(null)}
                   isRunning={isRunning}
+                  language={state.language}
+                  onRunWithStdin={(stdin) => {
+                    if (ydocRef.current) {
+                      const code = ydocRef.current.getText('monaco').toString();
+                      handleRunCode(code, stdin);
+                    }
+                  }}
                 />
               </div>
             </>

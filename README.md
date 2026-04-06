@@ -1,6 +1,6 @@
 # CollabCode - Collaborative Coding Platform
 
-A full-stack, browser-based collaborative coding platform similar to Replit with real-time multi-user editing, chat, and secure code execution.
+A full-stack, browser-based collaborative coding platform with real-time multi-user editing, chat, and **production-grade sandboxed code execution**.
 
 ## Live URLs
 
@@ -12,97 +12,109 @@ A full-stack, browser-based collaborative coding platform similar to Replit with
 
 ```
 collabcode/
-├── client/                    # Next.js + React Frontend
+├── client/                         # Next.js + React Frontend
 │   ├── pages/
-│   │   ├── _app.js            # App wrapper with global providers
-│   │   ├── index.js           # Landing page (create/join rooms)
-│   │   └── room/[id].js       # Collaborative workspace
+│   │   ├── _app.js                 # App wrapper with global providers
+│   │   ├── index.js                # Landing page (create/join rooms)
+│   │   └── room/[id].js           # Collaborative workspace
 │   ├── components/
-│   │   ├── Editor.js          # Monaco Editor + Yjs CRDT binding
-│   │   ├── Chat.js            # Real-time chat UI
-│   │   ├── UserPresence.js    # Active users + cursor indicators
-│   │   ├── Navbar.js          # Top bar: room ID, language, status
-│   │   ├── RunButton.js       # Code execution trigger
-│   │   └── OutputConsole.js   # Execution output display
+│   │   ├── Editor.js              # Monaco Editor + Yjs CRDT binding
+│   │   ├── Chat.js                # Real-time chat UI + typing indicators
+│   │   ├── UserPresence.js        # Active users + cursor indicators
+│   │   ├── Navbar.js              # Room ID, language selector, status
+│   │   ├── RunButton.js           # Code execution trigger
+│   │   └── OutputConsole.js       # Rich terminal output (stdout/stderr/stdin)
 │   ├── utils/
-│   │   ├── socket.js          # Socket.io client singleton
-│   │   └── yjsProvider.js     # Yjs + Socket.io CRDT provider
+│   │   ├── socket.js              # Socket.io client singleton
+│   │   └── yjsProvider.js         # Yjs + Socket.io CRDT provider
 │   ├── context/
-│   │   └── AppContext.js      # Global state (user/session/room)
+│   │   └── AppContext.js          # Global state (user/session/room)
 │   └── styles/
-│       └── globals.css        # Tailwind CSS + custom styles
+│       └── globals.css            # Tailwind CSS + custom styles
 │
-├── server/                    # Node.js + Express Backend
-│   ├── server.js              # Express + HTTP + Socket.io setup
+├── server/                         # Node.js + Express Backend
+│   ├── server.js                  # Express + HTTP + Socket.io setup
 │   ├── sockets/
-│   │   └── roomHandler.js     # Room join/leave, CRDT relay, awareness
+│   │   └── roomHandler.js         # Room join/leave, CRDT relay, awareness
 │   ├── controllers/
-│   │   └── executionController.js  # Judge0 API proxy
+│   │   └── executionController.js # Multi-engine code execution system
 │   ├── routes/
-│   │   ├── execution.js       # POST /api/execute
-│   │   └── auth.js            # Anonymous/JWT authentication
+│   │   ├── execution.js           # POST /api/execute, GET /api/languages
+│   │   └── auth.js                # Unique username auth system
 │   ├── models/
-│   │   ├── Room.js            # Room schema (CRDT state, participants)
-│   │   └── Message.js         # Chat message schema
+│   │   ├── Room.js                # Room schema (CRDT state, participants)
+│   │   └── Message.js             # Chat message schema
 │   ├── middleware/
-│   │   ├── auth.js            # JWT + anonymous session auth
-│   │   ├── rateLimiter.js     # Express + Socket rate limiters
-│   │   └── errorHandler.js    # Centralized error handling
+│   │   ├── auth.js                # Unique username generator + JWT
+│   │   ├── rateLimiter.js         # Express + Socket rate limiters
+│   │   └── errorHandler.js        # Centralized error handling
 │   └── config/
-│       └── db.js              # MongoDB connection with fallback
+│       └── db.js                  # MongoDB connection with fallback
 │
-└── ecosystem.config.cjs       # PM2 process configuration
+└── ecosystem.config.cjs            # PM2 process configuration
 ```
 
 ## Features
 
-### Completed
-- **Real-time Collaborative Editing**: Monaco Editor integrated with Yjs CRDT for conflict-free concurrent editing
-- **CRDT Synchronization**: Binary Yjs updates relayed via Socket.io for low-latency sync
-- **Remote Cursor Awareness**: See other users' cursor positions and selections in real-time
-- **Real-time Chat**: Persistent chat with typing indicators, system messages, and message history
-- **User Presence**: Active user list with color-coded avatars and cursor position badges
-- **Code Execution**: Judge0 API integration with mock executor for development mode
-- **10 Language Support**: JavaScript, TypeScript, Python, Java, C++, C, Go, Rust, Ruby, PHP
-- **Anonymous Sessions**: Auto-generated usernames and colors, no signup required
-- **JWT Authentication**: Optional JWT-based auth with token generation
-- **Room Management**: Create/join rooms by ID, active room listing, room persistence
-- **CRDT Persistence**: Periodic state snapshots to MongoDB (every 30s + on disconnect)
-- **Rate Limiting**: Per-endpoint and per-socket rate limiters for abuse prevention
-- **Dark Theme**: VS Code-inspired dark theme with custom scrollbars
-- **Keyboard Shortcuts**: Ctrl+Enter (run), Ctrl+B (toggle chat), Ctrl+` (toggle output)
-- **Resizable Panels**: Drag-to-resize editor/chat/output panels
-- **Responsive Design**: Adaptive layout with collapsible panels
-- **Connection Recovery**: Automatic reconnection with state re-sync
-- **Error Handling**: Graceful degradation (works without MongoDB, without Judge0)
+### Unique Username System
+- **Guaranteed unique** across all sessions — server-side registry with collision detection
+- 50 adjectives x 50 nouns x 9000 suffixes = **22.5 million** possible names
+- Sequential fallback numbering for absolute collision prevention
+- Names persist across reconnections via localStorage + JWT validation
+- Example names: `CyberWizard1281`, `AgileHawk2775`, `CrystalPixel4327`
 
-### API Endpoints
+### Code Execution Engine (The Selling Point)
+Multi-strategy execution with **real sandboxed local execution**:
+
+| Strategy | Languages | Speed | Requirements |
+|----------|-----------|-------|-------------|
+| **Local Sandbox** (primary) | JavaScript, Python, C, C++ | 27-450ms | Node.js, Python3, GCC installed |
+| **Wandbox API** (fallback) | C, C++ | ~2s | Free, no key needed |
+| **Judge0 API** (optional) | All 10 languages | ~3s | RapidAPI key required |
+
+**Security features:**
+- Each execution gets an isolated temp directory (auto-cleaned)
+- SIGKILL enforced timeout (10s default)
+- stdout/stderr capped at 64KB to prevent memory bombs
+- Separate compilation + execution phases for compiled languages
+- No persistent filesystem access from executed code
+
+**Execution results include:**
+- Separate stdout and stderr streams
+- Compilation vs runtime error distinction
+- Execution time (high-resolution timer)
+- Exit code reporting
+- Engine identification (local/judge0/wandbox)
+- Runtime version display (e.g., `Node.js v20.19.6`, `Python 3.12.11`)
+
+### Real-time Collaboration
+- **CRDT-based editing** via Yjs — conflict-free concurrent edits
+- **Remote cursor awareness** — see other users' cursors and selections
+- **Real-time chat** with typing indicators and message persistence
+- **User presence** bar with color-coded avatars
+
+### Other Features
+- 10 language support (JS, TS, Python, Java, C++, C, Go, Rust, Ruby, PHP)
+- Dark VS Code-inspired theme with custom scrollbars
+- Keyboard shortcuts: `Ctrl+Enter` (run), `Ctrl+B` (chat), `` Ctrl+` `` (output)
+- Resizable panels (editor/chat/output)
+- Stdin input panel for interactive programs
+- JWT + anonymous session authentication
+- Rate limiting on all endpoints + socket events
+- Graceful degradation (works without MongoDB, without Judge0)
+
+## API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/health` | Health check + active room count |
 | GET | `/api/rooms` | List active rooms |
-| GET | `/api/languages` | Supported programming languages |
-| POST | `/api/execute` | Execute code (rate limited) |
-| POST | `/api/auth/anonymous` | Create anonymous session |
+| GET | `/api/languages` | Supported languages with engine info |
+| POST | `/api/execute` | **Execute code** (rate limited) |
+| POST | `/api/auth/anonymous` | Create anonymous session with unique name |
+| POST | `/api/auth/check-name` | Check username availability |
 | GET | `/api/auth/me` | Get current user info |
 | GET | `/api/auth/validate` | Validate session token |
-
-### Socket.io Events
-
-| Event | Direction | Description |
-|-------|-----------|-------------|
-| `room:join` | Client -> Server | Join a room |
-| `room:state` | Server -> Client | Initial room state (CRDT + users) |
-| `room:user-joined` | Server -> Client | User joined notification |
-| `room:user-left` | Server -> Client | User left notification |
-| `crdt:update` | Bidirectional | Binary Yjs document updates |
-| `awareness:update` | Bidirectional | Cursor/selection state |
-| `chat:send` | Client -> Server | Send chat message |
-| `chat:message` | Server -> Client | Receive chat message |
-| `chat:history` | Server -> Client | Chat message history |
-| `chat:typing` | Bidirectional | Typing indicator |
-| `room:language-change` | Bidirectional | Language change broadcast |
 
 ## Tech Stack
 
@@ -112,74 +124,53 @@ collabcode/
 | Editor | Monaco Editor (@monaco-editor/react) |
 | CRDT | Yjs, y-protocols, lib0 |
 | Real-time | Socket.io (client + server) |
-| Backend | Express.js, Node.js |
+| Backend | Express.js, Node.js 20 |
+| Execution | Local sandbox (Node/Python/GCC/G++), Wandbox, Judge0 |
 | Database | MongoDB + Mongoose (optional) |
-| Auth | JWT (jsonwebtoken), Anonymous sessions |
-| Execution | Judge0 CE API (RapidAPI) |
+| Auth | JWT + unique username registry |
 | Security | Helmet, CORS, express-rate-limit |
-| Process Manager | PM2 |
+| Process | PM2 |
 
 ## Deployment
 
 ### Frontend (Vercel)
 ```bash
-cd client
-npm run build
+cd client && npm run build
 # Deploy via Vercel CLI or GitHub integration
 ```
 
-### Backend (Node.js Cloud - Railway, Render, Fly.io)
+### Backend (Railway, Render, Fly.io)
 ```bash
 cd server
-# Set environment variables:
-# MONGODB_URI, JWT_SECRET, JUDGE0_API_KEY, CLIENT_URL
+# Requires: Node.js 20+, Python 3, GCC/G++ for local execution
 npm start
 ```
 
 ### Environment Variables
 
-**Server (.env)**:
-- `PORT` - Server port (default: 4000)
-- `MONGODB_URI` - MongoDB connection string
-- `JWT_SECRET` - JWT signing secret
-- `JUDGE0_API_KEY` - RapidAPI key for Judge0
-- `JUDGE0_API_HOST` - Judge0 API host
-- `CRDT_PERSIST_INTERVAL` - Seconds between CRDT snapshots (default: 30)
-- `CLIENT_URL` - Frontend URL for CORS
+**Server (.env):**
+- `PORT` — Server port (default: 4000)
+- `MONGODB_URI` — MongoDB connection string
+- `JWT_SECRET` — JWT signing secret
+- `JUDGE0_API_KEY` — RapidAPI key for Judge0 (optional)
+- `EXEC_TIMEOUT_MS` — Execution timeout in ms (default: 10000)
+- `EXEC_MAX_OUTPUT` — Max output bytes (default: 65536)
+- `CRDT_PERSIST_INTERVAL` — CRDT snapshot interval in seconds (default: 30)
 
-**Client (.env.local)**:
-- `NEXT_PUBLIC_SERVER_URL` - Backend API URL
-- `NEXT_PUBLIC_WS_URL` - WebSocket URL
-
-## Data Models
-
-### Room
-- `roomId` (string, unique) - Room identifier
-- `name` (string) - Display name
-- `language` (enum) - Programming language
-- `participants` (array) - Active user list
-- `crdtState` (Buffer) - Encoded Yjs document state
-- `lastCodeSnapshot` (string) - Plain-text code backup
-- `activeCount` (number) - Current user count
-
-### Message
-- `roomId` (string) - Associated room
-- `userId`, `username` (string) - Sender info
-- `content` (string, max 2000) - Message text
-- `type` (enum: chat/system/code-share) - Message type
-- TTL: Auto-deleted after 7 days
+**Client (.env.local):**
+- `NEXT_PUBLIC_SERVER_URL` — Backend API URL
+- `NEXT_PUBLIC_WS_URL` — WebSocket URL
 
 ## User Guide
 
-1. **Create a Room**: Click "Create Room" on the landing page, optionally select a language
-2. **Join a Room**: Enter a room ID or click an active room from the list
-3. **Share**: Click the room ID in the navbar to copy the shareable link
-4. **Code**: Type in the editor - changes sync instantly with all participants
-5. **Run Code**: Click the green Run button or press `Ctrl+Enter`
-6. **Chat**: Use the right panel to communicate with collaborators
-7. **Change Language**: Use the language dropdown in the navbar
+1. **Create a Room** — Click "Create Room" on the landing page
+2. **Share** — Click the room ID in the navbar to copy the shareable link
+3. **Code Together** — Changes sync instantly with all participants
+4. **Run Code** — Click Run or press `Ctrl+Enter`
+5. **Use stdin** — Toggle the stdin panel in the output console for interactive programs
+6. **Chat** — Use the right panel to communicate
 
 ## Status
 - **Platform**: Self-hosted (Node.js + Next.js)
-- **Status**: Active (Development Mode)
-- **Last Updated**: 2026-04-05
+- **Status**: Active
+- **Last Updated**: 2026-04-06

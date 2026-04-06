@@ -1,26 +1,43 @@
 /**
  * Authentication Routes
  * 
- * POST /api/auth/anonymous   - Create anonymous session
- * POST /api/auth/register    - Register with credentials (optional)
- * POST /api/auth/login       - Login with credentials (optional)
+ * POST /api/auth/anonymous   - Create anonymous session with UNIQUE username
  * GET  /api/auth/me          - Get current user info
+ * GET  /api/auth/validate    - Validate session token
+ * POST /api/auth/check-name  - Check if a username is available
  */
 
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { authMiddleware, generateToken, generateUsername, generateColor } = require('../middleware/auth');
+const {
+  authMiddleware,
+  generateToken,
+  generateUniqueUsername,
+  generateColor,
+  registerUsername,
+  isUsernameTaken,
+} = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errorHandler');
 
 /**
- * Create anonymous session
- * Returns a session ID and generated username
+ * Create anonymous session with guaranteed unique username
  */
 router.post('/anonymous', asyncHandler(async (req, res) => {
   const userId = uuidv4();
-  const username = req.body.username || generateUsername();
   const color = generateColor();
+
+  // If client requests a specific name, check uniqueness
+  let username;
+  const requestedName = (req.body.username || '').trim();
+
+  if (requestedName && !isUsernameTaken(requestedName)) {
+    username = requestedName;
+    registerUsername(username);
+  } else {
+    // Generate a guaranteed-unique one
+    username = generateUniqueUsername();
+  }
 
   const token = generateToken({ userId, username, color });
 
@@ -31,6 +48,20 @@ router.post('/anonymous', asyncHandler(async (req, res) => {
     token,
     authenticated: false,
     type: 'anonymous',
+  });
+}));
+
+/**
+ * Check if a username is available
+ */
+router.post('/check-name', asyncHandler(async (req, res) => {
+  const { username } = req.body;
+  if (!username || typeof username !== 'string') {
+    return res.status(400).json({ available: false, message: 'Username required' });
+  }
+  res.json({
+    username,
+    available: !isUsernameTaken(username),
   });
 }));
 
