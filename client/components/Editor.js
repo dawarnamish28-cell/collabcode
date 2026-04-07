@@ -27,91 +27,135 @@ const MONACO_LANGUAGES = {
   php: 'php',
 };
 
-// Default code templates per language
+// Default code templates — showcase stdin/input support
 const DEFAULT_CODE = {
-  javascript: `// Welcome to CollabCode!
-// Start coding together in real-time
+  javascript: `// JavaScript — CollabCode
+// All standard libraries work: readline, crypto, path, etc.
+// Use stdin for interactive input
 
-function greet(name) {
-  return \`Hello, \${name}! Welcome to CollabCode.\`;
-}
-
-console.log(greet("World"));
+const numbers = [1, 2, 3, 4, 5];
+const sum = numbers.reduce((a, b) => a + b, 0);
+console.log("Sum:", sum);
+console.log("Squared:", numbers.map(n => n * n));
+console.log("Hello from CollabCode!");
 `,
-  typescript: `// TypeScript - CollabCode
+  typescript: `// TypeScript — CollabCode
+// Full TypeScript support via tsx
+
 interface User {
   name: string;
   role: string;
 }
 
-function greet(user: User): string {
-  return \`Hello, \${user.name}! You are a \${user.role}.\`;
-}
+const greet = (user: User): string =>
+  \`Hello \${user.name}, you are a \${user.role}!\`;
 
 console.log(greet({ name: "World", role: "Developer" }));
 `,
-  python: `# Python - CollabCode
-# Start coding together in real-time
+  python: `# Python — CollabCode
+# input() works! Provide stdin in the terminal below.
+# All standard libraries available: math, json, os, etc.
 
-def greet(name: str) -> str:
-    return f"Hello, {name}! Welcome to CollabCode."
+import math
+print("Pi:", math.pi)
+print("Factorial of 10:", math.factorial(10))
 
-print(greet("World"))
+name = input("Enter your name: ")
+print(f"Hello, {name}! Welcome to CollabCode.")
 `,
-  java: `// Java - CollabCode
+  java: `// Java — CollabCode
+// Scanner, System.in — all work with stdin
+import java.util.Scanner;
+import java.util.Arrays;
+
 public class Main {
     public static void main(String[] args) {
-        System.out.println("Hello, World! Welcome to CollabCode.");
+        int[] nums = {5, 3, 1, 4, 2};
+        Arrays.sort(nums);
+        System.out.println("Sorted: " + Arrays.toString(nums));
+        System.out.println("Hello from CollabCode!");
     }
 }
 `,
-  cpp: `// C++ - CollabCode
+  cpp: `// C++ — CollabCode
+// cin, getline, STL — all work with stdin
 #include <iostream>
+#include <vector>
+#include <algorithm>
 using namespace std;
 
 int main() {
-    cout << "Hello, World! Welcome to CollabCode." << endl;
+    vector<int> v = {5, 3, 1, 4, 2};
+    sort(v.begin(), v.end());
+    cout << "Sorted: ";
+    for (int x : v) cout << x << " ";
+    cout << endl;
+    cout << "Hello from CollabCode!" << endl;
     return 0;
 }
 `,
-  c: `// C - CollabCode
+  c: `// C — CollabCode
+// scanf, fgets — all work with stdin
 #include <stdio.h>
+#include <math.h>
 
 int main() {
-    printf("Hello, World! Welcome to CollabCode.\\n");
+    printf("Square root of 144: %.0f\\n", sqrt(144));
+    for (int i = 1; i <= 5; i++) {
+        printf("%d^2 = %d\\n", i, i * i);
+    }
+    printf("Hello from CollabCode!\\n");
     return 0;
 }
 `,
-  go: `// Go - CollabCode
+  go: `// Go — CollabCode
+// bufio, fmt, os — all work with stdin
 package main
 
-import "fmt"
+import (
+    "fmt"
+    "math"
+    "sort"
+)
 
 func main() {
-    fmt.Println("Hello, World! Welcome to CollabCode.")
+    nums := []int{5, 3, 1, 4, 2}
+    sort.Ints(nums)
+    fmt.Println("Sorted:", nums)
+    fmt.Printf("Pi: %.4f\\n", math.Pi)
+    fmt.Println("Hello from CollabCode!")
 }
 `,
-  rust: `// Rust - CollabCode
+  rust: `// Rust — CollabCode
+// std::io — works with stdin
 fn main() {
-    println!("Hello, World! Welcome to CollabCode.");
+    let mut numbers = vec![5, 3, 1, 4, 2];
+    numbers.sort();
+    println!("Sorted: {:?}", numbers);
+    
+    let sum: i32 = (1..=10).sum();
+    println!("Sum 1..10: {}", sum);
+    println!("Hello from CollabCode!");
 }
 `,
-  ruby: `# Ruby - CollabCode
+  ruby: `# Ruby — CollabCode
+# gets, STDIN — all work with stdin
 
-def greet(name)
-  "Hello, #{name}! Welcome to CollabCode."
-end
-
-puts greet("World")
+numbers = [5, 3, 1, 4, 2]
+puts "Sorted: #{numbers.sort}"
+puts "Sum: #{numbers.sum}"
+puts "Factorial of 10: #{(1..10).reduce(:*)}"
+puts "Hello from CollabCode!"
 `,
   php: `<?php
-// PHP - CollabCode
+// PHP — CollabCode
+// fgets(STDIN) works with stdin
 
-function greet($name) {
-    return "Hello, $name! Welcome to CollabCode.";
-}
-
-echo greet("World") . "\\n";
+$numbers = [5, 3, 1, 4, 2];
+sort($numbers);
+echo "Sorted: " . implode(", ", $numbers) . "\\n";
+echo "Date: " . date('Y-m-d H:i:s') . "\\n";
+echo "Hello from CollabCode!\\n";
 `,
 };
 

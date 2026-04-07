@@ -1,50 +1,78 @@
 /**
  * Authentication Routes
  * 
- * POST /api/auth/anonymous   - Create anonymous session with UNIQUE username
- * GET  /api/auth/me          - Get current user info
- * GET  /api/auth/validate    - Validate session token
- * POST /api/auth/check-name  - Check if a username is available
+ * POST /api/auth/signup    - Register with email/password/username
+ * POST /api/auth/signin    - Login with email/password
+ * POST /api/auth/anonymous - Create anonymous session (per-tab unique)
+ * GET  /api/auth/validate  - Validate session token
+ * POST /api/auth/check-name - Check username availability
  */
 
 const express = require('express');
 const router = express.Router();
-const { v4: uuidv4 } = require('uuid');
 const {
-  authMiddleware,
-  generateToken,
-  generateUniqueUsername,
-  generateColor,
-  registerUsername,
-  isUsernameTaken,
+  authMiddleware, generateToken,
+  generateUniqueUsername, generateColor,
+  registerUsername, isUsernameTaken,
+  registerUser, loginUser, getOrCreateTabSession,
 } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errorHandler');
 
 /**
- * Create anonymous session with guaranteed unique username
+ * Sign Up with email + password + username
  */
-router.post('/anonymous', asyncHandler(async (req, res) => {
-  const userId = uuidv4();
-  const color = generateColor();
-
-  // If client requests a specific name, check uniqueness
-  let username;
-  const requestedName = (req.body.username || '').trim();
-
-  if (requestedName && !isUsernameTaken(requestedName)) {
-    username = requestedName;
-    registerUsername(username);
-  } else {
-    // Generate a guaranteed-unique one
-    username = generateUniqueUsername();
+router.post('/signup', asyncHandler(async (req, res) => {
+  const { email, password, username } = req.body;
+  if (!email || !password || !username) {
+    return res.status(400).json({ error: true, message: 'Email, password, and username are required' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: true, message: 'Password must be at least 6 characters' });
+  }
+  if (username.length < 3 || username.length > 20) {
+    return res.status(400).json({ error: true, message: 'Username must be 3-20 characters' });
+  }
+  if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+    return res.status(400).json({ error: true, message: 'Username can only contain letters, numbers, and underscores' });
   }
 
-  const token = generateToken({ userId, username, color });
+  try {
+    const user = await registerUser(email, password, username);
+    const token = generateToken({ ...user, email });
+    res.json({ ...user, token, authenticated: true, type: 'registered' });
+  } catch (err) {
+    res.status(409).json({ error: true, message: err.message });
+  }
+}));
+
+/**
+ * Sign In with email + password
+ */
+router.post('/signin', asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: true, message: 'Email and password are required' });
+  }
+
+  try {
+    const user = await loginUser(email, password);
+    const token = generateToken({ ...user, email });
+    res.json({ ...user, token, authenticated: true, type: 'registered' });
+  } catch (err) {
+    res.status(401).json({ error: true, message: err.message });
+  }
+}));
+
+/**
+ * Anonymous session — each tab gets a UNIQUE username via tabId
+ */
+router.post('/anonymous', asyncHandler(async (req, res) => {
+  const tabId = req.body.tabId || req.headers['x-tab-id'];
+  const session = getOrCreateTabSession(tabId);
+  const token = generateToken(session);
 
   res.json({
-    userId,
-    username,
-    color,
+    ...session,
     token,
     authenticated: false,
     type: 'anonymous',
@@ -52,39 +80,21 @@ router.post('/anonymous', asyncHandler(async (req, res) => {
 }));
 
 /**
- * Check if a username is available
+ * Check username availability
  */
 router.post('/check-name', asyncHandler(async (req, res) => {
   const { username } = req.body;
   if (!username || typeof username !== 'string') {
     return res.status(400).json({ available: false, message: 'Username required' });
   }
-  res.json({
-    username,
-    available: !isUsernameTaken(username),
-  });
+  res.json({ username, available: !isUsernameTaken(username) });
 }));
 
 /**
- * Get current user info (from token or anonymous)
- */
-router.get('/me', authMiddleware, asyncHandler(async (req, res) => {
-  res.json({
-    userId: req.user.userId,
-    username: req.user.username,
-    color: req.user.color,
-    authenticated: req.user.authenticated,
-  });
-}));
-
-/**
- * Health check / session validation
+ * Validate session
  */
 router.get('/validate', authMiddleware, asyncHandler(async (req, res) => {
-  res.json({
-    valid: true,
-    user: req.user,
-  });
+  res.json({ valid: true, user: req.user });
 }));
 
 module.exports = router;

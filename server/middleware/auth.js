@@ -1,80 +1,61 @@
 /**
  * Authentication Middleware
  * 
- * Supports both JWT-authenticated and anonymous session-based users.
- * Anonymous users get GUARANTEED UNIQUE usernames via a server-side
- * registry with collision-free generation using a large word pool
- * and sequential fallback numbering.
+ * Supports:
+ *  1. Email/password sign-up and sign-in (JWT-based)
+ *  2. Anonymous sessions with unique usernames per browser tab
+ *     (each tab gets its own tabId → unique name)
+ *  3. Server-side username registry prevents collisions
  */
 
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'collab-code-jwt-secret';
 
-// ─── Unique Username Registry ─────────────────────────────────────────
-// In-memory set of all usernames ever issued this server session.
-// With MongoDB available, also persisted across restarts via Room.participants.
+// ─── In-memory stores (replace with DB in production) ─────────────────
 const issuedUsernames = new Set();
+const registeredUsers = new Map(); // email -> { userId, email, passwordHash, username, color }
+const tabSessions = new Map();    // tabId -> { userId, username, color }
 
-// Color palette — 20 distinct, high-contrast colors
+// ─── Color palette ───────────────────────────────────────────────────
 const USER_COLORS = [
   '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e',
   '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899',
   '#14b8a6', '#a855f7', '#e11d48', '#0ea5e9', '#d946ef',
-  '#10b981', '#f43f5e', '#8b5cf6', '#0891b2', '#c026d3',
+  '#10b981', '#f43f5e', '#7c3aed', '#0891b2', '#c026d3',
 ];
 
-// Massive word pools → 50 adjectives * 50 nouns = 2,500 base combos
-// Each combo gets a 4-digit suffix space → 25,000,000 unique names
 const ADJECTIVES = [
-  'Swift', 'Bold', 'Clever', 'Rapid', 'Bright', 'Silent', 'Cosmic',
-  'Nimble', 'Fierce', 'Mystic', 'Noble', 'Vivid', 'Keen', 'Epic',
-  'Agile', 'Daring', 'Serene', 'Lucky', 'Witty', 'Brave',
-  'Radiant', 'Stellar', 'Cyber', 'Turbo', 'Neon', 'Shadow', 'Pixel',
-  'Quantum', 'Binary', 'Chrome', 'Hyper', 'Ultra', 'Atomic', 'Sonic',
-  'Arctic', 'Solar', 'Lunar', 'Iron', 'Crystal', 'Thunder',
-  'Blazing', 'Golden', 'Silver', 'Crimson', 'Sapphire', 'Jade',
-  'Amber', 'Onyx', 'Ivory', 'Ruby',
+  'Swift','Bold','Clever','Rapid','Bright','Silent','Cosmic','Nimble','Fierce','Mystic',
+  'Noble','Vivid','Keen','Epic','Agile','Daring','Serene','Lucky','Witty','Brave',
+  'Radiant','Stellar','Cyber','Turbo','Neon','Shadow','Pixel','Quantum','Binary','Chrome',
+  'Hyper','Ultra','Atomic','Sonic','Arctic','Solar','Lunar','Iron','Crystal','Thunder',
+  'Blazing','Golden','Silver','Crimson','Sapphire','Jade','Amber','Onyx','Ivory','Ruby',
 ];
 
 const NOUNS = [
-  'Coder', 'Hacker', 'Ninja', 'Wizard', 'Phoenix', 'Dragon',
-  'Tiger', 'Eagle', 'Falcon', 'Panda', 'Wolf', 'Fox', 'Otter',
-  'Hawk', 'Bear', 'Raven', 'Lynx', 'Viper', 'Shark', 'Lion',
-  'Byte', 'Pixel', 'Node', 'Stack', 'Kernel', 'Cipher', 'Vector',
-  'Spark', 'Flux', 'Orbit', 'Prism', 'Quasar', 'Comet', 'Nebula',
-  'Blaze', 'Storm', 'Forge', 'Atlas', 'Titan', 'Nova',
-  'Arrow', 'Blade', 'Crane', 'Drift', 'Ember', 'Frost',
-  'Ghost', 'Helix', 'Iris', 'Jet',
+  'Coder','Hacker','Ninja','Wizard','Phoenix','Dragon','Tiger','Eagle','Falcon','Panda',
+  'Wolf','Fox','Otter','Hawk','Bear','Raven','Lynx','Viper','Shark','Lion',
+  'Byte','Pixel','Node','Stack','Kernel','Cipher','Vector','Spark','Flux','Orbit',
+  'Prism','Quasar','Comet','Nebula','Blaze','Storm','Forge','Atlas','Titan','Nova',
+  'Arrow','Blade','Crane','Drift','Ember','Frost','Ghost','Helix','Iris','Jet',
 ];
 
-// Per-base-name counter for sequential fallback
 const nameCounters = new Map();
 
-/**
- * Generate a guaranteed-unique username.
- * Strategy:
- *   1. Pick random adj+noun → try with random 4-digit suffix
- *   2. If collision (astronomically rare), increment a sequential counter
- *   3. Register in issuedUsernames set
- */
 function generateUniqueUsername() {
-  const maxAttempts = 10;
-
-  for (let i = 0; i < maxAttempts; i++) {
+  for (let i = 0; i < 20; i++) {
     const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
     const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
-    const suffix = Math.floor(1000 + Math.random() * 9000); // 4-digit: 1000-9999
+    const suffix = Math.floor(1000 + Math.random() * 9000);
     const candidate = `${adj}${noun}${suffix}`;
-
     if (!issuedUsernames.has(candidate)) {
       issuedUsernames.add(candidate);
       return candidate;
     }
   }
-
-  // Fallback: sequential numbering (guaranteed unique)
   const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
   const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
   const base = `${adj}${noun}`;
@@ -85,135 +66,97 @@ function generateUniqueUsername() {
   return name;
 }
 
-/**
- * Register an externally-provided username as taken.
- * Called when users reconnect with a stored name.
- */
-function registerUsername(username) {
-  if (username) issuedUsernames.add(username);
+function registerUsername(username) { if (username) issuedUsernames.add(username); }
+function isUsernameTaken(username) { return issuedUsernames.has(username); }
+function generateColor() { return USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)]; }
+
+// ─── Registered user helpers ──────────────────────────────────────────
+async function registerUser(email, password, username) {
+  if (registeredUsers.has(email)) {
+    throw new Error('Email already registered');
+  }
+  if (isUsernameTaken(username)) {
+    throw new Error('Username already taken');
+  }
+  const passwordHash = await bcrypt.hash(password, 12);
+  const userId = uuidv4();
+  const color = generateColor();
+  const user = { userId, email, passwordHash, username, color, createdAt: new Date() };
+  registeredUsers.set(email, user);
+  registerUsername(username);
+  return { userId, email, username, color };
 }
 
-/**
- * Check if a username is already taken.
- */
-function isUsernameTaken(username) {
-  return issuedUsernames.has(username);
+async function loginUser(email, password) {
+  const user = registeredUsers.get(email);
+  if (!user) throw new Error('Invalid email or password');
+  const match = await bcrypt.compare(password, user.passwordHash);
+  if (!match) throw new Error('Invalid email or password');
+  return { userId: user.userId, email: user.email, username: user.username, color: user.color };
 }
 
-function generateColor() {
-  return USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
+// ─── Tab-based session: every tab gets a unique user ──────────────────
+function getOrCreateTabSession(tabId) {
+  if (tabId && tabSessions.has(tabId)) {
+    return tabSessions.get(tabId);
+  }
+  const userId = uuidv4();
+  const username = generateUniqueUsername();
+  const color = generateColor();
+  const session = { userId, username, color, tabId: tabId || uuidv4(), authenticated: false };
+  tabSessions.set(session.tabId, session);
+  return session;
 }
 
-/**
- * Express middleware: Extract or generate user identity
- * Works with both JWT tokens and anonymous sessions
- */
+// ─── Express middleware ───────────────────────────────────────────────
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
-
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
       registerUsername(decoded.username);
-      req.user = {
-        userId: decoded.userId,
-        username: decoded.username,
-        color: decoded.color || generateColor(),
-        authenticated: true,
-      };
+      req.user = { userId: decoded.userId, username: decoded.username, color: decoded.color || generateColor(), authenticated: !!decoded.email };
       return next();
-    } catch (err) {
-      console.warn('[Auth] Invalid JWT token, falling back to anonymous');
-    }
+    } catch (err) { /* fall through */ }
   }
-
-  // Anonymous session user — generate unique name if none provided
-  const providedName = req.headers['x-username'];
-  let username;
-  if (providedName && !isUsernameTaken(providedName)) {
-    username = providedName;
-    registerUsername(username);
-  } else {
-    username = generateUniqueUsername();
-  }
-
-  req.user = {
-    userId: req.headers['x-session-id'] || uuidv4(),
-    username,
-    color: req.headers['x-user-color'] || generateColor(),
-    authenticated: false,
-  };
+  // Anonymous — use tabId for per-tab uniqueness
+  const tabId = req.headers['x-tab-id'];
+  const session = getOrCreateTabSession(tabId);
+  req.user = session;
   next();
 }
 
-/**
- * Socket.io authentication middleware
- * Extracts user identity from handshake auth data
- */
+// ─── Socket.io middleware ─────────────────────────────────────────────
 function socketAuthMiddleware(socket, next) {
-  const { token, userId, username, color } = socket.handshake.auth;
+  const { token, userId, username, color, tabId } = socket.handshake.auth;
 
   if (token) {
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
       registerUsername(decoded.username);
-      socket.user = {
-        userId: decoded.userId,
-        username: decoded.username,
-        color: decoded.color || generateColor(),
-        authenticated: true,
-      };
+      socket.user = { userId: decoded.userId, username: decoded.username, color: decoded.color || generateColor(), authenticated: !!decoded.email };
       return next();
-    } catch (err) {
-      console.warn('[Auth] Socket: Invalid JWT, using anonymous');
-    }
+    } catch (err) { /* fall through */ }
   }
 
-  // Anonymous socket user — preserve their stored name if unique
-  let finalUsername;
-  if (username && !isUsernameTaken(username)) {
-    finalUsername = username;
-    registerUsername(finalUsername);
-  } else if (username && isUsernameTaken(username)) {
-    // Same user reconnecting with their own stored name — allow it
-    // (they already "own" it from localStorage)
-    finalUsername = username;
-  } else {
-    finalUsername = generateUniqueUsername();
-  }
-
-  socket.user = {
-    userId: userId || uuidv4(),
-    username: finalUsername,
-    color: color || generateColor(),
-    authenticated: false,
-  };
+  // Anonymous socket — per-tab uniqueness via tabId
+  const session = getOrCreateTabSession(tabId);
+  socket.user = session;
   next();
 }
 
-/**
- * Generate JWT token
- */
 function generateToken(user) {
   return jwt.sign(
-    {
-      userId: user.userId,
-      username: user.username,
-      color: user.color,
-    },
+    { userId: user.userId, username: user.username, color: user.color, email: user.email || null },
     JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
 }
 
 module.exports = {
-  authMiddleware,
-  socketAuthMiddleware,
-  generateToken,
-  generateUniqueUsername,
-  generateColor,
-  registerUsername,
-  isUsernameTaken,
-  issuedUsernames,
+  authMiddleware, socketAuthMiddleware, generateToken,
+  generateUniqueUsername, generateColor, registerUsername, isUsernameTaken,
+  registerUser, loginUser, getOrCreateTabSession,
+  issuedUsernames, registeredUsers, tabSessions,
 };
