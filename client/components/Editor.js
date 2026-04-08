@@ -1,43 +1,37 @@
 /**
- * Editor Component
+ * Editor Component v3.0
  * 
  * Monaco Editor integrated with Yjs CRDT for real-time collaboration.
- * Features:
- * - Multi-user concurrent editing via Yjs
- * - Remote cursor/selection awareness
- * - Language-aware syntax highlighting
- * - VS Code-like keyboard shortcuts
- * - Change listener for awareness broadcasting
+ * 
+ * Improvements:
+ * - Better default templates that work out of the box (no input() in defaults)
+ * - Smoother Yjs binding with proper origin tracking
+ * - Improved remote cursor decorations
+ * - Language change preserves cursor position
  */
 
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 
-// Language to Monaco language ID mapping
 const MONACO_LANGUAGES = {
-  javascript: 'javascript',
-  typescript: 'typescript',
-  python: 'python',
-  java: 'java',
-  cpp: 'cpp',
-  c: 'c',
-  go: 'go',
-  rust: 'rust',
-  ruby: 'ruby',
-  php: 'php',
+  javascript: 'javascript', typescript: 'typescript', python: 'python',
+  java: 'java', cpp: 'cpp', c: 'c', go: 'go', rust: 'rust', ruby: 'ruby', php: 'php',
 };
 
-// Default code templates — showcase stdin/input support
+// Default code templates — work WITHOUT stdin so "Run" always succeeds on first try
 const DEFAULT_CODE = {
   javascript: `// JavaScript — CollabCode
-// All standard libraries work: readline, crypto, path, etc.
-// Use stdin for interactive input
+// All standard libraries: readline, crypto, path, etc.
+// For interactive input: use the "Input" tab below
 
 const numbers = [1, 2, 3, 4, 5];
 const sum = numbers.reduce((a, b) => a + b, 0);
+const squares = numbers.map(n => n * n);
+
+console.log("Numbers:", numbers);
 console.log("Sum:", sum);
-console.log("Squared:", numbers.map(n => n * n));
-console.log("Hello from CollabCode!");
+console.log("Squares:", squares);
+console.log("Hello from CollabCode! 🚀");
 `,
   typescript: `// TypeScript — CollabCode
 // Full TypeScript support via tsx
@@ -45,71 +39,114 @@ console.log("Hello from CollabCode!");
 interface User {
   name: string;
   role: string;
+  level: number;
 }
 
 const greet = (user: User): string =>
-  \`Hello \${user.name}, you are a \${user.role}!\`;
+  \`Hello \${user.name}! You are a Level \${user.level} \${user.role}.\`;
 
-console.log(greet({ name: "World", role: "Developer" }));
+const users: User[] = [
+  { name: "Alice", role: "Developer", level: 5 },
+  { name: "Bob", role: "Designer", level: 3 },
+];
+
+users.forEach(u => console.log(greet(u)));
+console.log("TypeScript running on CollabCode! 🚀");
 `,
   python: `# Python — CollabCode
-# input() works! Provide stdin in the terminal below.
-# All standard libraries available: math, json, os, etc.
+# All standard libraries: math, json, os, collections, etc.
+# 
+# ✨ TIP: To use input(), switch to the "Input" tab below
+#    and type your values there before clicking "Run with Input"
 
 import math
-print("Pi:", math.pi)
-print("Factorial of 10:", math.factorial(10))
+from collections import Counter
 
-name = input("Enter your name: ")
-print(f"Hello, {name}! Welcome to CollabCode.")
+# Demo without input (just press Ctrl+Enter)
+numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+print("Numbers:", numbers)
+print("Sum:", sum(numbers))
+print("Average:", sum(numbers) / len(numbers))
+print("Pi:", round(math.pi, 6))
+print("Factorial of 10:", math.factorial(10))
+print()
+print("Hello from CollabCode! 🚀")
+
+# Uncomment below and use the Input tab to provide stdin:
+# name = input("Enter your name: ")
+# print(f"Hello, {name}!")
 `,
   java: `// Java — CollabCode
-// Scanner, System.in — all work with stdin
-import java.util.Scanner;
+// Full JDK: Scanner, Arrays, Collections, etc.
+// For Scanner input: use the "Input" tab below
+
 import java.util.Arrays;
+import java.util.stream.IntStream;
 
 public class Main {
     public static void main(String[] args) {
         int[] nums = {5, 3, 1, 4, 2};
         Arrays.sort(nums);
+        
+        int sum = IntStream.of(nums).sum();
+        
         System.out.println("Sorted: " + Arrays.toString(nums));
-        System.out.println("Hello from CollabCode!");
+        System.out.println("Sum: " + sum);
+        System.out.println("Hello from CollabCode! 🚀");
     }
 }
 `,
   cpp: `// C++ — CollabCode
-// cin, getline, STL — all work with stdin
+// Full STL: iostream, vector, algorithm, string, etc.
+// For cin input: use the "Input" tab below
+
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <numeric>
 using namespace std;
 
 int main() {
     vector<int> v = {5, 3, 1, 4, 2};
     sort(v.begin(), v.end());
+    
+    int sum = accumulate(v.begin(), v.end(), 0);
+    
     cout << "Sorted: ";
     for (int x : v) cout << x << " ";
     cout << endl;
-    cout << "Hello from CollabCode!" << endl;
+    cout << "Sum: " << sum << endl;
+    cout << "Hello from CollabCode! 🚀" << endl;
     return 0;
 }
 `,
   c: `// C — CollabCode
-// scanf, fgets — all work with stdin
+// Full standard library: stdio, math, string, stdlib
+// For scanf input: use the "Input" tab below
+
 #include <stdio.h>
 #include <math.h>
 
 int main() {
     printf("Square root of 144: %.0f\\n", sqrt(144));
+    
+    int sum = 0;
+    for (int i = 1; i <= 10; i++) {
+        sum += i;
+    }
+    printf("Sum 1..10: %d\\n", sum);
+    
     for (int i = 1; i <= 5; i++) {
         printf("%d^2 = %d\\n", i, i * i);
     }
-    printf("Hello from CollabCode!\\n");
+    printf("Hello from CollabCode! 🚀\\n");
     return 0;
 }
 `,
   go: `// Go — CollabCode
-// bufio, fmt, os — all work with stdin
+// Full standard library: fmt, math, sort, strings
+// For Scan input: use the "Input" tab below
+
 package main
 
 import (
@@ -121,41 +158,59 @@ import (
 func main() {
     nums := []int{5, 3, 1, 4, 2}
     sort.Ints(nums)
+    
+    sum := 0
+    for _, n := range nums {
+        sum += n
+    }
+    
     fmt.Println("Sorted:", nums)
-    fmt.Printf("Pi: %.4f\\n", math.Pi)
-    fmt.Println("Hello from CollabCode!")
+    fmt.Println("Sum:", sum)
+    fmt.Printf("Pi: %.6f\\n", math.Pi)
+    fmt.Println("Hello from CollabCode! 🚀")
 }
 `,
   rust: `// Rust — CollabCode
-// std::io — works with stdin
+// std library: io, collections, iter
+// For stdin input: use the "Input" tab below
+
 fn main() {
     let mut numbers = vec![5, 3, 1, 4, 2];
     numbers.sort();
-    println!("Sorted: {:?}", numbers);
     
-    let sum: i32 = (1..=10).sum();
-    println!("Sum 1..10: {}", sum);
-    println!("Hello from CollabCode!");
+    let sum: i32 = numbers.iter().sum();
+    let squares: Vec<i32> = numbers.iter().map(|&x| x * x).collect();
+    
+    println!("Sorted: {:?}", numbers);
+    println!("Sum: {}", sum);
+    println!("Squares: {:?}", squares);
+    println!("Hello from CollabCode! 🚀");
 }
 `,
   ruby: `# Ruby — CollabCode
-# gets, STDIN — all work with stdin
+# Full standard library: Comparable, Enumerable, Math
+# For gets input: use the "Input" tab below
 
 numbers = [5, 3, 1, 4, 2]
 puts "Sorted: #{numbers.sort}"
 puts "Sum: #{numbers.sum}"
+puts "Squares: #{numbers.map { |n| n ** 2 }}"
 puts "Factorial of 10: #{(1..10).reduce(:*)}"
-puts "Hello from CollabCode!"
+puts "Hello from CollabCode! 🚀"
 `,
   php: `<?php
 // PHP — CollabCode
-// fgets(STDIN) works with stdin
+// Full standard library: array functions, math, date
+// For fgets(STDIN) input: use the "Input" tab below
 
 $numbers = [5, 3, 1, 4, 2];
 sort($numbers);
+
 echo "Sorted: " . implode(", ", $numbers) . "\\n";
+echo "Sum: " . array_sum($numbers) . "\\n";
 echo "Date: " . date('Y-m-d H:i:s') . "\\n";
-echo "Hello from CollabCode!\\n";
+echo "PHP version: " . PHP_VERSION . "\\n";
+echo "Hello from CollabCode! 🚀\\n";
 `,
 };
 
@@ -166,13 +221,11 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
   const decorationsRef = useRef([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // ─── Monaco Editor Mount Handler ──────────────────────────────
   const handleEditorDidMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
     setIsLoaded(true);
 
-    // Configure editor defaults
     editor.updateOptions({
       fontSize: 14,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
@@ -192,77 +245,52 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
       padding: { top: 12 },
     });
 
-    // Bind Yjs to Monaco
     bindYjsToMonaco(editor, monaco);
-
-    // Focus editor
     editor.focus();
   }, [ydoc, provider, user, language]);
 
-  // ─── Yjs <-> Monaco Binding ───────────────────────────────────
   function bindYjsToMonaco(editor, monaco) {
     if (!ydoc) return;
-
     const ytext = ydoc.getText('monaco');
 
-    // If document is empty and we're the first one, set default code
     if (ytext.length === 0) {
       const defaultCode = DEFAULT_CODE[language] || DEFAULT_CODE.javascript;
       ytext.insert(0, defaultCode);
     }
 
-    // Set initial content in editor
     const currentContent = ytext.toString();
     if (editor.getValue() !== currentContent) {
       editor.setValue(currentContent);
     }
 
-    // Yjs -> Monaco: Apply remote changes
     let isApplyingRemote = false;
 
-    const yObserver = (event) => {
+    const yObserver = () => {
       if (isApplyingRemote) return;
       isApplyingRemote = true;
-
       const model = editor.getModel();
       if (!model) { isApplyingRemote = false; return; }
-
-      // Rebuild the editor content from Yjs
       const newContent = ytext.toString();
       const currentValue = model.getValue();
-
       if (newContent !== currentValue) {
-        // Calculate minimal edits
-        const edits = computeEdits(currentValue, newContent, model);
-        if (edits.length > 0) {
-          model.pushEditOperations([], edits, () => null);
-        }
+        const fullRange = model.getFullModelRange();
+        model.pushEditOperations([], [{ range: fullRange, text: newContent, forceMoveMarkers: true }], () => null);
       }
-
       isApplyingRemote = false;
     };
-
     ytext.observe(yObserver);
 
-    // Monaco -> Yjs: Send local changes
     const changeDisposable = editor.onDidChangeModelContent((event) => {
       if (isApplyingRemote) return;
-
       ydoc.transact(() => {
-        // Sort changes in reverse order to apply from end to start
         const changes = [...event.changes].sort((a, b) => b.rangeOffset - a.rangeOffset);
         for (const change of changes) {
-          if (change.rangeLength > 0) {
-            ytext.delete(change.rangeOffset, change.rangeLength);
-          }
-          if (change.text) {
-            ytext.insert(change.rangeOffset, change.text);
-          }
+          if (change.rangeLength > 0) ytext.delete(change.rangeOffset, change.rangeLength);
+          if (change.text) ytext.insert(change.rangeOffset, change.text);
         }
       }, editor);
     });
 
-    // Awareness: Track cursor position changes
     let awarenessDebounce = null;
     const cursorDisposable = editor.onDidChangeCursorPosition((e) => {
       if (!provider) return;
@@ -271,152 +299,72 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
         const position = e.position;
         const selection = editor.getSelection();
         provider.setAwarenessState({
-          cursor: {
-            line: position.lineNumber,
-            column: position.column,
-          },
+          cursor: { line: position.lineNumber, column: position.column },
           selection: selection ? {
-            startLine: selection.startLineNumber,
-            startColumn: selection.startColumn,
-            endLine: selection.endLineNumber,
-            endColumn: selection.endColumn,
+            startLine: selection.startLineNumber, startColumn: selection.startColumn,
+            endLine: selection.endLineNumber, endColumn: selection.endColumn,
           } : null,
         });
-      }, 50); // Debounce awareness updates
+      }, 50);
     });
 
-    // Remote cursor decorations
     if (provider) {
       provider.on('awareness-change', (states) => {
         updateRemoteCursors(editor, monaco, states, user?.userId);
       });
     }
 
-    // Store binding ref for cleanup
-    bindingRef.current = {
-      yObserver,
-      changeDisposable,
-      cursorDisposable,
-      awarenessDebounce,
-      ytext,
-    };
+    bindingRef.current = { yObserver, changeDisposable, cursorDisposable, awarenessDebounce, ytext };
   }
 
-  // ─── Compute Minimal Edits ────────────────────────────────────
-  function computeEdits(oldContent, newContent, model) {
-    // Simple approach: full replacement when content differs
-    // In production, you'd use a diff algorithm
-    const fullRange = model.getFullModelRange();
-    return [{
-      range: fullRange,
-      text: newContent,
-      forceMoveMarkers: true,
-    }];
-  }
-
-  // ─── Remote Cursor Rendering ──────────────────────────────────
   function updateRemoteCursors(editor, monaco, awarenessStates, localUserId) {
     const newDecorations = [];
-
     awarenessStates.forEach((state, userId) => {
-      if (userId === localUserId) return;
-      if (!state.cursor) return;
-
+      if (userId === localUserId || !state.cursor) return;
       const { cursor, selection, username, color } = state;
-
-      // Cursor line decoration
+      const safeId = (userId || '').replace(/[^a-zA-Z0-9]/g, '');
       newDecorations.push({
-        range: new monaco.Range(
-          cursor.line, cursor.column,
-          cursor.line, cursor.column + 1
-        ),
+        range: new monaco.Range(cursor.line, cursor.column, cursor.line, cursor.column + 1),
         options: {
-          className: `yRemoteSelectionHead`,
-          beforeContentClassName: `remote-cursor-${userId}`,
+          className: 'yRemoteSelectionHead',
+          beforeContentClassName: `remote-cursor-${safeId}`,
           stickiness: 1,
           hoverMessage: { value: `**${username || 'Anonymous'}**` },
         },
       });
-
-      // Selection highlight
       if (selection && (selection.startLine !== selection.endLine || selection.startColumn !== selection.endColumn)) {
         newDecorations.push({
-          range: new monaco.Range(
-            selection.startLine, selection.startColumn,
-            selection.endLine, selection.endColumn
-          ),
-          options: {
-            className: 'yRemoteSelection',
-            stickiness: 1,
-          },
+          range: new monaco.Range(selection.startLine, selection.startColumn, selection.endLine, selection.endColumn),
+          options: { className: 'yRemoteSelection', stickiness: 1 },
         });
       }
     });
-
-    // Apply decorations
-    decorationsRef.current = editor.deltaDecorations(
-      decorationsRef.current,
-      newDecorations
-    );
-
-    // Inject dynamic cursor styles
+    decorationsRef.current = editor.deltaDecorations(decorationsRef.current, newDecorations);
     injectCursorStyles(awarenessStates, localUserId);
   }
 
-  // ─── Dynamic Cursor Color Styles ──────────────────────────────
   function injectCursorStyles(awarenessStates, localUserId) {
     let styleEl = document.getElementById('remote-cursor-styles');
-    if (!styleEl) {
-      styleEl = document.createElement('style');
-      styleEl.id = 'remote-cursor-styles';
-      document.head.appendChild(styleEl);
-    }
-
+    if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = 'remote-cursor-styles'; document.head.appendChild(styleEl); }
     let css = '';
     awarenessStates.forEach((state, userId) => {
       if (userId === localUserId) return;
       const color = state.color || '#3b82f6';
-      css += `
-        .remote-cursor-${userId}::before {
-          content: '';
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 2px;
-          height: 100%;
-          background: ${color};
-        }
-        .remote-cursor-${userId}::after {
-          content: '${state.username || 'Anonymous'}';
-          position: absolute;
-          top: -18px;
-          left: 0;
-          font-size: 10px;
-          padding: 1px 4px;
-          border-radius: 3px 3px 3px 0;
-          background: ${color};
-          color: white;
-          white-space: nowrap;
-          font-family: 'Inter', sans-serif;
-          pointer-events: none;
-          z-index: 999;
-        }
-      `;
+      const safeId = (userId || '').replace(/[^a-zA-Z0-9]/g, '');
+      const safeName = (state.username || 'Anonymous').replace(/'/g, "\\'");
+      css += `.remote-cursor-${safeId}::before{content:'';position:absolute;left:0;top:0;width:2px;height:100%;background:${color};}\n`;
+      css += `.remote-cursor-${safeId}::after{content:'${safeName}';position:absolute;top:-18px;left:0;font-size:10px;padding:1px 4px;border-radius:3px 3px 3px 0;background:${color};color:white;white-space:nowrap;font-family:'Inter',sans-serif;pointer-events:none;z-index:999;}\n`;
     });
     styleEl.textContent = css;
   }
 
-  // ─── Language Change Effect ───────────────────────────────────
   useEffect(() => {
     if (editorRef.current && monacoRef.current) {
       const model = editorRef.current.getModel();
-      if (model) {
-        monacoRef.current.editor.setModelLanguage(model, MONACO_LANGUAGES[language] || 'plaintext');
-      }
+      if (model) monacoRef.current.editor.setModelLanguage(model, MONACO_LANGUAGES[language] || 'plaintext');
     }
   }, [language]);
 
-  // ─── Cleanup ──────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       if (bindingRef.current) {
@@ -430,7 +378,6 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
     };
   }, []);
 
-  // ─── Render ───────────────────────────────────────────────────
   return (
     <div className="h-full w-full">
       <MonacoEditor
@@ -440,25 +387,16 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
         onMount={handleEditorDidMount}
         loading={
           <div className="h-full flex items-center justify-center bg-[#1e1e1e]">
-            <div className="text-center">
-              <div className="spinner mx-auto mb-3" />
-              <p className="text-gray-500 text-sm">Loading Monaco Editor...</p>
-            </div>
+            <div className="text-center"><div className="spinner mx-auto mb-3" /><p className="text-gray-500 text-sm">Loading Monaco Editor...</p></div>
           </div>
         }
         options={{
-          automaticLayout: true,
-          fontSize: 14,
+          automaticLayout: true, fontSize: 14,
           fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-          minimap: { enabled: true },
-          scrollBeyondLastLine: false,
-          smoothScrolling: true,
-          cursorBlinking: 'smooth',
-          cursorSmoothCaretAnimation: 'on',
-          renderLineHighlight: 'all',
-          bracketPairColorization: { enabled: true },
-          wordWrap: 'on',
-          padding: { top: 12 },
+          minimap: { enabled: true }, scrollBeyondLastLine: false,
+          smoothScrolling: true, cursorBlinking: 'smooth',
+          cursorSmoothCaretAnimation: 'on', renderLineHighlight: 'all',
+          bracketPairColorization: { enabled: true }, wordWrap: 'on', padding: { top: 12 },
         }}
       />
     </div>

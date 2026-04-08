@@ -1,8 +1,13 @@
 /**
- * Room Workspace v2.0
+ * Room Workspace v4.0
  * 
- * Integrates: Monaco + Yjs CRDT, chat, voice chat, code execution
- * with stdin, file save/open, resizable panels, keyboard shortcuts.
+ * KEY FIX: All run paths (Run button, Ctrl+Enter, OutputConsole "Run with Input")
+ * now automatically include stdin from OutputConsole. No more "hidden" input tab.
+ * 
+ * - Output panel auto-opens when code uses input()
+ * - Ctrl+Enter from editor includes stdin
+ * - RunButton shows input indicator
+ * - Code tracking for real-time input detection
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -27,6 +32,26 @@ const EXT_MAP = {
   c: '.c', cpp: '.cpp', go: '.go', rust: '.rs', ruby: '.rb', php: '.php',
 };
 
+// Input detection patterns (same as OutputConsole, for RunButton hints)
+const INPUT_PATTERNS = {
+  python: [/\binput\s*\(/, /\bsys\.stdin/],
+  javascript: [/\breadline/, /\bprocess\.stdin/],
+  typescript: [/\breadline/, /\bprocess\.stdin/],
+  c: [/\bscanf\s*\(/, /\bfgets\s*\(/, /\bgetchar\s*\(/],
+  cpp: [/\bcin\s*>>/, /\bgetline\s*\(/, /\bscanf\s*\(/],
+  java: [/\bScanner\b/, /\bSystem\.in\b/],
+  go: [/\bbufio\./, /\bfmt\.Scan/],
+  rust: [/\bstdin\(\)/, /\bread_line\s*\(/],
+  ruby: [/\bgets\b/, /\bSTDIN\b/],
+  php: [/\bfgets\s*\(\s*STDIN/, /\breadline\s*\(/],
+};
+
+function codeNeedsInput(code, language) {
+  if (!code) return false;
+  const patterns = INPUT_PATTERNS[language] || [];
+  return patterns.some(p => p.test(code));
+}
+
 export default function RoomPage() {
   const router = useRouter();
   const { id: roomId } = router.query;
@@ -35,18 +60,28 @@ export default function RoomPage() {
   const socketRef = useRef(null);
   const ydocRef = useRef(null);
   const providerRef = useRef(null);
+  const outputConsoleRef = useRef(null);
 
   const [messages, setMessages] = useState([]);
   const [output, setOutput] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
   const [awarenessStates, setAwarenessStates] = useState(new Map());
   const [panelWidth, setPanelWidth] = useState(320);
-  const [outputHeight, setOutputHeight] = useState(220);
+  const [outputHeight, setOutputHeight] = useState(280);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeType, setResizeType] = useState(null);
   const [ready, setReady] = useState(false);
+  const [currentCode, setCurrentCode] = useState('');
 
   const queryLang = router.query.lang;
+  const needsInput = codeNeedsInput(currentCode, state.language);
+
+  // Auto-open output panel when code needs input (so user sees the stdin area)
+  useEffect(() => {
+    if (needsInput && !state.outputOpen) {
+      toggleOutput();
+    }
+  }, [needsInput]);
 
   // ─── Initialize Connection ──────────────────────────────────────
   useEffect(() => {
@@ -77,10 +112,16 @@ export default function RoomPage() {
     socket.on('room:language-change', (data) => setLanguage(data.language));
     provider.on('awareness-change', (states) => setAwarenessStates(new Map(states)));
 
+    // Track code changes for real-time input detection
+    const ytext = ydoc.getText('monaco');
+    const codeObserver = () => setCurrentCode(ytext.toString());
+    ytext.observe(codeObserver);
+
     if (socket.connected) { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang }); }
     else setConnectionStatus('connecting');
 
     return () => {
+      ytext.unobserve(codeObserver);
       provider.destroy();
       ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change'].forEach(e => socket.off(e));
       disconnectSocket();
@@ -98,23 +139,44 @@ export default function RoomPage() {
     if (socketRef.current) socketRef.current.emit('room:language-change', { language: lang });
   }, []);
 
-  // ─── Code Execution with stdin ──────────────────────────────────
-  const handleRunCode = useCallback(async (code, stdin = '') => {
+  // ─── Code Execution (always includes stdin from OutputConsole) ─────────
+  const handleRunCode = useCallback(async (code, explicitStdin) => {
+    // Get stdin: use explicit value if provided, otherwise get from OutputConsole ref
+    const stdin = explicitStdin !== undefined
+      ? explicitStdin
+      : (outputConsoleRef.current?.getStdin?.() || '');
+
     setIsRunning(true);
     setOutput({ type: 'info', content: 'Running code...' });
+
     try {
       const res = await fetch(`${SERVER_URL}/api/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-session-id': state.user?.userId || '', 'x-tab-id': state.user?.tabId || '' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-id': state.user?.userId || '',
+          'x-tab-id': state.user?.tabId || '',
+        },
         body: JSON.stringify({ code, language: state.language, stdin }),
       });
       const data = await res.json();
+
+      const base = {
+        stdinUsed: stdin || null,
+        exitCode: data.exitCode,
+        executionTime: data.executionTime,
+        engine: data.engine,
+        language: data.language,
+        version: data.version,
+        phase: data.phase,
+      };
+
       if (data.error && !data.success && !data.output) {
-        setOutput({ type: 'error', content: '', error: data.message || 'Execution failed', status: 'Error' });
+        setOutput({ type: 'error', content: '', error: data.message || 'Execution failed', status: 'Error', ...base });
       } else if (data.success) {
-        setOutput({ type: 'success', content: data.output || '', error: data.error || '', exitCode: data.exitCode, executionTime: data.executionTime, status: data.status, engine: data.engine, language: data.language, version: data.version, phase: data.phase });
+        setOutput({ type: 'success', content: data.output || '', error: data.error || '', status: data.status, ...base });
       } else {
-        setOutput({ type: 'error', content: data.output || '', error: data.error || data.message || 'Failed', exitCode: data.exitCode, executionTime: data.executionTime, status: data.status, engine: data.engine, language: data.language, version: data.version, phase: data.phase });
+        setOutput({ type: 'error', content: data.output || '', error: data.error || data.message || 'Failed', status: data.status, ...base });
       }
     } catch (err) {
       setOutput({ type: 'error', content: '', error: `Network error: ${err.message}`, status: 'Network Error' });
@@ -123,7 +185,15 @@ export default function RoomPage() {
     }
   }, [state.language, state.user]);
 
-  // ─── File Save ──────────────────────────────────────────────────
+  // ─── Main Run handler (used by RunButton + Ctrl+Enter) ─────────────
+  const handleMainRun = useCallback(() => {
+    if (!ydocRef.current) return;
+    const code = ydocRef.current.getText('monaco').toString();
+    // Always pass undefined so handleRunCode reads stdin from OutputConsole ref
+    handleRunCode(code, undefined);
+  }, [handleRunCode]);
+
+  // ─── File Save ─────────────────────────────────────────────────────
   const handleSaveFile = useCallback(() => {
     if (!ydocRef.current) return;
     const code = ydocRef.current.getText('monaco').toString();
@@ -135,7 +205,7 @@ export default function RoomPage() {
     URL.revokeObjectURL(url);
   }, [state.language]);
 
-  // ─── File Open ──────────────────────────────────────────────────
+  // ─── File Open ─────────────────────────────────────────────────────
   const handleOpenFile = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -159,13 +229,13 @@ export default function RoomPage() {
     input.click();
   }, []);
 
-  // ─── Panel Resize ──────────────────────────────────────────────
+  // ─── Panel Resize ──────────────────────────────────────────────────
   const handleMouseDown = useCallback((type) => (e) => { e.preventDefault(); setIsResizing(true); setResizeType(type); }, []);
   useEffect(() => {
     if (!isResizing) return;
     const move = (e) => {
       if (resizeType === 'sidebar') setPanelWidth(Math.min(Math.max(240, window.innerWidth - e.clientX), 500));
-      else if (resizeType === 'output') setOutputHeight(Math.min(Math.max(100, window.innerHeight - e.clientY), 500));
+      else if (resizeType === 'output') setOutputHeight(Math.min(Math.max(150, window.innerHeight - e.clientY), 500));
     };
     const up = () => { setIsResizing(false); setResizeType(null); };
     document.addEventListener('mousemove', move);
@@ -176,7 +246,13 @@ export default function RoomPage() {
   // ─── Keyboard Shortcuts ─────────────────────────────────────────
   useEffect(() => {
     const handle = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (ydocRef.current) handleRunCode(ydocRef.current.getText('monaco').toString()); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        // Don't override Ctrl+Enter in the stdin textarea (that runs from OutputConsole)
+        const tag = e.target.tagName?.toLowerCase();
+        if (tag === 'textarea') return;
+        e.preventDefault();
+        handleMainRun();
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') { e.preventDefault(); toggleChat(); }
       if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); toggleOutput(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSaveFile(); }
@@ -184,7 +260,7 @@ export default function RoomPage() {
     };
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
-  }, [handleRunCode, toggleChat, toggleOutput, handleSaveFile, handleOpenFile]);
+  }, [handleMainRun, toggleChat, toggleOutput, handleSaveFile, handleOpenFile]);
 
   if (!state.user || !roomId) {
     return (
@@ -210,19 +286,33 @@ export default function RoomPage() {
             ) : (
               <div className="h-full flex items-center justify-center"><div className="text-center"><div className="spinner mx-auto mb-3" /><p className="text-gray-500 text-sm">Loading editor...</p></div></div>
             )}
-            <RunButton onRun={() => { if (ydocRef.current) handleRunCode(ydocRef.current.getText('monaco').toString()); }} isRunning={isRunning} language={state.language} />
+            <RunButton
+              onRun={handleMainRun}
+              isRunning={isRunning}
+              language={state.language}
+              needsInput={needsInput}
+            />
           </div>
           {state.outputOpen && (
             <>
-              <div className={`resizer resizer-horizontal h-1 w-full flex-shrink-0 ${isResizing && resizeType === 'output' ? 'active' : ''}`} onMouseDown={handleMouseDown('output')} />
+              <div className={`resizer resizer-horizontal h-1.5 w-full flex-shrink-0 ${isResizing && resizeType === 'output' ? 'active' : ''}`} onMouseDown={handleMouseDown('output')} />
               <div style={{ height: outputHeight }} className="flex-shrink-0">
-                <OutputConsole output={output} onClear={() => setOutput(null)} isRunning={isRunning} language={state.language}
-                  onRunWithStdin={(stdin) => { if (ydocRef.current) handleRunCode(ydocRef.current.getText('monaco').toString(), stdin); }} />
+                <OutputConsole
+                  ref={outputConsoleRef}
+                  output={output}
+                  onClear={() => setOutput(null)}
+                  isRunning={isRunning}
+                  language={state.language}
+                  code={currentCode || (ydocRef.current ? ydocRef.current.getText('monaco').toString() : '')}
+                  onRunWithStdin={(stdin) => {
+                    if (ydocRef.current) handleRunCode(ydocRef.current.getText('monaco').toString(), stdin);
+                  }}
+                />
               </div>
             </>
           )}
         </div>
-        {state.chatOpen && <div className={`resizer w-1 flex-shrink-0 ${isResizing && resizeType === 'sidebar' ? 'active' : ''}`} onMouseDown={handleMouseDown('sidebar')} />}
+        {state.chatOpen && <div className={`resizer w-1.5 flex-shrink-0 ${isResizing && resizeType === 'sidebar' ? 'active' : ''}`} onMouseDown={handleMouseDown('sidebar')} />}
         {state.chatOpen && (
           <div style={{ width: panelWidth }} className="flex-shrink-0 border-l border-editor-border flex flex-col">
             <VoiceChat socket={socketRef.current} currentUser={state.user} />
