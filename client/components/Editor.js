@@ -1,13 +1,9 @@
 /**
- * Editor Component v3.0
+ * Editor Component v5.0
  * 
- * Monaco Editor integrated with Yjs CRDT for real-time collaboration.
- * 
- * Improvements:
- * - Better default templates that work out of the box (no input() in defaults)
- * - Smoother Yjs binding with proper origin tracking
- * - Improved remote cursor decorations
- * - Language change preserves cursor position
+ * Monaco Editor + Yjs CRDT. 15 languages. 
+ * Fix: No full-document replace on remote edits (eliminates screen flash).
+ * made with <3 by Namish
  */
 
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
@@ -15,15 +11,13 @@ import MonacoEditor from '@monaco-editor/react';
 
 const MONACO_LANGUAGES = {
   javascript: 'javascript', typescript: 'typescript', python: 'python',
-  java: 'java', cpp: 'cpp', c: 'c', go: 'go', rust: 'rust', ruby: 'ruby', php: 'php',
+  java: 'java', cpp: 'cpp', c: 'c', go: 'go', rust: 'rust',
+  ruby: 'ruby', php: 'php', perl: 'perl', r: 'r',
+  bash: 'shell', shell: 'shell', awk: 'plaintext',
 };
 
-// Default code templates — work WITHOUT stdin so "Run" always succeeds on first try
 const DEFAULT_CODE = {
   javascript: `// JavaScript — CollabCode
-// All standard libraries: readline, crypto, path, etc.
-// For interactive input: use the "Input" tab below
-
 const numbers = [1, 2, 3, 4, 5];
 const sum = numbers.reduce((a, b) => a + b, 0);
 const squares = numbers.map(n => n * n);
@@ -31,11 +25,9 @@ const squares = numbers.map(n => n * n);
 console.log("Numbers:", numbers);
 console.log("Sum:", sum);
 console.log("Squares:", squares);
-console.log("Hello from CollabCode! 🚀");
+console.log("Hello from CollabCode!");
 `,
   typescript: `// TypeScript — CollabCode
-// Full TypeScript support via tsx
-
 interface User {
   name: string;
   role: string;
@@ -51,18 +43,14 @@ const users: User[] = [
 ];
 
 users.forEach(u => console.log(greet(u)));
-console.log("TypeScript running on CollabCode! 🚀");
+console.log("TypeScript running on CollabCode!");
 `,
   python: `# Python — CollabCode
-# All standard libraries: math, json, os, collections, etc.
-# 
-# ✨ TIP: To use input(), switch to the "Input" tab below
-#    and type your values there before clicking "Run with Input"
+# Tip: Use input() for interactive input - type in the terminal below
 
 import math
 from collections import Counter
 
-# Demo without input (just press Ctrl+Enter)
 numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 print("Numbers:", numbers)
 print("Sum:", sum(numbers))
@@ -70,16 +58,9 @@ print("Average:", sum(numbers) / len(numbers))
 print("Pi:", round(math.pi, 6))
 print("Factorial of 10:", math.factorial(10))
 print()
-print("Hello from CollabCode! 🚀")
-
-# Uncomment below and use the Input tab to provide stdin:
-# name = input("Enter your name: ")
-# print(f"Hello, {name}!")
+print("Hello from CollabCode!")
 `,
   java: `// Java — CollabCode
-// Full JDK: Scanner, Arrays, Collections, etc.
-// For Scanner input: use the "Input" tab below
-
 import java.util.Arrays;
 import java.util.stream.IntStream;
 
@@ -87,19 +68,14 @@ public class Main {
     public static void main(String[] args) {
         int[] nums = {5, 3, 1, 4, 2};
         Arrays.sort(nums);
-        
         int sum = IntStream.of(nums).sum();
-        
         System.out.println("Sorted: " + Arrays.toString(nums));
         System.out.println("Sum: " + sum);
-        System.out.println("Hello from CollabCode! 🚀");
+        System.out.println("Hello from CollabCode!");
     }
 }
 `,
   cpp: `// C++ — CollabCode
-// Full STL: iostream, vector, algorithm, string, etc.
-// For cin input: use the "Input" tab below
-
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -109,44 +85,30 @@ using namespace std;
 int main() {
     vector<int> v = {5, 3, 1, 4, 2};
     sort(v.begin(), v.end());
-    
     int sum = accumulate(v.begin(), v.end(), 0);
-    
     cout << "Sorted: ";
     for (int x : v) cout << x << " ";
     cout << endl;
     cout << "Sum: " << sum << endl;
-    cout << "Hello from CollabCode! 🚀" << endl;
+    cout << "Hello from CollabCode!" << endl;
     return 0;
 }
 `,
   c: `// C — CollabCode
-// Full standard library: stdio, math, string, stdlib
-// For scanf input: use the "Input" tab below
-
 #include <stdio.h>
 #include <math.h>
 
 int main() {
     printf("Square root of 144: %.0f\\n", sqrt(144));
-    
     int sum = 0;
-    for (int i = 1; i <= 10; i++) {
-        sum += i;
-    }
+    for (int i = 1; i <= 10; i++) sum += i;
     printf("Sum 1..10: %d\\n", sum);
-    
-    for (int i = 1; i <= 5; i++) {
-        printf("%d^2 = %d\\n", i, i * i);
-    }
-    printf("Hello from CollabCode! 🚀\\n");
+    for (int i = 1; i <= 5; i++) printf("%d^2 = %d\\n", i, i * i);
+    printf("Hello from CollabCode!\\n");
     return 0;
 }
 `,
   go: `// Go — CollabCode
-// Full standard library: fmt, math, sort, strings
-// For Scan input: use the "Input" tab below
-
 package main
 
 import (
@@ -158,59 +120,111 @@ import (
 func main() {
     nums := []int{5, 3, 1, 4, 2}
     sort.Ints(nums)
-    
     sum := 0
-    for _, n := range nums {
-        sum += n
-    }
-    
+    for _, n := range nums { sum += n }
     fmt.Println("Sorted:", nums)
     fmt.Println("Sum:", sum)
     fmt.Printf("Pi: %.6f\\n", math.Pi)
-    fmt.Println("Hello from CollabCode! 🚀")
+    fmt.Println("Hello from CollabCode!")
 }
 `,
   rust: `// Rust — CollabCode
-// std library: io, collections, iter
-// For stdin input: use the "Input" tab below
-
 fn main() {
     let mut numbers = vec![5, 3, 1, 4, 2];
     numbers.sort();
-    
     let sum: i32 = numbers.iter().sum();
     let squares: Vec<i32> = numbers.iter().map(|&x| x * x).collect();
-    
     println!("Sorted: {:?}", numbers);
     println!("Sum: {}", sum);
     println!("Squares: {:?}", squares);
-    println!("Hello from CollabCode! 🚀");
+    println!("Hello from CollabCode!");
 }
 `,
   ruby: `# Ruby — CollabCode
-# Full standard library: Comparable, Enumerable, Math
-# For gets input: use the "Input" tab below
-
 numbers = [5, 3, 1, 4, 2]
 puts "Sorted: #{numbers.sort}"
 puts "Sum: #{numbers.sum}"
 puts "Squares: #{numbers.map { |n| n ** 2 }}"
 puts "Factorial of 10: #{(1..10).reduce(:*)}"
-puts "Hello from CollabCode! 🚀"
+puts "Hello from CollabCode!"
 `,
   php: `<?php
 // PHP — CollabCode
-// Full standard library: array functions, math, date
-// For fgets(STDIN) input: use the "Input" tab below
-
 $numbers = [5, 3, 1, 4, 2];
 sort($numbers);
-
 echo "Sorted: " . implode(", ", $numbers) . "\\n";
 echo "Sum: " . array_sum($numbers) . "\\n";
 echo "Date: " . date('Y-m-d H:i:s') . "\\n";
 echo "PHP version: " . PHP_VERSION . "\\n";
-echo "Hello from CollabCode! 🚀\\n";
+echo "Hello from CollabCode!\\n";
+`,
+  perl: `#!/usr/bin/perl
+# Perl — CollabCode
+use strict;
+use warnings;
+
+my @nums = (1..10);
+my $sum = 0;
+$sum += $_ for @nums;
+print "Numbers: @nums\\n";
+print "Sum: $sum\\n";
+
+my @sorted = sort { $a <=> $b } (5, 3, 1, 4, 2);
+print "Sorted: @sorted\\n";
+print "Hello from CollabCode!\\n";
+`,
+  r: `# R — CollabCode
+nums <- c(5, 3, 1, 4, 2)
+cat("Numbers:", nums, "\\n")
+cat("Mean:", mean(nums), "\\n")
+cat("Sum:", sum(nums), "\\n")
+cat("Sorted:", sort(nums), "\\n")
+
+fib <- c(1, 1)
+for (i in 3:10) fib[i] <- fib[i-1] + fib[i-2]
+cat("Fibonacci:", fib, "\\n")
+cat("Hello from CollabCode!\\n")
+`,
+  bash: `#!/bin/bash
+# Bash — CollabCode
+
+echo "Hello from Bash!"
+echo "Date: $(date)"
+
+nums=(5 3 1 4 2)
+echo "Numbers: \${nums[@]}"
+
+sorted=($(echo "\${nums[@]}" | tr ' ' '\\n' | sort -n))
+echo "Sorted: \${sorted[@]}"
+
+sum=0
+for n in "\${nums[@]}"; do sum=$((sum + n)); done
+echo "Sum: $sum"
+`,
+  shell: `#!/bin/sh
+# Shell (POSIX sh) — CollabCode
+
+echo "Hello from Shell!"
+echo "Current directory: $(pwd)"
+echo "System info:"
+uname -a
+echo "Hello from CollabCode!"
+`,
+  awk: `# AWK — CollabCode
+BEGIN {
+    print "Hello from AWK!"
+    print "Fibonacci sequence:"
+    a = 0; b = 1
+    for (i = 1; i <= 10; i++) {
+        printf "%d ", b
+        c = a + b; a = b; b = c
+    }
+    print ""
+    print "Powers of 2:"
+    for (i = 0; i <= 10; i++) {
+        printf "2^%d = %d\\n", i, 2^i
+    }
+}
 `,
 };
 
@@ -219,6 +233,7 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
   const monacoRef = useRef(null);
   const bindingRef = useRef(null);
   const decorationsRef = useRef([]);
+  const isRemoteRef = useRef(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
   const handleEditorDidMount = useCallback((editor, monaco) => {
@@ -263,25 +278,55 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
       editor.setValue(currentContent);
     }
 
-    let isApplyingRemote = false;
-
-    const yObserver = () => {
-      if (isApplyingRemote) return;
-      isApplyingRemote = true;
+    // FIX: Use delta-based approach to avoid screen flash
+    // Instead of replacing the entire document, apply only the changes
+    const yObserver = (event) => {
+      if (isRemoteRef.current) return;
+      isRemoteRef.current = true;
       const model = editor.getModel();
-      if (!model) { isApplyingRemote = false; return; }
-      const newContent = ytext.toString();
-      const currentValue = model.getValue();
-      if (newContent !== currentValue) {
-        const fullRange = model.getFullModelRange();
-        model.pushEditOperations([], [{ range: fullRange, text: newContent, forceMoveMarkers: true }], () => null);
+      if (!model) { isRemoteRef.current = false; return; }
+      
+      try {
+        let index = 0;
+        const ops = [];
+        event.delta.forEach(delta => {
+          if (delta.retain !== undefined) {
+            index += delta.retain;
+          } else if (delta.insert !== undefined) {
+            const pos = model.getPositionAt(index);
+            ops.push({
+              range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+              text: delta.insert,
+              forceMoveMarkers: true,
+            });
+            index += delta.insert.length;
+          } else if (delta.delete !== undefined) {
+            const startPos = model.getPositionAt(index);
+            const endPos = model.getPositionAt(index + delta.delete);
+            ops.push({
+              range: new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column),
+              text: '',
+              forceMoveMarkers: true,
+            });
+          }
+        });
+        if (ops.length > 0) {
+          model.pushEditOperations([], ops, () => null);
+        }
+      } catch (err) {
+        // Fallback: full replace if delta fails
+        const newContent = ytext.toString();
+        if (model.getValue() !== newContent) {
+          const fullRange = model.getFullModelRange();
+          model.pushEditOperations([], [{ range: fullRange, text: newContent, forceMoveMarkers: true }], () => null);
+        }
       }
-      isApplyingRemote = false;
+      isRemoteRef.current = false;
     };
     ytext.observe(yObserver);
 
     const changeDisposable = editor.onDidChangeModelContent((event) => {
-      if (isApplyingRemote) return;
+      if (isRemoteRef.current) return;
       ydoc.transact(() => {
         const changes = [...event.changes].sort((a, b) => b.rangeOffset - a.rangeOffset);
         for (const change of changes) {

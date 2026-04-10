@@ -1,13 +1,15 @@
 /**
- * Room Workspace v4.0
+ * Room Workspace v5.0
  * 
- * KEY FIX: All run paths (Run button, Ctrl+Enter, OutputConsole "Run with Input")
- * now automatically include stdin from OutputConsole. No more "hidden" input tab.
+ * Major update:
+ * - VSCode-style terminal (no confusing stdin panels)
+ * - Multi-file support (file explorer + tabs)
+ * - Extensions/themes panel
+ * - Public/private room toggle
+ * - Fix: No screen flash on remote edits (delta-based Yjs sync)
+ * - 15 languages
  * 
- * - Output panel auto-opens when code uses input()
- * - Ctrl+Enter from editor includes stdin
- * - RunButton shows input indicator
- * - Code tracking for real-time input detection
+ * made with <3 by Namish
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -22,6 +24,8 @@ import UserPresence from '../../components/UserPresence';
 import RunButton from '../../components/RunButton';
 import OutputConsole from '../../components/OutputConsole';
 import VoiceChat from '../../components/VoiceChat';
+import FileExplorer from '../../components/FileExplorer';
+import Extensions from '../../components/Extensions';
 
 const Editor = dynamic(() => import('../../components/Editor'), { ssr: false });
 
@@ -30,32 +34,13 @@ const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000'
 const EXT_MAP = {
   javascript: '.js', typescript: '.ts', python: '.py', java: '.java',
   c: '.c', cpp: '.cpp', go: '.go', rust: '.rs', ruby: '.rb', php: '.php',
+  perl: '.pl', r: '.R', bash: '.sh', shell: '.sh', awk: '.awk',
 };
-
-// Input detection patterns (same as OutputConsole, for RunButton hints)
-const INPUT_PATTERNS = {
-  python: [/\binput\s*\(/, /\bsys\.stdin/],
-  javascript: [/\breadline/, /\bprocess\.stdin/],
-  typescript: [/\breadline/, /\bprocess\.stdin/],
-  c: [/\bscanf\s*\(/, /\bfgets\s*\(/, /\bgetchar\s*\(/],
-  cpp: [/\bcin\s*>>/, /\bgetline\s*\(/, /\bscanf\s*\(/],
-  java: [/\bScanner\b/, /\bSystem\.in\b/],
-  go: [/\bbufio\./, /\bfmt\.Scan/],
-  rust: [/\bstdin\(\)/, /\bread_line\s*\(/],
-  ruby: [/\bgets\b/, /\bSTDIN\b/],
-  php: [/\bfgets\s*\(\s*STDIN/, /\breadline\s*\(/],
-};
-
-function codeNeedsInput(code, language) {
-  if (!code) return false;
-  const patterns = INPUT_PATTERNS[language] || [];
-  return patterns.some(p => p.test(code));
-}
 
 export default function RoomPage() {
   const router = useRouter();
   const { id: roomId } = router.query;
-  const { state, setRoom, setUsers, addUser, removeUser, setConnectionStatus, setLanguage, toggleChat, toggleOutput } = useAppContext();
+  const { state, setRoom, setUsers, addUser, removeUser, setConnectionStatus, setLanguage, setTheme, toggleChat, toggleOutput } = useAppContext();
 
   const socketRef = useRef(null);
   const ydocRef = useRef(null);
@@ -71,17 +56,55 @@ export default function RoomPage() {
   const [isResizing, setIsResizing] = useState(false);
   const [resizeType, setResizeType] = useState(null);
   const [ready, setReady] = useState(false);
-  const [currentCode, setCurrentCode] = useState('');
+
+  // Multi-file support
+  const [files, setFiles] = useState([]);
+  const [activeFileId, setActiveFileId] = useState(null);
+  const [filesOpen, setFilesOpen] = useState(false);
+
+  // Extensions panel
+  const [extensionsOpen, setExtensionsOpen] = useState(false);
+  const [terminalTheme, setTerminalTheme] = useState('vs-dark');
+  const [editorFontSize, setEditorFontSize] = useState(14);
+  const [editorTabSize, setEditorTabSize] = useState(2);
+  const [editorMinimap, setEditorMinimap] = useState(true);
+  const [editorWordWrap, setEditorWordWrap] = useState(true);
+
+  // Public/private
+  const [isPublic, setIsPublic] = useState(false);
 
   const queryLang = router.query.lang;
-  const needsInput = codeNeedsInput(currentCode, state.language);
+  const queryPublic = router.query.public;
 
-  // Auto-open output panel when code needs input (so user sees the stdin area)
+  // Load settings from localStorage
   useEffect(() => {
-    if (needsInput && !state.outputOpen) {
-      toggleOutput();
-    }
-  }, [needsInput]);
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = localStorage.getItem('collabcode_settings');
+      if (stored) {
+        const s = JSON.parse(stored);
+        if (s.terminalTheme) setTerminalTheme(s.terminalTheme);
+        if (s.editorTheme) setTheme(s.editorTheme);
+        if (s.fontSize) setEditorFontSize(s.fontSize);
+        if (s.tabSize) setEditorTabSize(s.tabSize);
+        if (s.minimap !== undefined) setEditorMinimap(s.minimap);
+        if (s.wordWrap !== undefined) setEditorWordWrap(s.wordWrap);
+      }
+    } catch (e) {}
+  }, []);
+
+  // Save settings to localStorage
+  const saveSettings = useCallback(() => {
+    try {
+      localStorage.setItem('collabcode_settings', JSON.stringify({
+        terminalTheme, editorTheme: state.theme,
+        fontSize: editorFontSize, tabSize: editorTabSize,
+        minimap: editorMinimap, wordWrap: editorWordWrap,
+      }));
+    } catch (e) {}
+  }, [terminalTheme, state.theme, editorFontSize, editorTabSize, editorMinimap, editorWordWrap]);
+
+  useEffect(() => { saveSettings(); }, [saveSettings]);
 
   // ─── Initialize Connection ──────────────────────────────────────
   useEffect(() => {
@@ -101,29 +124,32 @@ export default function RoomPage() {
     const provider = new SocketIOProvider(ydoc, socket, roomId);
     providerRef.current = provider;
 
-    socket.on('connect', () => { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang }); });
+    const isPublicRoom = queryPublic === 'true';
+
+    socket.on('connect', () => { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang, isPublic: isPublicRoom }); });
     socket.on('disconnect', () => setConnectionStatus('disconnected'));
     socket.on('reconnect', () => { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang }); });
-    socket.on('room:state', (data) => { if (data.users) setUsers(data.users); setRoom({ roomId }); setReady(true); });
+    socket.on('room:state', (data) => {
+      if (data.users) setUsers(data.users);
+      if (data.isPublic !== undefined) setIsPublic(data.isPublic);
+      if (data.language) setLanguage(data.language);
+      setRoom({ roomId });
+      setReady(true);
+    });
     socket.on('room:user-joined', (user) => addUser(user));
     socket.on('room:user-left', (data) => removeUser(data.userId));
     socket.on('chat:history', (history) => setMessages(history));
     socket.on('chat:message', (msg) => setMessages(prev => [...prev, msg]));
     socket.on('room:language-change', (data) => setLanguage(data.language));
+    socket.on('room:visibility-changed', (data) => setIsPublic(data.isPublic));
     provider.on('awareness-change', (states) => setAwarenessStates(new Map(states)));
 
-    // Track code changes for real-time input detection
-    const ytext = ydoc.getText('monaco');
-    const codeObserver = () => setCurrentCode(ytext.toString());
-    ytext.observe(codeObserver);
-
-    if (socket.connected) { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang }); }
+    if (socket.connected) { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang, isPublic: isPublicRoom }); }
     else setConnectionStatus('connecting');
 
     return () => {
-      ytext.unobserve(codeObserver);
       provider.destroy();
-      ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change'].forEach(e => socket.off(e));
+      ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change','room:visibility-changed'].forEach(e => socket.off(e));
       disconnectSocket();
       ydoc.destroy();
     };
@@ -139,15 +165,23 @@ export default function RoomPage() {
     if (socketRef.current) socketRef.current.emit('room:language-change', { language: lang });
   }, []);
 
-  // ─── Code Execution (always includes stdin from OutputConsole) ─────────
+  const handleTogglePublic = useCallback(() => {
+    const newVal = !isPublic;
+    setIsPublic(newVal);
+    if (socketRef.current) socketRef.current.emit('room:set-visibility', { isPublic: newVal });
+  }, [isPublic]);
+
+  // ─── Code Execution ───────────────────────────────────────────────
   const handleRunCode = useCallback(async (code, explicitStdin) => {
-    // Get stdin: use explicit value if provided, otherwise get from OutputConsole ref
     const stdin = explicitStdin !== undefined
       ? explicitStdin
       : (outputConsoleRef.current?.getStdin?.() || '');
 
     setIsRunning(true);
     setOutput({ type: 'info', content: 'Running code...' });
+
+    // Auto-open output if closed
+    if (!state.outputOpen) toggleOutput();
 
     try {
       const res = await fetch(`${SERVER_URL}/api/execute`, {
@@ -183,17 +217,15 @@ export default function RoomPage() {
     } finally {
       setIsRunning(false);
     }
-  }, [state.language, state.user]);
+  }, [state.language, state.user, state.outputOpen, toggleOutput]);
 
-  // ─── Main Run handler (used by RunButton + Ctrl+Enter) ─────────────
   const handleMainRun = useCallback(() => {
     if (!ydocRef.current) return;
     const code = ydocRef.current.getText('monaco').toString();
-    // Always pass undefined so handleRunCode reads stdin from OutputConsole ref
     handleRunCode(code, undefined);
   }, [handleRunCode]);
 
-  // ─── File Save ─────────────────────────────────────────────────────
+  // ─── File Operations ──────────────────────────────────────────────
   const handleSaveFile = useCallback(() => {
     if (!ydocRef.current) return;
     const code = ydocRef.current.getText('monaco').toString();
@@ -205,7 +237,6 @@ export default function RoomPage() {
     URL.revokeObjectURL(url);
   }, [state.language]);
 
-  // ─── File Open ─────────────────────────────────────────────────────
   const handleOpenFile = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -227,7 +258,71 @@ export default function RoomPage() {
       reader.readAsText(file);
     };
     input.click();
-  }, []);
+  }, [handleLanguageChange]);
+
+  // Multi-file operations
+  const handleAddFile = useCallback((fileData) => {
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const newFile = { id, name: fileData.name, content: fileData.content, language: fileData.language, modified: false };
+    setFiles(prev => [...prev, newFile]);
+    setActiveFileId(id);
+    // Load into editor
+    if (fileData.language) handleLanguageChange(fileData.language);
+    if (ydocRef.current && fileData.content) {
+      const ytext = ydocRef.current.getText('monaco');
+      ydocRef.current.transact(() => { ytext.delete(0, ytext.length); ytext.insert(0, fileData.content); });
+    }
+  }, [handleLanguageChange]);
+
+  const handleSelectFile = useCallback((fileId) => {
+    // Save current content to active file before switching
+    if (activeFileId && ydocRef.current) {
+      const currentContent = ydocRef.current.getText('monaco').toString();
+      setFiles(prev => prev.map(f => f.id === activeFileId ? { ...f, content: currentContent } : f));
+    }
+    setActiveFileId(fileId);
+    const file = files.find(f => f.id === fileId);
+    if (file) {
+      if (file.language) handleLanguageChange(file.language);
+      if (ydocRef.current) {
+        const ytext = ydocRef.current.getText('monaco');
+        ydocRef.current.transact(() => { ytext.delete(0, ytext.length); ytext.insert(0, file.content || ''); });
+      }
+    }
+  }, [activeFileId, files, handleLanguageChange]);
+
+  const handleRemoveFile = useCallback((fileId) => {
+    setFiles(prev => {
+      const next = prev.filter(f => f.id !== fileId);
+      if (activeFileId === fileId && next.length > 0) setActiveFileId(next[0].id);
+      else if (next.length === 0) setActiveFileId(null);
+      return next;
+    });
+  }, [activeFileId]);
+
+  const handleOpenFolder = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.webkitdirectory = true;
+    input.onchange = (e) => {
+      const fileList = e.target.files;
+      const EXT_TO_LANG = { '.js': 'javascript', '.ts': 'typescript', '.py': 'python', '.java': 'java', '.c': 'c', '.cpp': 'cpp', '.go': 'go', '.rs': 'rust', '.rb': 'ruby', '.php': 'php', '.pl': 'perl', '.r': 'r', '.R': 'r', '.sh': 'bash', '.awk': 'awk' };
+      for (let i = 0; i < Math.min(fileList.length, 50); i++) {
+        const file = fileList[i];
+        if (file.size > 200000) continue; // Skip large files
+        const ext = '.' + file.name.split('.').pop().toLowerCase();
+        if (!EXT_TO_LANG[ext] && ext !== '.txt' && ext !== '.md' && ext !== '.json') continue;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          handleAddFile({ name: file.webkitRelativePath || file.name, content: ev.target.result, language: EXT_TO_LANG[ext] || 'javascript' });
+        };
+        reader.readAsText(file);
+      }
+      setFilesOpen(true);
+    };
+    input.click();
+  }, [handleAddFile]);
 
   // ─── Panel Resize ──────────────────────────────────────────────────
   const handleMouseDown = useCallback((type) => (e) => { e.preventDefault(); setIsResizing(true); setResizeType(type); }, []);
@@ -247,9 +342,8 @@ export default function RoomPage() {
   useEffect(() => {
     const handle = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        // Don't override Ctrl+Enter in the stdin textarea (that runs from OutputConsole)
         const tag = e.target.tagName?.toLowerCase();
-        if (tag === 'textarea') return;
+        if (tag === 'input') return; // Let terminal input handle it
         e.preventDefault();
         handleMainRun();
       }
@@ -270,29 +364,92 @@ export default function RoomPage() {
     );
   }
 
+  const leftPanelOpen = filesOpen || extensionsOpen;
+  const leftPanelWidth = 240;
+
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#1e1e1e]" style={{ userSelect: isResizing ? 'none' : 'auto' }}>
-      <Navbar roomId={roomId} language={state.language} onLanguageChange={handleLanguageChange}
+      <Navbar
+        roomId={roomId} language={state.language} onLanguageChange={handleLanguageChange}
         connectionStatus={state.connectionStatus} users={state.users}
         onToggleChat={toggleChat} onToggleOutput={toggleOutput} chatOpen={state.chatOpen} outputOpen={state.outputOpen}
-        onSaveFile={handleSaveFile} onOpenFile={handleOpenFile} />
+        onSaveFile={handleSaveFile} onOpenFile={handleOpenFile}
+        isPublic={isPublic} onTogglePublic={handleTogglePublic}
+        onToggleFiles={() => { setFilesOpen(!filesOpen); setExtensionsOpen(false); }}
+        filesOpen={filesOpen}
+        onToggleExtensions={() => { setExtensionsOpen(!extensionsOpen); setFilesOpen(false); }}
+        extensionsOpen={extensionsOpen}
+      />
 
       <div className="flex-1 flex overflow-hidden">
+        {/* Left Panel: File Explorer or Extensions */}
+        {leftPanelOpen && (
+          <div style={{ width: leftPanelWidth }} className="flex-shrink-0">
+            {filesOpen && (
+              <FileExplorer
+                files={files}
+                activeFileId={activeFileId}
+                onSelectFile={handleSelectFile}
+                onAddFile={handleAddFile}
+                onRemoveFile={handleRemoveFile}
+                onOpenFolder={handleOpenFolder}
+                language={state.language}
+              />
+            )}
+            {extensionsOpen && (
+              <Extensions
+                editorTheme={state.theme}
+                onEditorThemeChange={(t) => setTheme(t)}
+                terminalTheme={terminalTheme}
+                onTerminalThemeChange={setTerminalTheme}
+                fontSize={editorFontSize}
+                onFontSizeChange={setEditorFontSize}
+                tabSize={editorTabSize}
+                onTabSizeChange={setEditorTabSize}
+                minimap={editorMinimap}
+                onMinimapToggle={() => setEditorMinimap(!editorMinimap)}
+                wordWrap={editorWordWrap}
+                onWordWrapToggle={() => setEditorWordWrap(!editorWordWrap)}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Main Editor Area */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* File Tabs (when files are loaded) */}
+          {files.length > 0 && (
+            <div className="flex items-center bg-[#252526] border-b border-editor-border overflow-x-auto flex-shrink-0">
+              {files.map(file => (
+                <button key={file.id}
+                  onClick={() => handleSelectFile(file.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs border-r border-editor-border/50 transition group min-w-0 ${
+                    file.id === activeFileId
+                      ? 'bg-[#1e1e1e] text-white border-t-2 border-t-blue-400'
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-[#2a2d2e] border-t-2 border-t-transparent'
+                  }`}>
+                  <span className="truncate max-w-[120px]">{file.name.split('/').pop()}</span>
+                  {file.modified && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 flex-shrink-0" />}
+                  <span onClick={(e) => { e.stopPropagation(); handleRemoveFile(file.id); }}
+                    className="ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-[#555] transition">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <UserPresence users={state.users} currentUser={state.user} awarenessStates={awarenessStates} />
+          
           <div className="flex-1 min-h-0 relative">
             {ready && ydocRef.current ? (
               <Editor ydoc={ydocRef.current} provider={providerRef.current} language={state.language} theme={state.theme} user={state.user} />
             ) : (
               <div className="h-full flex items-center justify-center"><div className="text-center"><div className="spinner mx-auto mb-3" /><p className="text-gray-500 text-sm">Loading editor...</p></div></div>
             )}
-            <RunButton
-              onRun={handleMainRun}
-              isRunning={isRunning}
-              language={state.language}
-              needsInput={needsInput}
-            />
+            <RunButton onRun={handleMainRun} isRunning={isRunning} language={state.language} />
           </div>
+
           {state.outputOpen && (
             <>
               <div className={`resizer resizer-horizontal h-1.5 w-full flex-shrink-0 ${isResizing && resizeType === 'output' ? 'active' : ''}`} onMouseDown={handleMouseDown('output')} />
@@ -303,15 +460,18 @@ export default function RoomPage() {
                   onClear={() => setOutput(null)}
                   isRunning={isRunning}
                   language={state.language}
-                  code={currentCode || (ydocRef.current ? ydocRef.current.getText('monaco').toString() : '')}
+                  code={ydocRef.current ? ydocRef.current.getText('monaco').toString() : ''}
                   onRunWithStdin={(stdin) => {
                     if (ydocRef.current) handleRunCode(ydocRef.current.getText('monaco').toString(), stdin);
                   }}
+                  terminalTheme={terminalTheme}
                 />
               </div>
             </>
           )}
         </div>
+
+        {/* Chat Sidebar */}
         {state.chatOpen && <div className={`resizer w-1.5 flex-shrink-0 ${isResizing && resizeType === 'sidebar' ? 'active' : ''}`} onMouseDown={handleMouseDown('sidebar')} />}
         {state.chatOpen && (
           <div style={{ width: panelWidth }} className="flex-shrink-0 border-l border-editor-border flex flex-col">

@@ -1,12 +1,15 @@
 /**
- * Room Model
+ * Room Model v5.0
  * 
- * Stores room metadata and the latest CRDT state snapshot.
- * The crdtState field holds the binary-encoded Yjs document
- * for reconstruction when a room is reopened.
+ * Supports public/private rooms, 15 languages, CRDT state persistence.
  */
 
 const mongoose = require('mongoose');
+
+const ALL_LANGUAGES = [
+  'javascript', 'typescript', 'python', 'java', 'cpp', 'c',
+  'go', 'rust', 'ruby', 'php', 'perl', 'r', 'bash', 'shell', 'awk',
+];
 
 const participantSchema = new mongoose.Schema({
   userId: { type: String, required: true },
@@ -16,53 +19,21 @@ const participantSchema = new mongoose.Schema({
 }, { _id: false });
 
 const roomSchema = new mongoose.Schema({
-  roomId: {
-    type: String,
-    required: true,
-    unique: true,
-    index: true,
-  },
-  name: {
-    type: String,
-    default: 'Untitled Room',
-    maxlength: 100,
-  },
-  language: {
-    type: String,
-    default: 'javascript',
-    enum: ['javascript', 'typescript', 'python', 'java', 'cpp', 'c', 'go', 'rust', 'ruby', 'php'],
-  },
+  roomId: { type: String, required: true, unique: true, index: true },
+  name: { type: String, default: 'Untitled Room', maxlength: 100 },
+  language: { type: String, default: 'javascript', enum: ALL_LANGUAGES },
   participants: [participantSchema],
-  activeCount: {
-    type: Number,
-    default: 0,
-  },
-  crdtState: {
-    type: Buffer,
-    default: null,
-  },
-  lastCodeSnapshot: {
-    type: String,
-    default: '',
-    maxlength: 500000, // 500KB max
-  },
-  createdBy: {
-    type: String,
-    default: 'anonymous',
-  },
-  isActive: {
-    type: Boolean,
-    default: true,
-  },
-}, {
-  timestamps: true,
-  collection: 'rooms',
-});
+  activeCount: { type: Number, default: 0 },
+  isPublic: { type: Boolean, default: false },
+  crdtState: { type: Buffer, default: null },
+  lastCodeSnapshot: { type: String, default: '', maxlength: 500000 },
+  createdBy: { type: String, default: 'anonymous' },
+  isActive: { type: Boolean, default: true },
+}, { timestamps: true, collection: 'rooms' });
 
-// Index for querying active rooms
 roomSchema.index({ isActive: 1, updatedAt: -1 });
+roomSchema.index({ isPublic: 1, isActive: 1 });
 
-// Clean up stale rooms (inactive for 24+ hours)
 roomSchema.statics.cleanupStale = async function() {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   return this.updateMany(

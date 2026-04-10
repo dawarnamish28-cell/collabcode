@@ -1,13 +1,12 @@
 /**
- * Room Socket Handler v2.0
+ * Room Socket Handler v5.0
  * 
- * Real-time room management:
- *  - Room join/leave with presence tracking
- *  - CRDT binary update relay (Yjs)
- *  - Awareness (cursors, selections)
- *  - Chat with persistence
- *  - Voice chat WebRTC signaling
- *  - Simple 6-char room codes
+ * - Public/Private room support
+ * - Room existence validation
+ * - CRDT binary update relay (Yjs)
+ * - Awareness (cursors, selections)
+ * - Chat with persistence
+ * - Voice chat WebRTC signaling
  */
 
 const Y = require('yjs');
@@ -22,16 +21,6 @@ const updateRateCheck = createSocketRateLimiter(100, 1000);
 const awarenessRateCheck = createSocketRateLimiter(30, 1000);
 const PERSIST_INTERVAL = (parseInt(process.env.CRDT_PERSIST_INTERVAL) || 30) * 1000;
 
-// Simple room code generator (6 alphanumeric chars)
-const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no O/0, I/1
-function generateSimpleCode() {
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)];
-  }
-  return code;
-}
-
 function getRoom(roomId) {
   if (!rooms.has(roomId)) {
     rooms.set(roomId, {
@@ -42,10 +31,17 @@ function getRoom(roomId) {
       persistTimer: null,
       lastPersist: Date.now(),
       dirty: false,
-      voiceUsers: new Set(), // track users in voice chat
+      voiceUsers: new Set(),
+      isPublic: false,
+      language: 'javascript',
+      createdBy: null,
     });
   }
   return rooms.get(roomId);
+}
+
+function roomExists(roomId) {
+  return rooms.has(roomId) && rooms.get(roomId).users.size > 0;
 }
 
 async function persistRoomState(roomId) {
@@ -57,7 +53,7 @@ async function persistRoomState(roomId) {
     const textContent = room.ydoc.getText('monaco').toString();
     await Room.findOneAndUpdate(
       { roomId },
-      { $set: { crdtState: Buffer.from(stateVector), lastCodeSnapshot: textContent.substring(0, 500000), activeCount: room.users.size } },
+      { $set: { crdtState: Buffer.from(stateVector), lastCodeSnapshot: textContent.substring(0, 500000), activeCount: room.users.size, isPublic: room.isPublic } },
       { upsert: true }
     );
     room.dirty = false;
@@ -102,26 +98,25 @@ async function cleanupRoom(roomId) {
 }
 
 function initRoomHandler(io) {
-  // REST-accessible room code generator
-  io._generateRoomCode = () => {
-    let code;
-    do { code = generateSimpleCode(); } while (rooms.has(code));
-    return code;
-  };
-
   io.on('connection', (socket) => {
     console.log(`[Socket] Connected: ${socket.id} (${socket.user.username})`);
     let currentRoomId = null;
 
-    // ─── JOIN ROOM ──────────────────────────────────────────────
     socket.on('room:join', async (data) => {
-      const { roomId, language } = data;
+      const { roomId, language, isPublic } = data;
       if (!roomId || typeof roomId !== 'string') return;
       if (currentRoomId) await handleLeave(socket, currentRoomId, io);
 
       currentRoomId = roomId;
       const room = getRoom(roomId);
-      if (room.users.size === 0) await loadRoomState(roomId, room.ydoc);
+      
+      // Set room properties on first join
+      if (room.users.size === 0) {
+        await loadRoomState(roomId, room.ydoc);
+        if (isPublic !== undefined) room.isPublic = !!isPublic;
+        room.createdBy = socket.user.userId;
+      }
+      if (language) room.language = language;
 
       const userInfo = {
         userId: socket.user.userId, username: socket.user.username,
@@ -134,7 +129,7 @@ function initRoomHandler(io) {
       if (getConnectionStatus()) {
         try {
           await Room.findOneAndUpdate({ roomId }, {
-            $set: { activeCount: room.users.size, isActive: true, language: language || 'javascript' },
+            $set: { activeCount: room.users.size, isActive: true, language: language || room.language, isPublic: room.isPublic },
             $setOnInsert: { name: `Room ${roomId}`, createdBy: socket.user.userId },
           }, { upsert: true });
         } catch (err) {}
@@ -145,6 +140,8 @@ function initRoomHandler(io) {
         update: Array.from(stateUpdate),
         users: Array.from(room.users.values()),
         awareness: Object.fromEntries(room.awarenessStates),
+        isPublic: room.isPublic,
+        language: room.language,
       });
 
       if (getConnectionStatus()) {
@@ -158,10 +155,19 @@ function initRoomHandler(io) {
       const joinMsg = { roomId, userId: 'system', username: 'System', content: `${socket.user.username} joined`, type: 'system', color: '#6b7280' };
       io.to(roomId).emit('chat:message', joinMsg);
       if (getConnectionStatus()) Message.create(joinMsg).catch(() => {});
-      console.log(`[Room:${roomId}] ${socket.user.username} joined (${room.users.size} users)`);
+      console.log(`[Room:${roomId}] ${socket.user.username} joined (${room.users.size} users) [${room.isPublic ? 'public' : 'private'}]`);
     });
 
-    // ─── CRDT UPDATE RELAY ──────────────────────────────────────
+    // Toggle public/private
+    socket.on('room:set-visibility', (data) => {
+      if (!currentRoomId) return;
+      const room = rooms.get(currentRoomId);
+      if (!room) return;
+      room.isPublic = !!data.isPublic;
+      room.dirty = true;
+      io.to(currentRoomId).emit('room:visibility-changed', { isPublic: room.isPublic });
+    });
+
     socket.on('crdt:update', (data) => {
       if (!currentRoomId || !updateRateCheck(socket.id)) return;
       const room = rooms.get(currentRoomId);
@@ -174,7 +180,6 @@ function initRoomHandler(io) {
       } catch (err) {}
     });
 
-    // ─── AWARENESS ──────────────────────────────────────────────
     socket.on('awareness:update', (state) => {
       if (!currentRoomId || !awarenessRateCheck(socket.id)) return;
       const room = rooms.get(currentRoomId);
@@ -187,7 +192,6 @@ function initRoomHandler(io) {
       });
     });
 
-    // ─── CHAT ───────────────────────────────────────────────────
     socket.on('chat:send', async (data) => {
       if (!currentRoomId) return;
       if (!chatRateCheck(socket.id)) { socket.emit('chat:error', { message: 'Slow down!' }); return; }
@@ -203,6 +207,8 @@ function initRoomHandler(io) {
 
     socket.on('room:language-change', (data) => {
       if (!currentRoomId) return;
+      const room = rooms.get(currentRoomId);
+      if (room) room.language = data.language;
       socket.to(currentRoomId).emit('room:language-change', { language: data.language, changedBy: socket.user.username });
     });
 
@@ -211,45 +217,30 @@ function initRoomHandler(io) {
       socket.to(currentRoomId).emit('chat:typing', { userId: socket.user.userId, username: socket.user.username, isTyping: data.isTyping });
     });
 
-    // ─── VOICE CHAT WebRTC Signaling ────────────────────────────
+    // Voice chat signaling
     socket.on('voice:join', () => {
       if (!currentRoomId) return;
       const room = rooms.get(currentRoomId);
       if (!room) return;
       room.voiceUsers.add(socket.user.userId);
-      socket.to(currentRoomId).emit('voice:user-joined', {
-        userId: socket.user.userId, username: socket.user.username, socketId: socket.id,
-      });
-      // Send list of already-in-voice users to the newcomer
+      socket.to(currentRoomId).emit('voice:user-joined', { userId: socket.user.userId, username: socket.user.username, socketId: socket.id });
       const voiceList = [];
       room.users.forEach((u) => {
-        if (room.voiceUsers.has(u.userId) && u.userId !== socket.user.userId) {
+        if (room.voiceUsers.has(u.userId) && u.userId !== socket.user.userId)
           voiceList.push({ userId: u.userId, username: u.username, socketId: u.socketId });
-        }
       });
       socket.emit('voice:peers', voiceList);
     });
-
     socket.on('voice:leave', () => {
       if (!currentRoomId) return;
       const room = rooms.get(currentRoomId);
-      if (!room) return;
-      room.voiceUsers.delete(socket.user.userId);
+      if (room) room.voiceUsers.delete(socket.user.userId);
       socket.to(currentRoomId).emit('voice:user-left', { userId: socket.user.userId });
     });
+    socket.on('voice:offer', (data) => { io.to(data.to).emit('voice:offer', { from: socket.id, offer: data.offer, userId: socket.user.userId, username: socket.user.username }); });
+    socket.on('voice:answer', (data) => { io.to(data.to).emit('voice:answer', { from: socket.id, answer: data.answer }); });
+    socket.on('voice:ice-candidate', (data) => { io.to(data.to).emit('voice:ice-candidate', { from: socket.id, candidate: data.candidate }); });
 
-    // WebRTC signaling relay
-    socket.on('voice:offer', (data) => {
-      io.to(data.to).emit('voice:offer', { from: socket.id, offer: data.offer, userId: socket.user.userId, username: socket.user.username });
-    });
-    socket.on('voice:answer', (data) => {
-      io.to(data.to).emit('voice:answer', { from: socket.id, answer: data.answer });
-    });
-    socket.on('voice:ice-candidate', (data) => {
-      io.to(data.to).emit('voice:ice-candidate', { from: socket.id, candidate: data.candidate });
-    });
-
-    // ─── DISCONNECT ─────────────────────────────────────────────
     socket.on('disconnect', async (reason) => {
       console.log(`[Socket] Disconnected: ${socket.id} (${reason})`);
       if (currentRoomId) {
@@ -275,21 +266,22 @@ function initRoomHandler(io) {
     if (room.users.size === 0) setTimeout(() => cleanupRoom(roomId), 30000);
   }
 
-  setInterval(() => {
-    for (const [roomId, room] of rooms.entries()) {
-      if (room.users.size === 0) cleanupRoom(roomId);
-    }
-  }, 60000);
+  setInterval(() => { for (const [roomId, room] of rooms.entries()) { if (room.users.size === 0) cleanupRoom(roomId); } }, 60000);
 }
 
 function getActiveRooms() {
   const info = [];
   for (const [roomId, room] of rooms.entries()) {
     if (room.users.size > 0) {
-      info.push({ roomId, userCount: room.users.size, users: Array.from(room.users.values()).map(u => u.username) });
+      info.push({
+        roomId, userCount: room.users.size,
+        users: Array.from(room.users.values()).map(u => u.username),
+        isPublic: room.isPublic,
+        language: room.language,
+      });
     }
   }
   return info;
 }
 
-module.exports = { initRoomHandler, getActiveRooms };
+module.exports = { initRoomHandler, getActiveRooms, roomExists };

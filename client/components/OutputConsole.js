@@ -1,430 +1,294 @@
 /**
- * OutputConsole v4.0 — Interactive Terminal with Inline stdin
+ * OutputConsole v6.0 — VSCode-style Terminal
  * 
- * CORE FIX: stdin is now INLINE in the terminal — not a hidden tab.
- * When code uses input()/scanf()/etc., the stdin area appears prominently
- * ABOVE the output, always visible. Users type input → hit Run → see output.
- *
- * The "Run with Input" button is THE primary way to execute input-requiring code.
- * The main Run button auto-delegates to this when stdin is needed.
- *
- * Features:
- * - Inline stdin area (always visible when code needs input)
- * - Smart auto-detection of input patterns per language
- * - Separate stdout/stderr with color coding
- * - Execution history (last 10 runs)
- * - Copy-to-clipboard
- * - Rich metadata display
- * - Keyboard: Ctrl+Enter in stdin textarea runs code
+ * Clean terminal like VSCode. Input works naturally:
+ * - Type in the input line at bottom
+ * - Press Enter to add a line of stdin
+ * - Press Ctrl+Enter to run with all collected input
+ * - Press Ctrl+L to clear
+ * 
+ * made with <3 by Namish
  */
 
-import { memo, useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { memo, useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 
-// ─── Input Pattern Detection ──────────────────────────────────────────
-const INPUT_PATTERNS = {
-  python: [/\binput\s*\(/, /\bsys\.stdin/, /\bread\s*\(/],
-  javascript: [/\breadline/, /\bprocess\.stdin/, /\bprompt\s*\(/],
-  typescript: [/\breadline/, /\bprocess\.stdin/, /\bprompt\s*\(/],
-  c: [/\bscanf\s*\(/, /\bfgets\s*\(/, /\bgetchar\s*\(/, /\bgets\s*\(/, /\bgetline\s*\(/],
-  cpp: [/\bcin\s*>>/, /\bgetline\s*\(/, /\bscanf\s*\(/, /\bgetchar\s*\(/],
-  java: [/\bScanner\b/, /\bSystem\.in\b/, /\bBufferedReader\b/, /\bConsole\b/],
-  go: [/\bbufio\./, /\bfmt\.Scan/, /\bos\.Stdin/],
-  rust: [/\bstdin\(\)/, /\bread_line\s*\(/],
-  ruby: [/\bgets\b/, /\bSTDIN\b/, /\breadline\b/],
-  php: [/\bfgets\s*\(\s*STDIN/, /\breadline\s*\(/, /\bfscanf\s*\(\s*STDIN/],
+const THEMES = {
+  'vs-dark': {
+    bg: '#1e1e1e', headerBg: '#252526', border: '#3c3c3c',
+    text: '#d4d4d4', dim: '#858585', dimmer: '#555',
+    error: '#f14c4c', success: '#4ec9b0', warn: '#dcdcaa',
+    accent: '#569cd6', prompt: '#4ec9b0', inputBg: '#1e1e1e',
+    selection: '#264f78',
+  },
+  'monokai': {
+    bg: '#272822', headerBg: '#1e1f1c', border: '#49483e',
+    text: '#f8f8f2', dim: '#75715e', dimmer: '#49483e',
+    error: '#f92672', success: '#a6e22e', warn: '#e6db74',
+    accent: '#66d9ef', prompt: '#a6e22e', inputBg: '#272822',
+    selection: '#49483e',
+  },
+  'github-dark': {
+    bg: '#0d1117', headerBg: '#161b22', border: '#30363d',
+    text: '#c9d1d9', dim: '#8b949e', dimmer: '#484f58',
+    error: '#f85149', success: '#3fb950', warn: '#d29922',
+    accent: '#58a6ff', prompt: '#3fb950', inputBg: '#0d1117',
+    selection: '#1f6feb33',
+  },
+  'dracula': {
+    bg: '#282a36', headerBg: '#21222c', border: '#44475a',
+    text: '#f8f8f2', dim: '#6272a4', dimmer: '#44475a',
+    error: '#ff5555', success: '#50fa7b', warn: '#f1fa8c',
+    accent: '#bd93f9', prompt: '#50fa7b', inputBg: '#282a36',
+    selection: '#44475a',
+  },
+  'one-dark': {
+    bg: '#282c34', headerBg: '#21252b', border: '#3e4452',
+    text: '#abb2bf', dim: '#5c6370', dimmer: '#3e4452',
+    error: '#e06c75', success: '#98c379', warn: '#e5c07b',
+    accent: '#61afef', prompt: '#98c379', inputBg: '#282c34',
+    selection: '#3e4452',
+  },
+  'solarized-dark': {
+    bg: '#002b36', headerBg: '#073642', border: '#586e75',
+    text: '#839496', dim: '#586e75', dimmer: '#073642',
+    error: '#dc322f', success: '#859900', warn: '#b58900',
+    accent: '#268bd2', prompt: '#859900', inputBg: '#002b36',
+    selection: '#073642',
+  },
 };
 
-function detectNeedsInput(code, language) {
-  if (!code) return false;
-  const patterns = INPUT_PATTERNS[language] || [];
-  return patterns.some(p => p.test(code));
-}
-
-function countInputCalls(code, language) {
-  if (!code) return 0;
-  const counts = {
-    python: (code.match(/\binput\s*\(/g) || []).length,
-    c: (code.match(/\bscanf\s*\(/g) || []).length + (code.match(/\bfgets\s*\(/g) || []).length,
-    cpp: (code.match(/\bcin\s*>>/g) || []).length + (code.match(/\bgetline\s*\(/g) || []).length,
-    java: (code.match(/\b(nextLine|nextInt|nextDouble|next)\s*\(/g) || []).length,
-    go: (code.match(/\bScan(ln|f)?\s*\(/g) || []).length + (code.match(/\bReadString\s*\(/g) || []).length,
-    rust: (code.match(/\bread_line\s*\(/g) || []).length,
-    ruby: (code.match(/\bgets\b/g) || []).length,
-    php: (code.match(/\bfgets\s*\(\s*STDIN/g) || []).length,
-  };
-  return counts[language] || 0;
-}
-
-const LANG_EXAMPLES = {
-  python: 'e.g. Alice\\n25',
-  javascript: 'e.g. Alice',
-  c: 'e.g. 42',
-  cpp: 'e.g. Alice',
-  java: 'e.g. Alice',
-  go: 'e.g. Alice',
-  rust: 'e.g. Alice',
-  ruby: 'e.g. Alice',
-  php: 'e.g. Alice',
-};
-
-const LANG_FUNC = {
-  python: 'input()',
-  javascript: 'readline',
-  typescript: 'readline',
-  c: 'scanf()',
-  cpp: 'cin >>',
-  java: 'Scanner',
-  go: 'Scan()',
-  rust: 'read_line()',
-  ruby: 'gets',
-  php: 'fgets(STDIN)',
-};
-
-// ─── OutputConsole Component (with forwardRef for external stdin access) ──
 const OutputConsole = memo(forwardRef(function OutputConsole(
-  { output, onClear, isRunning, onRunWithStdin, language, code },
+  { output, onClear, isRunning, language, code, onRunWithStdin, terminalTheme = 'vs-dark' },
   ref
 ) {
   const scrollRef = useRef(null);
-  const stdinRef = useRef(null);
-  const [stdinValue, setStdinValue] = useState('');
+  const inputRef = useRef(null);
+  const [stdinLines, setStdinLines] = useState([]);
+  const [currentInput, setCurrentInput] = useState('');
   const [copied, setCopied] = useState(false);
-  const [history, setHistory] = useState([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [stdinCollapsed, setStdinCollapsed] = useState(false);
+  const [terminalLines, setTerminalLines] = useState([]);
+  const [cmdHistory, setCmdHistory] = useState([]);
+  const [historyIdx, setHistoryIdx] = useState(-1);
 
-  const needsInput = detectNeedsInput(code, language);
-  const inputCount = countInputCalls(code, language);
+  const theme = THEMES[terminalTheme] || THEMES['vs-dark'];
 
-  // Expose stdin value and needsInput to parent (Room page)
   useImperativeHandle(ref, () => ({
-    getStdin: () => stdinValue,
-    needsInput: () => needsInput,
-    focusStdin: () => {
-      setStdinCollapsed(false);
-      setTimeout(() => stdinRef.current?.focus(), 50);
-    },
+    getStdin: () => stdinLines.join('\n'),
+    clear: () => { setTerminalLines([]); setStdinLines([]); },
+    focus: () => inputRef.current?.focus(),
   }));
 
-  // Auto-expand stdin when code changes to need input
+  // Add output to terminal lines
   useEffect(() => {
-    if (needsInput) {
-      setStdinCollapsed(false);
+    if (!output) return;
+    if (output.type === 'info' && output.content === 'Running code...') {
+      setTerminalLines(prev => [...prev, { type: 'info', text: '$ Running...' }]);
+      return;
     }
-  }, [needsInput]);
-
-  // Add to history when output arrives
-  useEffect(() => {
-    if (output && (output.content || output.error) && output.type !== 'info') {
-      setHistory(prev => [...prev.slice(-9), { ...output, timestamp: new Date(), language }]);
+    const newLines = [];
+    if (output.stdinUsed) {
+      newLines.push({ type: 'dim', text: '--- stdin ---' });
+      output.stdinUsed.split('\n').forEach(l => newLines.push({ type: 'stdin', text: l }));
+      newLines.push({ type: 'dim', text: '--- output ---' });
     }
+    if (output.content) {
+      output.content.split('\n').forEach(l => newLines.push({ type: output.type === 'error' ? 'stdout' : 'stdout', text: l }));
+    }
+    if (output.error) {
+      output.error.split('\n').forEach(l => {
+        if (l.trim()) newLines.push({ type: 'stderr', text: l });
+      });
+    }
+    if (!output.content && !output.error && output.type === 'success') {
+      newLines.push({ type: 'dim', text: '(program exited with no output)' });
+    }
+    const exitInfo = output.exitCode !== undefined ? `exit ${output.exitCode}` : '';
+    const timeInfo = output.executionTime || '';
+    const langInfo = output.language || language || '';
+    newLines.push({ type: 'meta', text: `[${langInfo} | ${timeInfo} | ${exitInfo}]` });
+    newLines.push({ type: 'blank', text: '' });
+    setTerminalLines(prev => [...prev, ...newLines]);
+    // Clear collected stdin after run
+    setStdinLines([]);
   }, [output]);
 
-  // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [output]);
+  }, [terminalLines, isRunning]);
 
-  const handleCopy = useCallback(async () => {
-    const text = output?.content || output?.error || '';
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch (e) {}
-  }, [output]);
-
-  const handleRun = useCallback(() => {
-    if (onRunWithStdin) {
-      onRunWithStdin(stdinValue);
+  const handleInputKeyDown = (e) => {
+    // Ctrl+L = clear
+    if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+      e.preventDefault();
+      handleClear();
+      return;
     }
-  }, [stdinValue, onRunWithStdin]);
-
-  const handleStdinKeyDown = useCallback((e) => {
+    // Ctrl+Enter = run with collected stdin
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
-      handleRun();
+      e.stopPropagation();
+      const allStdin = [...stdinLines, currentInput].filter(s => s !== undefined).join('\n');
+      setCmdHistory(prev => [...prev.slice(-49), currentInput]);
+      setHistoryIdx(-1);
+      setCurrentInput('');
+      setStdinLines([]);
+      if (onRunWithStdin) onRunWithStdin(allStdin);
+      return;
     }
-  }, [handleRun]);
+    // Enter = add stdin line
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const val = currentInput;
+      setStdinLines(prev => [...prev, val]);
+      setTerminalLines(prev => [...prev, { type: 'input', text: `> ${val}` }]);
+      setCmdHistory(prev => [...prev.slice(-49), val]);
+      setHistoryIdx(-1);
+      setCurrentInput('');
+      return;
+    }
+    // Arrow up/down for history
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (cmdHistory.length === 0) return;
+      const newIdx = historyIdx < cmdHistory.length - 1 ? historyIdx + 1 : historyIdx;
+      setHistoryIdx(newIdx);
+      setCurrentInput(cmdHistory[cmdHistory.length - 1 - newIdx] || '');
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (historyIdx <= 0) { setHistoryIdx(-1); setCurrentInput(''); return; }
+      const newIdx = historyIdx - 1;
+      setHistoryIdx(newIdx);
+      setCurrentInput(cmdHistory[cmdHistory.length - 1 - newIdx] || '');
+    }
+  };
+
+  const handleCopy = useCallback(async () => {
+    const text = terminalLines.filter(l => l.type === 'stdout' || l.type === 'stderr').map(l => l.text).join('\n');
+    if (!text) return;
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch (e) {}
+  }, [terminalLines]);
+
+  const handleClear = () => {
+    setTerminalLines([]);
+    setStdinLines([]);
+    if (onClear) onClear();
+  };
+
+  const stdinCount = stdinLines.length;
 
   return (
-    <div className="h-full flex flex-col bg-[#1a1b26] overflow-hidden">
-      {/* ═══ HEADER BAR ═══ */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#252526] border-b border-editor-border flex-shrink-0">
+    <div className="h-full flex flex-col font-mono text-[13px] overflow-hidden" style={{ background: theme.bg }}>
+      {/* Terminal Header */}
+      <div className="flex items-center justify-between px-3 py-1 flex-shrink-0" style={{ background: theme.headerBg, borderBottom: `1px solid ${theme.border}` }}>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5">
-            <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <span className="text-xs font-medium text-gray-300">Terminal</span>
+            <div className="w-3 h-3 rounded-full bg-[#ff5f56] hover:brightness-90 cursor-pointer" onClick={handleClear} title="Clear" />
+            <div className="w-3 h-3 rounded-full bg-[#ffbd2e]" />
+            <div className="w-3 h-3 rounded-full bg-[#27c93f]" />
           </div>
-
+          <span className="text-[11px] font-medium uppercase tracking-wide ml-2" style={{ color: theme.dim }}>Terminal</span>
           {isRunning && (
-            <div className="flex items-center gap-1.5 ml-1">
-              <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
-              <span className="text-[10px] text-yellow-400 font-medium">Running...</span>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: theme.warn }} />
+              <span className="text-[10px]" style={{ color: theme.warn }}>Running...</span>
             </div>
           )}
-
-          {output?.engine && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#2a2d2e] text-gray-500 font-mono">{output.engine}</span>
-          )}
-          {output?.executionTime && (
-            <span className="text-[10px] text-gray-500 font-mono">{output.executionTime}</span>
-          )}
         </div>
-
         <div className="flex items-center gap-1">
+          {stdinCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ color: theme.accent, background: theme.accent + '20' }}>
+              {stdinCount} line{stdinCount !== 1 ? 's' : ''} buffered
+            </span>
+          )}
           {output?.status && (
-            <span className={`text-[10px] px-2 py-0.5 rounded-full border
-              ${output.type === 'success' ? 'bg-green-600/15 text-green-400 border-green-600/30' : ''}
-              ${output.type === 'error' ? 'bg-red-600/15 text-red-400 border-red-600/30' : ''}
-              ${output.type === 'info' ? 'bg-blue-600/15 text-blue-400 border-blue-600/30' : ''}`}>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded`} style={{ color: output.type === 'success' ? theme.success : theme.error }}>
               {output.status}
             </span>
           )}
-          {output?.exitCode !== undefined && output?.exitCode !== null && output.exitCode !== 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-600/15 text-red-400 font-mono">exit:{output.exitCode}</span>
-          )}
-
-          <button onClick={() => setShowHistory(!showHistory)}
-            className={`p-1 rounded transition ${showHistory ? 'bg-purple-600/20 text-purple-400' : 'text-gray-500 hover:text-gray-300 hover:bg-[#2a2d2e]'}`}
-            title={`History (${history.length} runs)`}>
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <button onClick={handleCopy} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Copy output">
+            {copied ? (
+              <svg className="w-3.5 h-3.5" style={{ color: theme.success }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+            )}
           </button>
-          <button onClick={handleCopy} disabled={!output?.content && !output?.error}
-            className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-[#2a2d2e] transition disabled:opacity-30" title="Copy output">
-            {copied
-              ? <svg className="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-              : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-            }
-          </button>
-          <button onClick={() => { onClear(); setHistory([]); }}
-            className="p-1 rounded hover:bg-[#2a2d2e] text-gray-500 hover:text-gray-300 transition" title="Clear">
+          <button onClick={handleClear} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Clear (Ctrl+L)">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
           </button>
         </div>
       </div>
 
-      {/* ═══ HISTORY PANEL ═══ */}
-      {showHistory && history.length > 0 && (
-        <div className="px-3 py-2 bg-[#1e1f2e] border-b border-editor-border flex-shrink-0 max-h-28 overflow-y-auto">
-          <div className="space-y-1">
-            {history.slice().reverse().map((h, i) => (
-              <div key={i} className="flex items-center gap-2 text-[10px] font-mono">
-                <span className={h.type === 'success' ? 'text-green-400' : 'text-red-400'}>{h.type === 'success' ? '\u2713' : '\u2717'}</span>
-                <span className="text-gray-500">{h.language}</span>
-                <span className="text-gray-600">{h.executionTime}</span>
-                <span className="text-gray-700">{h.timestamp?.toLocaleTimeString()}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ═══ STDIN AREA (inline, always visible when code needs input) ═══ */}
-      {needsInput && (
-        <div className={`flex-shrink-0 border-b border-editor-border ${stdinCollapsed ? '' : 'bg-[#12131e]'}`}>
-          {/* Stdin Header — always visible, clickable to collapse/expand */}
-          <button
-            onClick={() => setStdinCollapsed(!stdinCollapsed)}
-            className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-[#1e1f2e] transition"
-          >
-            <div className="flex items-center gap-2">
-              <svg className={`w-3 h-3 text-gray-500 transition-transform ${stdinCollapsed ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-yellow-400">
-                stdin required
-              </span>
-              <span className="text-[10px] text-gray-500">
-                {LANG_FUNC[language] || 'input'} detected
-                {inputCount > 0 && ` (${inputCount} call${inputCount > 1 ? 's' : ''})`}
-              </span>
-              {stdinValue && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-600/20 text-blue-400">
-                  {stdinValue.split('\n').filter(Boolean).length} line{stdinValue.split('\n').filter(Boolean).length !== 1 ? 's' : ''}
-                </span>
-              )}
-              {!stdinValue && !stdinCollapsed && (
-                <span className="text-[10px] text-yellow-500 animate-pulse">type input below</span>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5">
-              {stdinValue && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); setStdinValue(''); }}
-                  className="text-[10px] px-1.5 py-0.5 text-gray-500 hover:text-gray-300 rounded hover:bg-[#2a2d2e] transition"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </button>
-
-          {/* Stdin Input Area (collapsible) */}
-          {!stdinCollapsed && (
-            <div className="px-3 pb-2">
-              <div className="flex gap-2 items-stretch">
-                <div className="flex-1 relative">
-                  <textarea
-                    ref={stdinRef}
-                    value={stdinValue}
-                    onChange={(e) => setStdinValue(e.target.value)}
-                    onKeyDown={handleStdinKeyDown}
-                    placeholder={`Type input here, one value per line... ${LANG_EXAMPLES[language] || ''}`}
-                    rows={Math.min(Math.max(inputCount || 1, stdinValue.split('\n').length), 4)}
-                    className="w-full bg-[#0d0e17] border border-yellow-500/30 rounded-md px-3 py-1.5 text-sm text-gray-200 font-mono
-                      placeholder-gray-600 resize-none focus:outline-none focus:ring-2 focus:ring-yellow-500/40 focus:border-yellow-500/40
-                      leading-relaxed"
-                    autoFocus
-                  />
-                  <div className="absolute bottom-1.5 right-2 text-[9px] text-gray-600 pointer-events-none">
-                    {stdinValue.split('\n').filter(Boolean).length} line(s)
-                  </div>
-                </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleRun(); }}
-                  disabled={isRunning}
-                  className="flex flex-col items-center justify-center gap-1 px-3 bg-green-600 hover:bg-green-500 text-white rounded-md
-                    font-medium transition-all disabled:opacity-50 active:scale-95 shadow-lg shadow-green-600/20 flex-shrink-0"
-                  title="Run with this input (Ctrl+Enter)"
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                  <span className="text-[9px] leading-none">Run</span>
-                </button>
-              </div>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-[9px] text-gray-600">
-                  <kbd className="px-1 py-0.5 bg-[#252526] rounded text-[8px] border border-editor-border/50">Ctrl</kbd>+<kbd className="px-1 py-0.5 bg-[#252526] rounded text-[8px] border border-editor-border/50">Enter</kbd> to run
-                </span>
-                <span className="text-[9px] text-gray-700">|</span>
-                <span className="text-[9px] text-gray-600">One value per line for multiple {LANG_FUNC[language] || 'input'} calls</span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ═══ OUTPUT AREA ═══ */}
-      <div ref={scrollRef} className="flex-1 overflow-auto p-3 font-mono text-sm min-h-0">
-        {/* Empty state */}
-        {!output && !isRunning && (
-          <div className="h-full flex items-center justify-center text-gray-600 text-xs">
-            <div className="text-center space-y-3">
-              <div className="text-3xl opacity-15 font-mono">$_</div>
-              <div className="space-y-1">
-                <p>
-                  Press <kbd className="px-1.5 py-0.5 bg-[#252526] rounded text-[10px] mx-0.5 border border-editor-border/50">Ctrl</kbd>+<kbd className="px-1.5 py-0.5 bg-[#252526] rounded text-[10px] mx-0.5 border border-editor-border/50">Enter</kbd> to run code
-                </p>
-                {needsInput && (
-                  <p className="text-yellow-500 font-medium mt-2">
-                    Your code uses {LANG_FUNC[language] || 'input'} — type your input above, then run!
-                  </p>
-                )}
-              </div>
-              <p className="text-gray-700 text-[10px]">All 10 languages with stdin support</p>
-            </div>
+      {/* Terminal Output */}
+      <div ref={scrollRef} className="flex-1 overflow-auto px-3 py-2 min-h-0 select-text" onClick={() => inputRef.current?.focus()}>
+        {terminalLines.length === 0 && !isRunning && (
+          <div className="text-xs py-4" style={{ color: theme.dim }}>
+            <p>CollabCode Terminal v6.0 — 15 languages supported</p>
+            <p className="mt-1" style={{ color: theme.dimmer }}>
+              Type input below, press <span style={{ color: theme.dim }}>Enter</span> to add stdin lines, <span style={{ color: theme.dim }}>Ctrl+Enter</span> to run.
+            </p>
+            <p style={{ color: theme.dimmer }}>
+              <span style={{ color: theme.dim }}>Ctrl+L</span> to clear. <span style={{ color: theme.dim }}>Arrow Up/Down</span> for history.
+            </p>
           </div>
         )}
-
-        {/* Running spinner */}
-        {isRunning && (!output || output.type === 'info') && (
-          <div className="flex items-center gap-3 text-yellow-400 py-2">
-            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+        {terminalLines.map((line, i) => {
+          if (line.type === 'blank') return <div key={i} className="h-2" />;
+          if (line.type === 'meta') return <div key={i} className="text-[10px] mt-0.5 mb-1" style={{ color: theme.dimmer }}>{line.text}</div>;
+          if (line.type === 'dim') return <div key={i} className="text-[11px] mt-1" style={{ color: theme.dimmer }}>{line.text}</div>;
+          if (line.type === 'stdin') return <div key={i} className="pl-2 opacity-70" style={{ color: theme.accent }}>{line.text}</div>;
+          if (line.type === 'input') return <div key={i} style={{ color: theme.warn }}>{line.text}</div>;
+          if (line.type === 'stderr') return <div key={i} style={{ color: theme.error }}>{line.text}</div>;
+          if (line.type === 'info') return <div key={i} className="italic" style={{ color: theme.dim }}>{line.text}</div>;
+          return <div key={i} style={{ color: theme.text }}>{line.text || '\u00A0'}</div>;
+        })}
+        {isRunning && (
+          <div className="flex items-center gap-2 py-1" style={{ color: theme.warn }}>
+            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
-            <div>
-              <span className="text-sm">Executing code...</span>
-              <span className="text-xs text-yellow-600 block">Compiling & running in isolated sandbox</span>
-            </div>
+            <span className="text-xs">Executing...</span>
           </div>
         )}
+      </div>
 
-        {/* Actual output */}
-        {output && output.type !== 'info' && (
-          <div className="space-y-2">
-            {/* Show stdin that was used */}
-            {output.stdinUsed && (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[10px] text-blue-400 font-semibold uppercase tracking-wider">stdin</span>
-                  <div className="flex-1 h-px bg-blue-500/10" />
-                </div>
-                <pre className="whitespace-pre-wrap break-words text-blue-300/60 bg-blue-950/20 rounded-md px-3 py-1.5 border border-blue-500/10 text-xs italic">{output.stdinUsed}</pre>
-              </div>
-            )}
-
-            {/* stdout */}
-            {output.content && (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[10px] text-green-500 font-semibold uppercase tracking-wider">stdout</span>
-                  <div className="flex-1 h-px bg-green-500/10" />
-                </div>
-                <pre className="whitespace-pre-wrap break-words text-gray-200 bg-[#12131e] rounded-md px-3 py-2 border border-green-500/10 leading-relaxed">{output.content}</pre>
-              </div>
-            )}
-
-            {/* stderr */}
-            {output.error && (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[10px] text-red-400 font-semibold uppercase tracking-wider">
-                    {output.phase === 'compile' ? 'Compiler Error' : 'stderr'}
-                  </span>
-                  <div className="flex-1 h-px bg-red-500/10" />
-                </div>
-                <pre className="whitespace-pre-wrap break-words text-red-300 bg-red-950/30 rounded-md px-3 py-2 border border-red-500/15 leading-relaxed">{output.error}</pre>
-              </div>
-            )}
-
-            {/* No output */}
-            {!output.content && !output.error && output.type === 'success' && (
-              <div className="text-gray-500 text-xs italic py-2">Program executed successfully with no output.</div>
-            )}
-
-            {/* Hint: code needed input but none was provided */}
-            {output.type === 'error' && needsInput && !output.stdinUsed && (
-              <div className="flex items-start gap-2 p-2.5 bg-yellow-500/10 border border-yellow-500/20 rounded-lg mt-2">
-                <svg className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-                <div>
-                  <p className="text-xs text-yellow-300 font-medium">This program needs input to run!</p>
-                  <p className="text-[10px] text-yellow-500 mt-0.5">
-                    Type your input values in the stdin area above (one per line), then click the green Run button or press Ctrl+Enter.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Timeout hint — suggest maybe stdin was expected */}
-            {output.status === 'Time Limit Exceeded' && !output.stdinUsed && needsInput && (
-              <div className="flex items-start gap-2 p-2.5 bg-orange-500/10 border border-orange-500/20 rounded-lg mt-2">
-                <svg className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                  <p className="text-xs text-orange-300 font-medium">Timeout: your code was waiting for input!</p>
-                  <p className="text-[10px] text-orange-500 mt-0.5">
-                    Type your input values in the stdin area above before running. The program timed out because it was waiting for {LANG_FUNC[language] || 'input'}.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Metadata footer */}
-            <div className="flex items-center gap-3 pt-1 text-[10px] text-gray-600 border-t border-gray-800 mt-2">
-              {output.engine && <span><span className="text-gray-500">Engine:</span> <span className="text-gray-400">{output.engine}</span></span>}
-              {output.language && <span><span className="text-gray-500">Lang:</span> <span className="text-gray-400">{output.language}</span></span>}
-              {output.executionTime && <span><span className="text-gray-500">Time:</span> <span className="text-gray-400">{output.executionTime}</span></span>}
-              {output.version && <span className="hidden sm:inline"><span className="text-gray-500">Ver:</span> <span className="text-gray-400">{output.version}</span></span>}
-            </div>
-          </div>
+      {/* Input Line */}
+      <div className="flex items-center py-1.5 px-3 flex-shrink-0 gap-2" style={{ borderTop: `1px solid ${theme.border}`, background: theme.inputBg }}>
+        <span className="text-xs select-none" style={{ color: theme.prompt }}>$</span>
+        <input
+          ref={inputRef}
+          type="text"
+          value={currentInput}
+          onChange={(e) => setCurrentInput(e.target.value)}
+          onKeyDown={handleInputKeyDown}
+          placeholder="stdin input... Enter=add line, Ctrl+Enter=run"
+          className="flex-1 bg-transparent text-[13px] outline-none font-mono"
+          style={{ color: theme.text, '::placeholder': { color: theme.dimmer } }}
+        />
+        {stdinCount > 0 && (
+          <button
+            onClick={() => { setStdinLines([]); setTerminalLines(prev => [...prev, { type: 'dim', text: '(stdin buffer cleared)' }]); }}
+            className="text-[9px] px-1.5 py-0.5 rounded hover:opacity-80 transition"
+            style={{ color: theme.dim, border: `1px solid ${theme.border}` }}
+            title="Clear stdin buffer"
+          >
+            Clear
+          </button>
         )}
+        <button
+          onClick={() => {
+            const allStdin = [...stdinLines, currentInput].filter(s => s !== undefined).join('\n');
+            setCurrentInput('');
+            setStdinLines([]);
+            if (onRunWithStdin) onRunWithStdin(allStdin);
+          }}
+          disabled={isRunning}
+          className="text-[10px] px-2.5 py-1 rounded transition disabled:opacity-40 flex-shrink-0 font-medium"
+          style={{ background: '#0e639c', color: 'white' }}
+        >
+          {isRunning ? '...' : 'Run'}
+        </button>
       </div>
     </div>
   );

@@ -1,14 +1,13 @@
 /**
- * RunButton Component v4.0
+ * RunButton Component v5.0
  * 
  * Floating action button for code execution.
- * Shows input indicator when code needs stdin.
- * The run action auto-includes stdin from OutputConsole.
+ * Clean and simple. made with <3 by Namish
  */
 
 import { memo } from 'react';
 
-const RunButton = memo(function RunButton({ onRun, isRunning, language, needsInput }) {
+const RunButton = memo(function RunButton({ onRun, isRunning, language }) {
   return (
     <div className="absolute top-3 right-4 z-30 flex items-center gap-2">
       {/* Keyboard shortcut hint */}
@@ -17,19 +16,7 @@ const RunButton = memo(function RunButton({ onRun, isRunning, language, needsInp
         <kbd className="px-1 py-0.5 bg-[#333] rounded text-[10px] font-mono">Ctrl</kbd>
         <span>+</span>
         <kbd className="px-1 py-0.5 bg-[#333] rounded text-[10px] font-mono">Enter</kbd>
-        <span className="text-gray-600 ml-1">to run</span>
       </div>
-
-      {/* Input indicator */}
-      {needsInput && (
-        <div className="hidden sm:flex items-center gap-1 text-[10px] bg-yellow-500/10 border border-yellow-500/30 
-                      backdrop-blur-sm px-2 py-1 rounded-md text-yellow-400">
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-          </svg>
-          <span>stdin</span>
-        </div>
-      )}
 
       {/* Run Button */}
       <button
@@ -41,7 +28,7 @@ const RunButton = memo(function RunButton({ onRun, isRunning, language, needsInp
                      ? 'bg-yellow-600 text-yellow-100 cursor-wait shadow-yellow-600/20'
                      : 'bg-green-600 hover:bg-green-500 text-white shadow-green-600/30 hover:shadow-green-500/40'
                    }`}
-        title={`Run ${language} code${needsInput ? ' (with stdin from terminal)' : ''}`}
+        title={`Run ${language} code (Ctrl+Enter)`}
       >
         {isRunning ? (
           <>

@@ -1,9 +1,9 @@
 /**
- * Application Context v2.0
+ * Application Context v3.0
  * 
- * Per-tab unique usernames: each browser tab generates a tabId,
- * which the server uses to assign a unique username.
- * Supports both anonymous and registered (email/password) users.
+ * Persistent auth: "remember me" stores JWT in localStorage.
+ * Per-tab unique usernames for anonymous users.
+ * made with <3 by Namish
  */
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
@@ -58,34 +58,43 @@ export function AppProvider({ children }) {
   async function initSession() {
     if (typeof window === 'undefined') return;
 
-    // Per-tab unique ID: sessionStorage is tab-scoped!
+    // Per-tab unique ID
     let tabId = sessionStorage.getItem('collabcode_tab_id');
     if (!tabId) {
       tabId = uuidv4();
       sessionStorage.setItem('collabcode_tab_id', tabId);
     }
 
-    // Check if we have a registered user stored
+    // Check for stored registered user (remember me)
     const storedAuth = localStorage.getItem('collabcode_auth');
     if (storedAuth) {
       try {
         const authData = JSON.parse(storedAuth);
         if (authData.token && authData.authenticated) {
-          const res = await axios.get(`${SERVER_URL}/api/auth/validate`, {
-            headers: { Authorization: `Bearer ${authData.token}` }, timeout: 3000,
-          });
-          if (res.data.valid) {
-            dispatch({ type: ActionTypes.SET_USER, payload: { ...authData, tabId } });
-            return;
+          // Validate token with server
+          try {
+            const res = await axios.get(`${SERVER_URL}/api/auth/validate`, {
+              headers: { Authorization: `Bearer ${authData.token}` }, timeout: 5000,
+            });
+            if (res.data.valid) {
+              dispatch({ type: ActionTypes.SET_USER, payload: { ...authData, tabId } });
+              return;
+            }
+          } catch (e) {
+            // Token invalid or expired — try to re-signin
+            // Don't remove yet, let user manually sign out
           }
+          // Token might be expired but user was registered — still use stored data
+          // (server will re-issue on next API call)
+          dispatch({ type: ActionTypes.SET_USER, payload: { ...authData, tabId } });
+          return;
         }
       } catch (e) {
         localStorage.removeItem('collabcode_auth');
       }
     }
 
-    // Otherwise, get anonymous session keyed by tabId
-    // Each tab sends its own tabId → server returns unique username for each tab
+    // Anonymous session
     try {
       const res = await axios.post(`${SERVER_URL}/api/auth/anonymous`, { tabId }, { timeout: 5000 });
       const user = { ...res.data, tabId };
@@ -125,7 +134,6 @@ export function AppProvider({ children }) {
         sessionStorage.removeItem('collabcode_user');
       }
       dispatch({ type: ActionTypes.RESET });
-      // Re-init anonymous session
       setTimeout(() => window.location.reload(), 100);
     }, []),
     reset: useCallback(() => dispatch({ type: ActionTypes.RESET }), []),

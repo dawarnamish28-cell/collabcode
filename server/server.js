@@ -1,9 +1,10 @@
 /**
- * CollabCode Server v2.0
+ * CollabCode Server v5.0
  * 
- * Express + Socket.io backend for the collaborative coding platform.
- * Features: REST API, WebSocket CRDT relay, chat, voice signaling,
- * code execution (10 languages), sign-up/sign-in, file save/open.
+ * Express + Socket.io backend — 15 languages, public/private rooms,
+ * code gallery, room validation, persistent auth.
+ * 
+ * made with <3 by Namish
  */
 
 require('dotenv').config();
@@ -19,16 +20,16 @@ const { connectDB } = require('./config/db');
 const { socketAuthMiddleware } = require('./middleware/auth');
 const { generalLimiter } = require('./middleware/rateLimiter');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
-const { initRoomHandler, getActiveRooms } = require('./sockets/roomHandler');
+const { initRoomHandler, getActiveRooms, roomExists } = require('./sockets/roomHandler');
 
 const executionRoutes = require('./routes/execution');
 const authRoutes = require('./routes/auth');
 const fileRoutes = require('./routes/files');
+const galleryRoutes = require('./routes/gallery');
 
 const PORT = parseInt(process.env.PORT) || 4000;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
 
-// ─── Express App ──────────────────────────────────────────────────────
 const app = express();
 const server = http.createServer(app);
 
@@ -48,13 +49,25 @@ app.use('/api/', generalLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api', executionRoutes);
 app.use('/api/files', fileRoutes);
+app.use('/api/gallery', galleryRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString(), rooms: getActiveRooms().length });
 });
 
+// Room list — now includes public/private info and language
 app.get('/api/rooms', (req, res) => {
-  res.json({ rooms: getActiveRooms() });
+  const showPublic = req.query.public === 'true';
+  const allRooms = getActiveRooms();
+  const filtered = showPublic ? allRooms.filter(r => r.isPublic) : allRooms;
+  res.json({ rooms: filtered });
+});
+
+// Room validation — check if a room exists before joining
+app.get('/api/rooms/:roomId/check', (req, res) => {
+  const { roomId } = req.params;
+  const exists = roomExists(roomId);
+  res.json({ roomId, exists });
 });
 
 app.use(notFoundHandler);
@@ -64,7 +77,7 @@ app.use(errorHandler);
 const io = new Server(server, {
   cors: { origin: function(o, cb) { cb(null, true); }, methods: ['GET', 'POST'], credentials: true },
   pingInterval: 10000, pingTimeout: 5000,
-  maxHttpBufferSize: 2e6, // 2MB for voice data
+  maxHttpBufferSize: 2e6,
   transports: ['websocket', 'polling'],
 });
 
@@ -77,7 +90,8 @@ async function start() {
   server.listen(PORT, '0.0.0.0', () => {
     console.log('');
     console.log('  ╔══════════════════════════════════════════╗');
-    console.log('  ║        CollabCode Server v2.0            ║');
+    console.log('  ║      CollabCode Server v5.0              ║');
+    console.log('  ║      made with <3 by Namish              ║');
     console.log('  ╠══════════════════════════════════════════╣');
     console.log(`  ║  HTTP:   http://0.0.0.0:${PORT}            ║`);
     console.log(`  ║  WS:     ws://0.0.0.0:${PORT}              ║`);
@@ -89,7 +103,6 @@ async function start() {
 
 start().catch(err => { console.error('[Server] Fatal:', err); process.exit(1); });
 
-// Graceful shutdown
 const shutdown = async () => {
   console.log('[Server] Shutting down...');
   io.close(); server.close();
