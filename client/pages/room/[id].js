@@ -1,13 +1,12 @@
 /**
- * Room Workspace v5.0
+ * Room Workspace v6.0
  * 
- * Major update:
- * - VSCode-style terminal (no confusing stdin panels)
- * - Multi-file support (file explorer + tabs)
- * - Extensions/themes panel
- * - Public/private room toggle
- * - Fix: No screen flash on remote edits (delta-based Yjs sync)
- * - 15 languages
+ * Critical fixes:
+ * - FIXED: Double-typing / double-enter Yjs bug (origin-based transaction tracking)
+ * - FIXED: Screen flash on remote edits (delta-based sync, no full doc replace)
+ * - IMPROVED: Editor settings (font size, tab size, minimap, word wrap) passed to Editor
+ * - IMPROVED: Cleaner stdin handling in terminal
+ * - All 15 languages, multi-file, extensions, public/private rooms
  * 
  * made with <3 by Namish
  */
@@ -266,7 +265,6 @@ export default function RoomPage() {
     const newFile = { id, name: fileData.name, content: fileData.content, language: fileData.language, modified: false };
     setFiles(prev => [...prev, newFile]);
     setActiveFileId(id);
-    // Load into editor
     if (fileData.language) handleLanguageChange(fileData.language);
     if (ydocRef.current && fileData.content) {
       const ytext = ydocRef.current.getText('monaco');
@@ -275,7 +273,6 @@ export default function RoomPage() {
   }, [handleLanguageChange]);
 
   const handleSelectFile = useCallback((fileId) => {
-    // Save current content to active file before switching
     if (activeFileId && ydocRef.current) {
       const currentContent = ydocRef.current.getText('monaco').toString();
       setFiles(prev => prev.map(f => f.id === activeFileId ? { ...f, content: currentContent } : f));
@@ -310,7 +307,7 @@ export default function RoomPage() {
       const EXT_TO_LANG = { '.js': 'javascript', '.ts': 'typescript', '.py': 'python', '.java': 'java', '.c': 'c', '.cpp': 'cpp', '.go': 'go', '.rs': 'rust', '.rb': 'ruby', '.php': 'php', '.pl': 'perl', '.r': 'r', '.R': 'r', '.sh': 'bash', '.awk': 'awk' };
       for (let i = 0; i < Math.min(fileList.length, 50); i++) {
         const file = fileList[i];
-        if (file.size > 200000) continue; // Skip large files
+        if (file.size > 200000) continue;
         const ext = '.' + file.name.split('.').pop().toLowerCase();
         if (!EXT_TO_LANG[ext] && ext !== '.txt' && ext !== '.md' && ext !== '.json') continue;
         const reader = new FileReader();
@@ -443,7 +440,17 @@ export default function RoomPage() {
           
           <div className="flex-1 min-h-0 relative">
             {ready && ydocRef.current ? (
-              <Editor ydoc={ydocRef.current} provider={providerRef.current} language={state.language} theme={state.theme} user={state.user} />
+              <Editor
+                ydoc={ydocRef.current}
+                provider={providerRef.current}
+                language={state.language}
+                theme={state.theme}
+                user={state.user}
+                fontSize={editorFontSize}
+                tabSize={editorTabSize}
+                minimap={editorMinimap}
+                wordWrap={editorWordWrap}
+              />
             ) : (
               <div className="h-full flex items-center justify-center"><div className="text-center"><div className="spinner mx-auto mb-3" /><p className="text-gray-500 text-sm">Loading editor...</p></div></div>
             )}

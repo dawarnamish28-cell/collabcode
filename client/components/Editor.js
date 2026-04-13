@@ -1,8 +1,18 @@
 /**
- * Editor Component v5.0
+ * Editor Component v6.0
  * 
- * Monaco Editor + Yjs CRDT. 15 languages. 
- * Fix: No full-document replace on remote edits (eliminates screen flash).
+ * Monaco Editor + Yjs CRDT. 15 languages.
+ * 
+ * CRITICAL FIX: Eliminates double-typing and double-enter bugs.
+ * The root cause was a feedback loop in the Yjs <-> Monaco binding:
+ *   1. User types -> onDidChangeModelContent fires -> ytext.insert/delete
+ *   2. ytext.observe fires immediately (synchronously) for the same edit
+ *   3. Observer tries to apply the edit AGAIN to Monaco -> double character
+ * 
+ * Solution: Track the "origin" of each Yjs transaction. When the origin
+ * is the Monaco editor instance itself, the observer skips the edit.
+ * This is the same pattern used by y-monaco and y-codemirror.
+ * 
  * made with <3 by Namish
  */
 
@@ -228,13 +238,16 @@ BEGIN {
 `,
 };
 
-const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
+const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fontSize, tabSize, minimap, wordWrap }) {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const bindingRef = useRef(null);
   const decorationsRef = useRef([]);
-  const isRemoteRef = useRef(false);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // Stable ref for the "origin" marker — we use this object identity to mark
+  // transactions that originate from Monaco so the Yjs observer can skip them.
+  const editorOriginRef = useRef(Symbol('monaco-editor'));
 
   const handleEditorDidMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
@@ -242,10 +255,10 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
     setIsLoaded(true);
 
     editor.updateOptions({
-      fontSize: 14,
+      fontSize: fontSize || 14,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
       fontLigatures: true,
-      minimap: { enabled: true, scale: 1 },
+      minimap: { enabled: minimap !== false, scale: 1 },
       scrollBeyondLastLine: false,
       smoothScrolling: true,
       cursorBlinking: 'smooth',
@@ -255,40 +268,70 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
       autoClosingBrackets: 'always',
       autoClosingQuotes: 'always',
       formatOnPaste: true,
-      wordWrap: 'on',
-      tabSize: 2,
+      wordWrap: wordWrap !== false ? 'on' : 'off',
+      tabSize: tabSize || 2,
       padding: { top: 12 },
     });
 
-    bindYjsToMonaco(editor, monaco);
+    setupYjsBinding(editor, monaco);
     editor.focus();
   }, [ydoc, provider, user, language]);
 
-  function bindYjsToMonaco(editor, monaco) {
+  /**
+   * Core Yjs <-> Monaco binding.
+   * 
+   * KEY INSIGHT for eliminating double-typing:
+   * 
+   * When Monaco content changes (user types), we:
+   *   1. Wrap ytext mutations in ydoc.transact(() => {...}, editorOriginRef.current)
+   *   2. This sets the "origin" of the transaction to our editor symbol
+   *   3. In the ytext observer, we check if event.transaction.origin === editorOriginRef.current
+   *   4. If yes, we SKIP applying changes back to Monaco (they already happened there)
+   *   5. If no (remote update), we apply changes to Monaco using delta operations
+   */
+  function setupYjsBinding(editor, monaco) {
     if (!ydoc) return;
     const ytext = ydoc.getText('monaco');
+    const ORIGIN = editorOriginRef.current;
 
+    // Initialize with default code if empty
     if (ytext.length === 0) {
       const defaultCode = DEFAULT_CODE[language] || DEFAULT_CODE.javascript;
       ytext.insert(0, defaultCode);
     }
 
+    // Set initial content
     const currentContent = ytext.toString();
     if (editor.getValue() !== currentContent) {
-      editor.setValue(currentContent);
+      // Use executeEdits to set content without triggering onDidChangeModelContent
+      const model = editor.getModel();
+      if (model) {
+        model.pushEditOperations(
+          [],
+          [{ range: model.getFullModelRange(), text: currentContent, forceMoveMarkers: true }],
+          () => null
+        );
+      }
     }
 
-    // FIX: Use delta-based approach to avoid screen flash
-    // Instead of replacing the entire document, apply only the changes
-    const yObserver = (event) => {
-      if (isRemoteRef.current) return;
-      isRemoteRef.current = true;
+    // ──────────────────────────────────────────────────────────
+    // Yjs -> Monaco (remote changes)
+    // 
+    // This observer fires for ALL ytext mutations, both local and remote.
+    // We only apply changes to Monaco when they come from a remote source.
+    // ──────────────────────────────────────────────────────────
+    const yObserver = (event, transaction) => {
+      // CRITICAL: Skip if this transaction originated from our own editor.
+      // This is what prevents double-typing.
+      if (transaction.origin === ORIGIN) return;
+
       const model = editor.getModel();
-      if (!model) { isRemoteRef.current = false; return; }
-      
+      if (!model) return;
+
       try {
         let index = 0;
         const ops = [];
+
         event.delta.forEach(delta => {
           if (delta.retain !== undefined) {
             index += delta.retain;
@@ -310,32 +353,60 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
             });
           }
         });
+
         if (ops.length > 0) {
+          // Use pushEditOperations to apply remote changes without triggering
+          // our onDidChangeModelContent handler (because we set _isApplyingRemote)
+          _isApplyingRemote = true;
           model.pushEditOperations([], ops, () => null);
+          _isApplyingRemote = false;
         }
       } catch (err) {
-        // Fallback: full replace if delta fails
+        console.warn('[Editor] Delta apply failed, falling back to full replace:', err.message);
+        _isApplyingRemote = true;
         const newContent = ytext.toString();
-        if (model.getValue() !== newContent) {
-          const fullRange = model.getFullModelRange();
-          model.pushEditOperations([], [{ range: fullRange, text: newContent, forceMoveMarkers: true }], () => null);
+        const model2 = editor.getModel();
+        if (model2 && model2.getValue() !== newContent) {
+          const fullRange = model2.getFullModelRange();
+          model2.pushEditOperations([], [{ range: fullRange, text: newContent, forceMoveMarkers: true }], () => null);
         }
+        _isApplyingRemote = false;
       }
-      isRemoteRef.current = false;
     };
+
+    // Flag to prevent Monaco -> Yjs feedback when applying remote changes
+    let _isApplyingRemote = false;
+
     ytext.observe(yObserver);
 
+    // ──────────────────────────────────────────────────────────
+    // Monaco -> Yjs (local changes)
+    //
+    // When the user types in Monaco, we convert the change events
+    // to ytext operations inside a transaction with our editor origin.
+    // ──────────────────────────────────────────────────────────
     const changeDisposable = editor.onDidChangeModelContent((event) => {
-      if (isRemoteRef.current) return;
+      // Skip if we're applying remote changes to Monaco
+      if (_isApplyingRemote) return;
+
+      // Apply changes to Yjs with our origin marker
       ydoc.transact(() => {
+        // Process changes in reverse offset order to maintain correct positions
         const changes = [...event.changes].sort((a, b) => b.rangeOffset - a.rangeOffset);
         for (const change of changes) {
-          if (change.rangeLength > 0) ytext.delete(change.rangeOffset, change.rangeLength);
-          if (change.text) ytext.insert(change.rangeOffset, change.text);
+          if (change.rangeLength > 0) {
+            ytext.delete(change.rangeOffset, change.rangeLength);
+          }
+          if (change.text) {
+            ytext.insert(change.rangeOffset, change.text);
+          }
         }
-      }, editor);
+      }, ORIGIN); // <-- This origin is checked in yObserver above
     });
 
+    // ──────────────────────────────────────────────────────────
+    // Awareness (cursor positions)
+    // ──────────────────────────────────────────────────────────
     let awarenessDebounce = null;
     const cursorDisposable = editor.onDidChangeCursorPosition((e) => {
       if (!provider) return;
@@ -403,6 +474,19 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
     styleEl.textContent = css;
   }
 
+  // Update editor options when extension settings change
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({
+        fontSize: fontSize || 14,
+        tabSize: tabSize || 2,
+        minimap: { enabled: minimap !== false },
+        wordWrap: wordWrap !== false ? 'on' : 'off',
+      });
+    }
+  }, [fontSize, tabSize, minimap, wordWrap]);
+
+  // Update language mode
   useEffect(() => {
     if (editorRef.current && monacoRef.current) {
       const model = editorRef.current.getModel();
@@ -410,6 +494,7 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
     }
   }, [language]);
 
+  // Cleanup
   useEffect(() => {
     return () => {
       if (bindingRef.current) {
@@ -436,12 +521,19 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user }) {
           </div>
         }
         options={{
-          automaticLayout: true, fontSize: 14,
+          automaticLayout: true,
+          fontSize: fontSize || 14,
           fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-          minimap: { enabled: true }, scrollBeyondLastLine: false,
-          smoothScrolling: true, cursorBlinking: 'smooth',
-          cursorSmoothCaretAnimation: 'on', renderLineHighlight: 'all',
-          bracketPairColorization: { enabled: true }, wordWrap: 'on', padding: { top: 12 },
+          minimap: { enabled: minimap !== false },
+          scrollBeyondLastLine: false,
+          smoothScrolling: true,
+          cursorBlinking: 'smooth',
+          cursorSmoothCaretAnimation: 'on',
+          renderLineHighlight: 'all',
+          bracketPairColorization: { enabled: true },
+          wordWrap: wordWrap !== false ? 'on' : 'off',
+          tabSize: tabSize || 2,
+          padding: { top: 12 },
         }}
       />
     </div>

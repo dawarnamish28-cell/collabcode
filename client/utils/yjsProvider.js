@@ -1,30 +1,31 @@
 /**
- * Yjs Provider Setup
+ * Yjs Provider Setup v2.0
  * 
  * Configures Yjs document and custom Socket.io-based provider
  * for CRDT synchronization. Uses binary updates for efficiency.
  * 
- * Architecture:
- * - Yjs Doc holds the shared document state (CRDT)
- * - Socket.io transports binary updates between clients
- * - Server relays updates and persists periodic snapshots
- * - Awareness tracks cursor positions and user presence
+ * v2.0 changes:
+ * - All remote updates use origin 'remote' for proper transaction tracking
+ * - Server state uses origin 'server'
+ * - This allows Editor.js to distinguish local vs remote changes
+ *   and prevent double-typing bugs.
+ * 
+ * made with <3 by Namish
  */
 
 import * as Y from 'yjs';
 
 /**
- * Create a new Yjs document and awareness instance
+ * Create a new Yjs document
  */
 export function createYjsDoc() {
-  const ydoc = new Y.Doc();
-  return ydoc;
+  return new Y.Doc();
 }
 
 /**
  * Custom Socket.io-based Yjs provider
  * Replaces y-websocket with Socket.io transport for better
- * integration with our existing connection management
+ * integration with our existing connection management.
  */
 export class SocketIOProvider {
   constructor(ydoc, socket, roomId) {
@@ -36,19 +37,16 @@ export class SocketIOProvider {
     this._listeners = new Map();
     this._destroyed = false;
 
-    // Buffer for batching updates
-    this._updateBuffer = [];
-    this._flushTimer = null;
-
     this._setupListeners();
   }
 
   _setupListeners() {
-    // Listen for incoming CRDT updates from server
+    // Listen for incoming CRDT updates from server (remote edits)
     this._onRemoteUpdate = (data) => {
       if (this._destroyed) return;
       try {
         const update = new Uint8Array(data.update);
+        // Apply with 'remote' origin so the Editor knows not to re-emit this
         Y.applyUpdate(this.ydoc, update, 'remote');
       } catch (err) {
         console.error('[YjsProvider] Error applying remote update:', err);
@@ -62,6 +60,7 @@ export class SocketIOProvider {
       try {
         if (data.update && data.update.length > 0) {
           const update = new Uint8Array(data.update);
+          // Apply with 'server' origin
           Y.applyUpdate(this.ydoc, update, 'server');
           console.log('[YjsProvider] Applied initial state');
         }
@@ -72,9 +71,10 @@ export class SocketIOProvider {
     };
     this.socket.on('room:state', this._onRoomState);
 
-    // Listen for local document changes
+    // Listen for local document changes and send to server
     this._onLocalUpdate = (update, origin) => {
       if (this._destroyed) return;
+      // Don't re-send updates that came from the server
       if (origin === 'remote' || origin === 'server') return;
 
       // Send update to server as array (JSON-compatible)
@@ -102,24 +102,15 @@ export class SocketIOProvider {
     this.socket.on('room:user-left', this._onUserLeft);
   }
 
-  /**
-   * Set local awareness state (cursor position, selection, etc.)
-   */
   setAwarenessState(state) {
     if (this._destroyed) return;
     this.socket.emit('awareness:update', state);
   }
 
-  /**
-   * Get all awareness states
-   */
   getAwarenessStates() {
     return new Map(this.awareness);
   }
 
-  /**
-   * Event emitter
-   */
   on(event, callback) {
     if (!this._listeners.has(event)) {
       this._listeners.set(event, new Set());
@@ -139,22 +130,13 @@ export class SocketIOProvider {
     }
   }
 
-  /**
-   * Destroy provider and cleanup
-   */
   destroy() {
     this._destroyed = true;
-
     this.ydoc.off('update', this._onLocalUpdate);
     this.socket.off('crdt:update', this._onRemoteUpdate);
     this.socket.off('room:state', this._onRoomState);
     this.socket.off('awareness:update', this._onRemoteAwareness);
     this.socket.off('room:user-left', this._onUserLeft);
-
-    if (this._flushTimer) {
-      clearTimeout(this._flushTimer);
-    }
-
     this.awareness.clear();
     this._listeners.clear();
   }
