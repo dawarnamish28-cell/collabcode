@@ -1,8 +1,7 @@
 /**
- * FileExplorer v1.0 — Multi-file support
+ * FileExplorer v2.0 — Multi-file support, 20 languages
  * 
  * VSCode-style file explorer with tabs.
- * Open files from local system or manage multiple files.
  * made with <3 by Namish
  */
 
@@ -24,6 +23,11 @@ const LANG_ICONS = {
   bash: { icon: 'SH', color: '#4eaa25' },
   shell: { icon: '$', color: '#89e051' },
   awk: { icon: 'AW', color: '#c4a000' },
+  lua: { icon: 'LU', color: '#000080' },
+  fortran: { icon: 'FN', color: '#734f96' },
+  tcl: { icon: 'TC', color: '#e4cc98' },
+  sqlite: { icon: 'SQ', color: '#003b57' },
+  nasm: { icon: 'AS', color: '#6e4c13' },
 };
 
 const EXT_TO_LANG = {
@@ -37,6 +41,11 @@ const EXT_TO_LANG = {
   '.r': 'r', '.R': 'r',
   '.sh': 'bash', '.bash': 'bash',
   '.awk': 'awk',
+  '.lua': 'lua',
+  '.f90': 'fortran', '.f95': 'fortran', '.f': 'fortran', '.for': 'fortran',
+  '.tcl': 'tcl',
+  '.sql': 'sqlite',
+  '.asm': 'nasm', '.s': 'nasm',
   '.txt': 'plaintext', '.md': 'plaintext', '.json': 'javascript',
   '.xml': 'plaintext', '.html': 'plaintext', '.css': 'plaintext',
 };
@@ -58,11 +67,7 @@ const FileExplorer = memo(function FileExplorer({
       reader.onload = (ev) => {
         const ext = '.' + file.name.split('.').pop().toLowerCase();
         const lang = EXT_TO_LANG[ext] || 'plaintext';
-        onAddFile({
-          name: file.name,
-          content: ev.target.result,
-          language: lang,
-        });
+        onAddFile({ name: file.name, content: ev.target.result, language: lang });
       };
       reader.readAsText(file);
     }
@@ -122,12 +127,12 @@ const FileExplorer = memo(function FileExplorer({
       {/* File List */}
       <div className="flex-1 overflow-y-auto py-1">
         {files.length === 0 ? (
-          <div className={`mx-2 my-2 p-4 border border-dashed rounded-lg text-center ${dragOver ? 'border-blue-400 bg-blue-500/10' : 'border-editor-border/50'}`}>
-            <svg className="w-8 h-8 text-gray-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className={`mx-2 my-2 p-3 border border-dashed rounded-lg text-center ${dragOver ? 'border-blue-400 bg-blue-500/10' : 'border-editor-border/50'}`}>
+            <svg className="w-6 h-6 text-gray-600 mx-auto mb-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
-            <p className="text-[11px] text-gray-500">Drop files here</p>
-            <p className="text-[10px] text-gray-600 mt-1">or click + to add</p>
+            <p className="text-[10px] text-gray-500">Drop files here</p>
+            <p className="text-[9px] text-gray-600 mt-0.5">or click + to add</p>
           </div>
         ) : (
           files.map(file => {
@@ -136,11 +141,11 @@ const FileExplorer = memo(function FileExplorer({
             return (
               <div key={file.id}
                 onClick={() => onSelectFile(file.id)}
-                className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer transition group ${
+                className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 cursor-pointer transition group ${
                   isActive ? 'bg-[#37373d] text-white' : 'text-gray-400 hover:bg-[#2a2d2e] hover:text-gray-200'
                 }`}>
-                <span className="text-[10px] font-mono font-bold w-4 text-center flex-shrink-0" style={{ color: fileLang.color }}>{fileLang.icon}</span>
-                <span className="text-xs truncate flex-1">{file.name}</span>
+                <span className="text-[9px] sm:text-[10px] font-mono font-bold w-4 text-center flex-shrink-0" style={{ color: fileLang.color }}>{fileLang.icon}</span>
+                <span className="text-[11px] sm:text-xs truncate flex-1">{file.name}</span>
                 {file.modified && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 flex-shrink-0" title="Modified" />}
                 <button onClick={(e) => { e.stopPropagation(); onRemoveFile(file.id); }}
                   className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-[#555] transition">
@@ -155,10 +160,10 @@ const FileExplorer = memo(function FileExplorer({
       </div>
 
       {/* Current Language Info */}
-      <div className="px-3 py-2 border-t border-editor-border/50">
+      <div className="px-3 py-1.5 border-t border-editor-border/50">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-mono font-bold" style={{ color: langInfo.color }}>{langInfo.icon}</span>
-          <span className="text-[10px] text-gray-500">Active: {language}</span>
+          <span className="text-[10px] text-gray-500 truncate">Active: {language}</span>
         </div>
       </div>
     </div>

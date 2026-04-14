@@ -1,12 +1,14 @@
 /**
- * Room Workspace v6.0
+ * Room Workspace v7.0
  * 
  * Critical fixes:
- * - FIXED: Double-typing / double-enter Yjs bug (origin-based transaction tracking)
- * - FIXED: Screen flash on remote edits (delta-based sync, no full doc replace)
- * - IMPROVED: Editor settings (font size, tab size, minimap, word wrap) passed to Editor
- * - IMPROVED: Cleaner stdin handling in terminal
- * - All 15 languages, multi-file, extensions, public/private rooms
+ * - FIXED: Double-typing / double-enter Yjs bug (origin-based + _isApplyingRemote)
+ * - FIXED: Screen flash on remote edits (delta-based sync)
+ * - FIXED: OutputConsole Enter adds exactly one line (not two)
+ * - IMPROVED: Interactive input (Python IDLE-style) — no more stdin buffering
+ * - IMPROVED: Responsive layout for mobile/tablet
+ * - IMPROVED: 20 languages
+ * - All features: multi-file, extensions, public/private rooms
  * 
  * made with <3 by Namish
  */
@@ -34,6 +36,7 @@ const EXT_MAP = {
   javascript: '.js', typescript: '.ts', python: '.py', java: '.java',
   c: '.c', cpp: '.cpp', go: '.go', rust: '.rs', ruby: '.rb', php: '.php',
   perl: '.pl', r: '.R', bash: '.sh', shell: '.sh', awk: '.awk',
+  lua: '.lua', fortran: '.f90', tcl: '.tcl', sqlite: '.sql', nasm: '.asm',
 };
 
 export default function RoomPage() {
@@ -304,7 +307,12 @@ export default function RoomPage() {
     input.webkitdirectory = true;
     input.onchange = (e) => {
       const fileList = e.target.files;
-      const EXT_TO_LANG = { '.js': 'javascript', '.ts': 'typescript', '.py': 'python', '.java': 'java', '.c': 'c', '.cpp': 'cpp', '.go': 'go', '.rs': 'rust', '.rb': 'ruby', '.php': 'php', '.pl': 'perl', '.r': 'r', '.R': 'r', '.sh': 'bash', '.awk': 'awk' };
+      const EXT_TO_LANG = {
+        '.js': 'javascript', '.ts': 'typescript', '.py': 'python', '.java': 'java',
+        '.c': 'c', '.cpp': 'cpp', '.go': 'go', '.rs': 'rust', '.rb': 'ruby', '.php': 'php',
+        '.pl': 'perl', '.r': 'r', '.R': 'r', '.sh': 'bash', '.awk': 'awk',
+        '.lua': 'lua', '.f90': 'fortran', '.f': 'fortran', '.tcl': 'tcl', '.sql': 'sqlite', '.asm': 'nasm',
+      };
       for (let i = 0; i < Math.min(fileList.length, 50); i++) {
         const file = fileList[i];
         if (file.size > 200000) continue;
@@ -321,18 +329,28 @@ export default function RoomPage() {
     input.click();
   }, [handleAddFile]);
 
-  // ─── Panel Resize ──────────────────────────────────────────────────
+  // ─── Panel Resize (mouse + touch) ─────────────────────────────────
   const handleMouseDown = useCallback((type) => (e) => { e.preventDefault(); setIsResizing(true); setResizeType(type); }, []);
+
   useEffect(() => {
     if (!isResizing) return;
     const move = (e) => {
-      if (resizeType === 'sidebar') setPanelWidth(Math.min(Math.max(240, window.innerWidth - e.clientX), 500));
-      else if (resizeType === 'output') setOutputHeight(Math.min(Math.max(150, window.innerHeight - e.clientY), 500));
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      if (resizeType === 'sidebar') setPanelWidth(Math.min(Math.max(200, window.innerWidth - clientX), 500));
+      else if (resizeType === 'output') setOutputHeight(Math.min(Math.max(120, window.innerHeight - clientY), 500));
     };
     const up = () => { setIsResizing(false); setResizeType(null); };
     document.addEventListener('mousemove', move);
     document.addEventListener('mouseup', up);
-    return () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+    document.addEventListener('touchmove', move);
+    document.addEventListener('touchend', up);
+    return () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+      document.removeEventListener('touchmove', move);
+      document.removeEventListener('touchend', up);
+    };
   }, [isResizing, resizeType]);
 
   // ─── Keyboard Shortcuts ─────────────────────────────────────────
@@ -362,7 +380,7 @@ export default function RoomPage() {
   }
 
   const leftPanelOpen = filesOpen || extensionsOpen;
-  const leftPanelWidth = 240;
+  const leftPanelWidth = 220;
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#1e1e1e]" style={{ userSelect: isResizing ? 'none' : 'auto' }}>
@@ -378,10 +396,10 @@ export default function RoomPage() {
         extensionsOpen={extensionsOpen}
       />
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Left Panel: File Explorer or Extensions */}
         {leftPanelOpen && (
-          <div style={{ width: leftPanelWidth }} className="flex-shrink-0">
+          <div style={{ width: leftPanelWidth }} className="flex-shrink-0 hidden sm:block">
             {filesOpen && (
               <FileExplorer
                 files={files}
@@ -414,22 +432,22 @@ export default function RoomPage() {
 
         {/* Main Editor Area */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* File Tabs (when files are loaded) */}
+          {/* File Tabs */}
           {files.length > 0 && (
-            <div className="flex items-center bg-[#252526] border-b border-editor-border overflow-x-auto flex-shrink-0">
+            <div className="flex items-center bg-[#252526] border-b border-editor-border overflow-x-auto flex-shrink-0 scrollbar-none">
               {files.map(file => (
                 <button key={file.id}
                   onClick={() => handleSelectFile(file.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs border-r border-editor-border/50 transition group min-w-0 ${
+                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs border-r border-editor-border/50 transition group min-w-0 ${
                     file.id === activeFileId
                       ? 'bg-[#1e1e1e] text-white border-t-2 border-t-blue-400'
                       : 'text-gray-400 hover:text-gray-200 hover:bg-[#2a2d2e] border-t-2 border-t-transparent'
                   }`}>
-                  <span className="truncate max-w-[120px]">{file.name.split('/').pop()}</span>
+                  <span className="truncate max-w-[80px] sm:max-w-[120px]">{file.name.split('/').pop()}</span>
                   {file.modified && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 flex-shrink-0" />}
                   <span onClick={(e) => { e.stopPropagation(); handleRemoveFile(file.id); }}
-                    className="ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-[#555] transition">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    className="ml-0.5 sm:ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-[#555] transition">
+                    <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                   </span>
                 </button>
               ))}
@@ -459,7 +477,11 @@ export default function RoomPage() {
 
           {state.outputOpen && (
             <>
-              <div className={`resizer resizer-horizontal h-1.5 w-full flex-shrink-0 ${isResizing && resizeType === 'output' ? 'active' : ''}`} onMouseDown={handleMouseDown('output')} />
+              <div
+                className={`resizer resizer-horizontal h-1.5 w-full flex-shrink-0 ${isResizing && resizeType === 'output' ? 'active' : ''}`}
+                onMouseDown={handleMouseDown('output')}
+                onTouchStart={handleMouseDown('output')}
+              />
               <div style={{ height: outputHeight }} className="flex-shrink-0">
                 <OutputConsole
                   ref={outputConsoleRef}
@@ -479,14 +501,20 @@ export default function RoomPage() {
         </div>
 
         {/* Chat Sidebar */}
-        {state.chatOpen && <div className={`resizer w-1.5 flex-shrink-0 ${isResizing && resizeType === 'sidebar' ? 'active' : ''}`} onMouseDown={handleMouseDown('sidebar')} />}
         {state.chatOpen && (
-          <div style={{ width: panelWidth }} className="flex-shrink-0 border-l border-editor-border flex flex-col">
-            <VoiceChat socket={socketRef.current} currentUser={state.user} />
-            <div className="flex-1 min-h-0">
-              <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketRef.current} />
+          <>
+            <div
+              className={`resizer w-1.5 flex-shrink-0 hidden sm:block ${isResizing && resizeType === 'sidebar' ? 'active' : ''}`}
+              onMouseDown={handleMouseDown('sidebar')}
+              onTouchStart={handleMouseDown('sidebar')}
+            />
+            <div style={{ width: panelWidth }} className="flex-shrink-0 border-l border-editor-border flex flex-col hidden sm:flex">
+              <VoiceChat socket={socketRef.current} currentUser={state.user} />
+              <div className="flex-1 min-h-0">
+                <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketRef.current} />
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>

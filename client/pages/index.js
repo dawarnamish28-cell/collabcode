@@ -33,6 +33,11 @@ const LANGUAGES = [
   { id: 'bash', name: 'Bash', icon: 'SH', color: '#4eaa25', bg: '#4eaa2515' },
   { id: 'shell', name: 'Shell', icon: '$', color: '#89e051', bg: '#89e05115' },
   { id: 'awk', name: 'AWK', icon: 'AW', color: '#c4a000', bg: '#c4a00015' },
+  { id: 'lua', name: 'Lua', icon: 'LU', color: '#000080', bg: '#00008015' },
+  { id: 'fortran', name: 'Fortran', icon: 'FN', color: '#734f96', bg: '#734f9615' },
+  { id: 'tcl', name: 'Tcl', icon: 'TC', color: '#e4cc98', bg: '#e4cc9815' },
+  { id: 'sqlite', name: 'SQLite', icon: 'SQ', color: '#003b57', bg: '#003b5715' },
+  { id: 'nasm', name: 'Assembly', icon: 'AS', color: '#6e4c13', bg: '#6e4c1315' },
 ];
 
 function generateRoomCode() {
@@ -205,7 +210,7 @@ export default function Home() {
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">In Real-Time</span>
             </h2>
             <p className="text-sm sm:text-base text-gray-400 max-w-2xl mx-auto">
-              Collaborative code editor with 15 language runtimes, voice chat, real-time sync, and interactive terminal with input() support.
+              Collaborative code editor with 20 language runtimes, voice chat, real-time sync, and interactive terminal with input() support. Now with Lua, Fortran, Tcl, SQLite, and Assembly!
             </p>
           </div>
 
@@ -219,8 +224,8 @@ export default function Home() {
               </div>
               <div className="mb-3">
                 <label className="block text-xs text-gray-400 mb-2">Choose Language</label>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {LANGUAGES.slice(0, 15).map(lang => (
+                <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
+                  {LANGUAGES.map(lang => (
                     <button key={lang.id} onClick={() => setSelectedLang(lang.id)}
                       className={`relative px-1 py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all ${selectedLang === lang.id
                         ? 'text-white ring-2 ring-blue-400/50 shadow-lg'
@@ -388,7 +393,7 @@ export default function Home() {
             {[
               { icon: '⚡', label: 'Real-time Sync', desc: 'CRDT-based' },
               { icon: '🎙️', label: 'Voice Chat', desc: 'WebRTC P2P' },
-              { icon: '▶️', label: '15 Languages', desc: 'Local exec' },
+              { icon: '▶️', label: '20 Languages', desc: 'Local exec' },
               { icon: '📁', label: 'Multi-File', desc: 'File explorer' },
               { icon: '🎨', label: 'Themes', desc: 'Extensions' },
             ].map((feat, i) => (

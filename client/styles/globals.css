@@ -235,3 +235,35 @@ body:has(.min-h-screen) {
 html:has(.min-h-screen), body:has(.min-h-screen), #__next:has(.min-h-screen) {
   overflow: auto;
 }
+
+/* ─── Hide scrollbar utility ────────────────────────────────────── */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Responsive touch targets ──────────────────────────────────── */
+@media (hover: none) and (pointer: coarse) {
+  .resizer {
+    min-height: 8px;
+    min-width: 8px;
+  }
+  .resizer-horizontal {
+    min-height: 10px;
+  }
+}
+
+/* ─── Placeholder color fix ─────────────────────────────────────── */
+input::placeholder, textarea::placeholder {
+  color: #555;
+}
+
+/* ─── Mobile-safe fixed elements ────────────────────────────────── */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .h-screen {
+    height: calc(100vh - env(safe-area-inset-bottom));
+  }
+}

@@ -12,6 +12,7 @@ const EXT_MAP = {
   java: '.java', c: '.c', cpp: '.cpp',
   go: '.go', rust: '.rs', ruby: '.rb', php: '.php',
   perl: '.pl', r: '.R', bash: '.sh', shell: '.sh', awk: '.awk',
+  lua: '.lua', fortran: '.f90', tcl: '.tcl', sqlite: '.sql', nasm: '.asm',
 };
 
 const MIME_MAP = {
@@ -21,6 +22,8 @@ const MIME_MAP = {
   ruby: 'text/x-ruby', php: 'application/x-php',
   perl: 'text/x-perl', r: 'text/x-r', bash: 'text/x-sh',
   shell: 'text/x-sh', awk: 'text/x-awk',
+  lua: 'text/x-lua', fortran: 'text/x-fortran', tcl: 'text/x-tcl',
+  sqlite: 'text/x-sql', nasm: 'text/x-asm',
 };
 
 router.post('/save', authMiddleware, asyncHandler(async (req, res) => {

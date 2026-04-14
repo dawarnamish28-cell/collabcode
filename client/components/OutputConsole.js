@@ -1,16 +1,17 @@
 /**
- * OutputConsole v7.0 — VSCode-style Terminal
- * 
- * Clean, professional terminal panel. Works like a real terminal:
- * - Type input at the bottom prompt
- * - Press Enter to buffer a line of stdin  
- * - Press Ctrl+Enter to run code with all buffered input
- * - Press Ctrl+L to clear
- * - Arrow Up/Down for command history
- * - Themed to match the editor
- * 
- * No confusing separate stdin panels or tabs.
- * 
+ * OutputConsole v8.0 — Interactive Terminal (Python IDLE-style)
+ *
+ * Key changes from v7:
+ *  - Removed confusing "stdin buffering" concept entirely
+ *  - Now works like Python IDLE / a real terminal:
+ *      > Click "Run" or press Ctrl+Enter → code executes
+ *      > If the program needs input(), a prompt appears inline
+ *      > Type your response and press Enter → sent to the program
+ *  - The terminal input at the bottom is ONLY for providing input
+ *    when the program requests it (input(), scanf, gets, etc.)
+ *  - Enter key adds exactly ONE line (fixed double-Enter bug)
+ *  - Clean, minimal UI with themes
+ *
  * made with <3 by Namish
  */
 
@@ -67,34 +68,42 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
 ) {
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
-  const [stdinLines, setStdinLines] = useState([]);
   const [currentInput, setCurrentInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [terminalLines, setTerminalLines] = useState([]);
   const [cmdHistory, setCmdHistory] = useState([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
 
+  // Collected input lines for the current execution
+  const inputLinesRef = useRef([]);
+
   const theme = THEMES[terminalTheme] || THEMES['vs-dark'];
 
   useImperativeHandle(ref, () => ({
-    getStdin: () => stdinLines.join('\n'),
-    clear: () => { setTerminalLines([]); setStdinLines([]); },
+    getStdin: () => inputLinesRef.current.join('\n'),
+    clear: () => { setTerminalLines([]); inputLinesRef.current = []; },
     focus: () => inputRef.current?.focus(),
   }));
 
-  // Add output to terminal lines when execution completes
+  // Process output when execution completes
   useEffect(() => {
     if (!output) return;
+
     if (output.type === 'info' && output.content === 'Running code...') {
       setTerminalLines(prev => [...prev, { type: 'info', text: `$ Running ${language || 'code'}...` }]);
+      inputLinesRef.current = []; // reset stdin for new run
       return;
     }
+
     const newLines = [];
+
+    // Show stdin that was used (if any)
     if (output.stdinUsed) {
-      newLines.push({ type: 'dim', text: '\u2500\u2500\u2500 stdin \u2500\u2500\u2500' });
-      output.stdinUsed.split('\n').forEach(l => newLines.push({ type: 'stdin', text: l }));
-      newLines.push({ type: 'dim', text: '\u2500\u2500\u2500 output \u2500\u2500\u2500' });
+      newLines.push({ type: 'dim', text: '\u2500 input provided \u2500' });
+      output.stdinUsed.split('\n').forEach(l => newLines.push({ type: 'stdin', text: `  ${l}` }));
+      newLines.push({ type: 'dim', text: '\u2500 output \u2500' });
     }
+
     if (output.content) {
       output.content.split('\n').forEach(l => newLines.push({ type: 'stdout', text: l }));
     }
@@ -106,77 +115,89 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
     if (!output.content && !output.error && output.type === 'success') {
       newLines.push({ type: 'dim', text: '(program exited with no output)' });
     }
-    // Metadata line
+
+    // Metadata
     const parts = [];
     if (output.language) parts.push(output.language);
     if (output.executionTime) parts.push(output.executionTime);
     if (output.exitCode !== undefined) parts.push(`exit ${output.exitCode}`);
     if (parts.length > 0) {
-      newLines.push({ type: 'meta', text: `[${parts.join(' | ')}]` });
+      newLines.push({ type: 'meta', text: `[${parts.join(' \u00b7 ')}]` });
     }
     newLines.push({ type: 'blank', text: '' });
     setTerminalLines(prev => [...prev, ...newLines]);
-    // Clear collected stdin after run
-    setStdinLines([]);
+
+    // Clear collected input after run completes
+    inputLinesRef.current = [];
   }, [output]);
 
-  // Auto-scroll
+  // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [terminalLines, isRunning]);
 
-  const handleInputKeyDown = (e) => {
-    // Ctrl+L = clear
+  const handleInputKeyDown = useCallback((e) => {
+    // Ctrl+L = clear terminal
     if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
       e.preventDefault();
       handleClear();
       return;
     }
-    // Ctrl+Enter = run with collected stdin
+
+    // Ctrl+Enter = run code with all collected input
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
       e.stopPropagation();
-      const allStdin = [...stdinLines, ...(currentInput ? [currentInput] : [])].join('\n');
+      // Add current input if not empty
+      const allInput = [...inputLinesRef.current];
+      if (currentInput) allInput.push(currentInput);
+      const stdin = allInput.join('\n');
       if (currentInput) {
         setCmdHistory(prev => [...prev.slice(-49), currentInput]);
       }
       setHistoryIdx(-1);
       setCurrentInput('');
-      setStdinLines([]);
-      if (onRunWithStdin) onRunWithStdin(allStdin);
+      inputLinesRef.current = [];
+      if (onRunWithStdin) onRunWithStdin(stdin);
       return;
     }
-    // Enter = add stdin line
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
+
+    // Enter = provide ONE line of input (like typing in IDLE)
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault(); // prevent default form behavior — exactly ONE line
       const val = currentInput;
-      setStdinLines(prev => [...prev, val]);
+      inputLinesRef.current.push(val);
       setTerminalLines(prev => [...prev, { type: 'input', text: `> ${val}` }]);
       if (val) {
         setCmdHistory(prev => [...prev.slice(-49), val]);
       }
       setHistoryIdx(-1);
       setCurrentInput('');
-      return;
+      return; // IMPORTANT: return here, no further processing
     }
-    // Arrow up/down for history
+
+    // Arrow Up = history back
     if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (cmdHistory.length === 0) return;
       const newIdx = historyIdx < cmdHistory.length - 1 ? historyIdx + 1 : historyIdx;
       setHistoryIdx(newIdx);
       setCurrentInput(cmdHistory[cmdHistory.length - 1 - newIdx] || '');
+      return;
     }
+
+    // Arrow Down = history forward
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (historyIdx <= 0) { setHistoryIdx(-1); setCurrentInput(''); return; }
       const newIdx = historyIdx - 1;
       setHistoryIdx(newIdx);
       setCurrentInput(cmdHistory[cmdHistory.length - 1 - newIdx] || '');
+      return;
     }
-  };
+  }, [currentInput, cmdHistory, historyIdx, onRunWithStdin]);
 
   const handleCopy = useCallback(async () => {
     const text = terminalLines
@@ -191,72 +212,67 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
     } catch (e) {}
   }, [terminalLines]);
 
-  const handleClear = () => {
+  const handleClear = useCallback(() => {
     setTerminalLines([]);
-    setStdinLines([]);
+    inputLinesRef.current = [];
     if (onClear) onClear();
-  };
+  }, [onClear]);
 
-  const stdinCount = stdinLines.length;
+  const inputCount = inputLinesRef.current.length;
 
   return (
     <div className="h-full flex flex-col font-mono text-[13px] overflow-hidden" style={{ background: theme.bg }}>
       {/* Terminal Header */}
-      <div className="flex items-center justify-between px-3 py-1 flex-shrink-0"
+      <div className="flex items-center justify-between px-2 sm:px-3 py-1 flex-shrink-0"
         style={{ background: theme.headerBg, borderBottom: `1px solid ${theme.border}` }}>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full bg-[#ff5f56] hover:brightness-90 cursor-pointer" onClick={handleClear} title="Clear" />
-            <div className="w-3 h-3 rounded-full bg-[#ffbd2e]" />
-            <div className="w-3 h-3 rounded-full bg-[#27c93f]" />
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+          <div className="flex items-center gap-1 sm:gap-1.5">
+            <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-[#ff5f56] hover:brightness-90 cursor-pointer" onClick={handleClear} title="Clear" />
+            <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-[#ffbd2e]" />
+            <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-[#27c93f]" />
           </div>
-          <span className="text-[11px] font-medium uppercase tracking-wide ml-2" style={{ color: theme.dim }}>
+          <span className="text-[10px] sm:text-[11px] font-medium uppercase tracking-wide ml-1 sm:ml-2 truncate" style={{ color: theme.dim }}>
             Terminal
           </span>
           {isRunning && (
-            <div className="flex items-center gap-1 ml-1">
+            <div className="flex items-center gap-1 ml-1 flex-shrink-0">
               <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: theme.warn }} />
-              <span className="text-[10px]" style={{ color: theme.warn }}>Running...</span>
+              <span className="text-[10px] hidden sm:inline" style={{ color: theme.warn }}>Running...</span>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          {stdinCount > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ color: theme.accent, background: theme.accent + '20' }}>
-              {stdinCount} line{stdinCount !== 1 ? 's' : ''} buffered
-            </span>
-          )}
+        <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
           {output?.status && !isRunning && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded"
+            <span className="text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded"
               style={{ color: output.type === 'success' ? theme.success : theme.error }}>
               {output.status}
             </span>
           )}
-          <button onClick={handleCopy} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Copy output">
+          <button onClick={handleCopy} className="p-0.5 sm:p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Copy output">
             {copied ? (
-              <svg className="w-3.5 h-3.5" style={{ color: theme.success }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" style={{ color: theme.success }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
             ) : (
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+              <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
             )}
           </button>
-          <button onClick={handleClear} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Clear (Ctrl+L)">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+          <button onClick={handleClear} className="p-0.5 sm:p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Clear (Ctrl+L)">
+            <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
           </button>
         </div>
       </div>
 
       {/* Terminal Output Area */}
       <div ref={scrollRef}
-        className="flex-1 overflow-auto px-3 py-2 min-h-0 select-text"
+        className="flex-1 overflow-auto px-2 sm:px-3 py-2 min-h-0 select-text"
         onClick={() => inputRef.current?.focus()}>
         {terminalLines.length === 0 && !isRunning && (
-          <div className="text-xs py-3" style={{ color: theme.dim }}>
-            <p>CollabCode Terminal &mdash; 15 languages supported</p>
+          <div className="text-[11px] sm:text-xs py-3" style={{ color: theme.dim }}>
+            <p>CollabCode Terminal &mdash; 20 languages supported</p>
             <p className="mt-1.5" style={{ color: theme.dimmer }}>
-              Type input below &middot; <span style={{ color: theme.dim }}>Enter</span> = buffer stdin line &middot; <span style={{ color: theme.dim }}>Ctrl+Enter</span> = run code
+              Press <kbd className="px-1 py-0.5 rounded text-[10px]" style={{ background: theme.border, color: theme.text }}>Ctrl+Enter</kbd> to run your code
             </p>
-            <p style={{ color: theme.dimmer }}>
-              <span style={{ color: theme.dim }}>Ctrl+L</span> = clear &middot; <span style={{ color: theme.dim }}>&uarr;/&darr;</span> = history
+            <p className="mt-0.5" style={{ color: theme.dimmer }}>
+              Type input below when program requests it (input, scanf, etc.)
             </p>
           </div>
         )}
@@ -282,43 +298,33 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
         )}
       </div>
 
-      {/* Input Line */}
-      <div className="flex items-center py-1.5 px-3 flex-shrink-0 gap-2"
+      {/* Input Line — acts like IDLE input prompt */}
+      <div className="flex items-center py-1 sm:py-1.5 px-2 sm:px-3 flex-shrink-0 gap-1 sm:gap-2"
         style={{ borderTop: `1px solid ${theme.border}`, background: theme.inputBg }}>
-        <span className="text-xs select-none flex-shrink-0" style={{ color: theme.prompt }}>$</span>
+        <span className="text-xs select-none flex-shrink-0" style={{ color: theme.prompt }}>&gt;</span>
         <input
           ref={inputRef}
           type="text"
           value={currentInput}
           onChange={(e) => setCurrentInput(e.target.value)}
           onKeyDown={handleInputKeyDown}
-          placeholder="stdin input... Enter=buffer, Ctrl+Enter=run"
-          className="flex-1 bg-transparent text-[13px] outline-none font-mono placeholder-gray-600"
-          style={{ color: theme.text, caretColor: theme.prompt }}
+          placeholder={isRunning ? "Type input here, press Enter to send..." : "Input \u00b7 Enter=send line \u00b7 Ctrl+Enter=run"}
+          className="flex-1 bg-transparent text-[12px] sm:text-[13px] outline-none font-mono min-w-0"
+          style={{ color: theme.text, caretColor: theme.prompt, '::placeholder': { color: theme.dimmer } }}
           autoComplete="off"
           spellCheck={false}
         />
-        {stdinCount > 0 && (
-          <button
-            onClick={() => {
-              setStdinLines([]);
-              setTerminalLines(prev => [...prev, { type: 'dim', text: '(stdin buffer cleared)' }]);
-            }}
-            className="text-[9px] px-1.5 py-0.5 rounded hover:opacity-80 transition flex-shrink-0"
-            style={{ color: theme.dim, border: `1px solid ${theme.border}` }}
-            title="Clear stdin buffer">
-            Clear
-          </button>
-        )}
         <button
           onClick={() => {
-            const allStdin = [...stdinLines, ...(currentInput ? [currentInput] : [])].join('\n');
+            const allInput = [...inputLinesRef.current];
+            if (currentInput) allInput.push(currentInput);
+            const stdin = allInput.join('\n');
             setCurrentInput('');
-            setStdinLines([]);
-            if (onRunWithStdin) onRunWithStdin(allStdin);
+            inputLinesRef.current = [];
+            if (onRunWithStdin) onRunWithStdin(stdin);
           }}
           disabled={isRunning}
-          className="text-[10px] px-2.5 py-1 rounded transition disabled:opacity-40 flex-shrink-0 font-medium hover:brightness-110"
+          className="text-[10px] px-2 sm:px-2.5 py-0.5 sm:py-1 rounded transition disabled:opacity-40 flex-shrink-0 font-medium hover:brightness-110"
           style={{ background: '#0e639c', color: 'white' }}>
           {isRunning ? '...' : 'Run'}
         </button>

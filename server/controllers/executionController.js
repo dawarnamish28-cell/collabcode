@@ -1,10 +1,13 @@
 /**
- * Execution Controller v5.0 — 15 Languages
+ * Execution Controller v6.0 — 20 Languages
  * 
- * ALL 15 LANGUAGES run locally with full stdin/input() support:
+ * ALL 20 LANGUAGES run locally with full stdin/input() support:
  *  - JavaScript (Node.js), TypeScript (tsx), Python 3
  *  - Java (OpenJDK), C (GCC), C++ (G++), Go, Rust, Ruby, PHP
- *  - NEW: Perl, R, Bash, Shell (sh), AWK
+ *  - Perl, R, Bash, Shell (sh), AWK
+ *  - NEW: Lua, Fortran (gfortran), Tcl, SQLite, x86-64 Assembly (NASM)
+ *
+ * made with <3 by Namish
  */
 
 const { spawn } = require('child_process');
@@ -82,7 +85,6 @@ const LANGUAGES = {
     runner: 'php', runArgs: (f) => [f],
     template: `<?php\necho "Enter your name: ";\n$name = trim(fgets(STDIN));\necho "Hello, $name!\\n";\n`,
   },
-  // ─── 5 NEW LANGUAGES ──────────────────────────────────────────────
   perl: {
     name: 'Perl', ext: '.pl', fileName: 'main.pl',
     local: true, interpreted: true,
@@ -99,7 +101,7 @@ const LANGUAGES = {
     name: 'Bash', ext: '.sh', fileName: 'main.sh',
     local: true, interpreted: true,
     runner: 'bash', runArgs: (f) => [f],
-    template: `#!/bin/bash\n# Bash — CollabCode\n\necho "Hello from Bash!"\necho "Date: $(date)"\necho "User: $(whoami)"\n\n# Arrays\nnums=(5 3 1 4 2)\necho "Numbers: \${nums[@]}"\n\n# Sorting\nsorted=($(echo "\${nums[@]}" | tr ' ' '\\n' | sort -n))\necho "Sorted: \${sorted[@]}"\n\n# Sum\nsum=0\nfor n in "\${nums[@]}"; do sum=$((sum + n)); done\necho "Sum: $sum"\n`,
+    template: `#!/bin/bash\n# Bash — CollabCode\n\necho "Hello from Bash!"\necho "Date: $(date)"\necho "User: $(whoami)"\n\nnums=(5 3 1 4 2)\necho "Numbers: \${nums[@]}"\n\nsorted=($(echo "\${nums[@]}" | tr ' ' '\\n' | sort -n))\necho "Sorted: \${sorted[@]}"\n\nsum=0\nfor n in "\${nums[@]}"; do sum=$((sum + n)); done\necho "Sum: $sum"\n`,
   },
   shell: {
     name: 'Shell', ext: '.sh', fileName: 'main.sh',
@@ -111,11 +113,50 @@ const LANGUAGES = {
     name: 'AWK', ext: '.awk', fileName: 'main.awk',
     local: true, interpreted: true,
     runner: 'awk', runArgs: (f) => ['-f', f],
-    template: `# AWK — CollabCode\n# Pipe data via stdin, or this runs with empty input\n\nBEGIN {\n    print "Hello from AWK!"\n    print "Fibonacci sequence:"\n    a = 0; b = 1\n    for (i = 1; i <= 10; i++) {\n        printf "%d ", b\n        c = a + b; a = b; b = c\n    }\n    print ""\n    print "Powers of 2:"\n    for (i = 0; i <= 10; i++) {\n        printf "2^%d = %d\\n", i, 2^i\n    }\n}\n`,
+    template: `# AWK — CollabCode\nBEGIN {\n    print "Hello from AWK!"\n    print "Fibonacci sequence:"\n    a = 0; b = 1\n    for (i = 1; i <= 10; i++) {\n        printf "%d ", b\n        c = a + b; a = b; b = c\n    }\n    print ""\n    print "Powers of 2:"\n    for (i = 0; i <= 10; i++) {\n        printf "2^%d = %d\\n", i, 2^i\n    }\n}\n`,
+  },
+  // ─── 5 NEW LANGUAGES v6.0 ─────────────────────────────────────────
+  lua: {
+    name: 'Lua', ext: '.lua', fileName: 'main.lua',
+    local: true, interpreted: true,
+    runner: 'lua5.4', runArgs: (f) => [f],
+    template: `-- Lua — CollabCode\nprint("Hello from Lua!")\n\nlocal numbers = {5, 3, 1, 4, 2}\ntable.sort(numbers)\nio.write("Sorted: ")\nfor i, v in ipairs(numbers) do\n    io.write(v .. " ")\nend\nprint()\n\nlocal sum = 0\nfor _, v in ipairs(numbers) do sum = sum + v end\nprint("Sum: " .. sum)\n\n-- Fibonacci\nlocal a, b = 0, 1\nio.write("Fibonacci: ")\nfor i = 1, 10 do\n    io.write(b .. " ")\n    a, b = b, a + b\nend\nprint()\n`,
+  },
+  fortran: {
+    name: 'Fortran', ext: '.f90', fileName: 'main.f90',
+    local: true, interpreted: false,
+    compile: { cmd: 'gfortran', args: (f) => ['-o', 'main', f] },
+    runCompiled: './main',
+    template: `! Fortran — CollabCode\nprogram hello\n    implicit none\n    integer :: i, sum_val, a, b, c\n    \n    print *, "Hello from Fortran!"\n    \n    sum_val = 0\n    do i = 1, 10\n        sum_val = sum_val + i\n    end do\n    print '(A,I4)', " Sum 1..10: ", sum_val\n    \n    ! Fibonacci\n    a = 0; b = 1\n    write(*, '(A)', advance='no') " Fibonacci: "\n    do i = 1, 10\n        write(*, '(I6)', advance='no') b\n        c = a + b; a = b; b = c\n    end do\n    print *\nend program hello\n`,
+  },
+  tcl: {
+    name: 'Tcl', ext: '.tcl', fileName: 'main.tcl',
+    local: true, interpreted: true,
+    runner: 'tclsh', runArgs: (f) => [f],
+    template: `# Tcl — CollabCode\nputs "Hello from Tcl!"\n\nset numbers {5 3 1 4 2}\nset sorted [lsort -integer $numbers]\nputs "Sorted: $sorted"\n\nset sum 0\nforeach n $numbers { incr sum $n }\nputs "Sum: $sum"\n\n# Fibonacci\nset a 0; set b 1\nset fib {}\nfor {set i 0} {$i < 10} {incr i} {\n    lappend fib $b\n    set c [expr {$a + $b}]\n    set a $b; set b $c\n}\nputs "Fibonacci: $fib"\nputs "Tcl version: [info patchlevel]"\n`,
+  },
+  sqlite: {
+    name: 'SQLite', ext: '.sql', fileName: 'main.sql',
+    local: true, interpreted: true,
+    runner: 'sqlite3', runArgs: (f) => [':memory:', '.read ' + f],
+    // SQLite needs special handling - we'll use a wrapper
+    template: `.headers on\n.mode column\n\nCREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER);\n\nINSERT INTO users VALUES (1, 'Alice', 30);\nINSERT INTO users VALUES (2, 'Bob', 25);\nINSERT INTO users VALUES (3, 'Charlie', 35);\n\nSELECT * FROM users;\nSELECT 'Average age: ' || CAST(AVG(age) AS TEXT) AS result FROM users;\nSELECT 'Total: ' || COUNT(*) AS result FROM users;\n`,
+    customRunner: true,
+  },
+  nasm: {
+    name: 'Assembly', ext: '.asm', fileName: 'main.asm',
+    local: true, interpreted: false,
+    compile: {
+      cmd: 'nasm',
+      args: (f) => ['-f', 'elf64', '-o', 'main.o', f],
+    },
+    link: { cmd: 'ld', args: () => ['-o', 'main', 'main.o'] },
+    runCompiled: './main',
+    template: `; x86-64 Assembly (NASM) — CollabCode\n; Prints "Hello from Assembly!"\n\nsection .data\n    msg db "Hello from Assembly!", 10\n    len equ $ - msg\n\nsection .text\n    global _start\n\n_start:\n    ; sys_write(1, msg, len)\n    mov rax, 1\n    mov rdi, 1\n    mov rsi, msg\n    mov rdx, len\n    syscall\n\n    ; sys_exit(0)\n    mov rax, 60\n    xor rdi, rdi\n    syscall\n`,
   },
 };
 
-// Version checks for all 15 languages
+// Version checks for all 20 languages
 const versionChecks = [
   { lang: 'javascript', cmd: 'node', args: ['--version'] },
   { lang: 'typescript', cmd: 'npx', args: ['--yes', 'tsx', '--version'] },
@@ -132,13 +173,24 @@ const versionChecks = [
   { lang: 'bash', cmd: 'bash', args: ['--version'] },
   { lang: 'shell', cmd: 'sh', args: ['-c', 'echo POSIX sh'] },
   { lang: 'awk', cmd: 'awk', args: ['BEGIN{print "awk available"}'] },
+  { lang: 'lua', cmd: 'lua5.4', args: ['-v'] },
+  { lang: 'fortran', cmd: 'gfortran', args: ['--version'] },
+  { lang: 'tcl', cmd: 'tclsh', args: ['<<EOF\nputs [info patchlevel]\nEOF'] },
+  { lang: 'sqlite', cmd: 'sqlite3', args: ['--version'] },
+  { lang: 'nasm', cmd: 'nasm', args: ['-v'] },
 ];
 
 (async function detectVersions() {
   for (const check of versionChecks) {
     try {
-      const ver = await runCommand(check.cmd, check.args, { timeout: 15000 });
-      const out = (ver.stdout + ver.stderr).trim().split('\n')[0];
+      let result;
+      // Tcl version check needs special handling
+      if (check.lang === 'tcl') {
+        result = await runCommand('tclsh', [], { timeout: 5000, stdin: 'puts [info patchlevel]\nexit\n' });
+      } else {
+        result = await runCommand(check.cmd, check.args, { timeout: 15000 });
+      }
+      const out = (result.stdout + result.stderr).trim().split('\n')[0];
       if (LANGUAGES[check.lang]) LANGUAGES[check.lang].version = out;
       console.log(`[Exec] ${check.lang}: ${out}`);
     } catch (e) {
@@ -191,6 +243,71 @@ async function executeLocal(code, language, stdin) {
   const startTime = process.hrtime.bigint();
   try {
     fs.writeFileSync(filePath, code, 'utf-8');
+
+    // Special handling for SQLite
+    if (language === 'sqlite') {
+      try {
+        const result = await runCommand('sqlite3', [':memory:'], {
+          cwd: sandbox,
+          timeout: TIMEOUT_MS,
+          stdin: code + '\n.quit\n',
+        });
+        const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
+        return {
+          success: result.exitCode === 0,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+          executionTime: `${(elapsed / 1000).toFixed(3)}s`,
+          status: result.exitCode === 0 ? 'Success' : `Exit Code: ${result.exitCode}`,
+          phase: 'run',
+        };
+      } catch (runErr) {
+        const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
+        if (runErr.message === 'TIME_LIMIT_EXCEEDED') return { success: false, stdout: '', stderr: `Time Limit Exceeded`, exitCode: -1, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: 'Time Limit Exceeded', phase: 'run' };
+        throw runErr;
+      }
+    }
+
+    // Special handling for NASM (assemble + link)
+    if (language === 'nasm') {
+      // Assemble
+      try {
+        const asmResult = await runCommand('nasm', ['-f', 'elf64', '-o', 'main.o', lang.fileName], { cwd: sandbox, timeout: COMPILE_TIMEOUT_MS });
+        if (asmResult.exitCode !== 0) {
+          const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
+          return { success: false, stdout: asmResult.stdout, stderr: asmResult.stderr, exitCode: asmResult.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: 'Assembly Error', phase: 'compile' };
+        }
+      } catch (e) {
+        const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
+        if (e.message === 'TIME_LIMIT_EXCEEDED') return { success: false, stdout: '', stderr: 'Assembly timed out', exitCode: -1, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: 'Assembly Timeout', phase: 'compile' };
+        throw e;
+      }
+      // Link
+      try {
+        const linkResult = await runCommand('ld', ['-o', 'main', 'main.o'], { cwd: sandbox, timeout: COMPILE_TIMEOUT_MS });
+        if (linkResult.exitCode !== 0) {
+          const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
+          return { success: false, stdout: linkResult.stdout, stderr: linkResult.stderr, exitCode: linkResult.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: 'Link Error', phase: 'compile' };
+        }
+      } catch (e) {
+        const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
+        if (e.message === 'TIME_LIMIT_EXCEEDED') return { success: false, stdout: '', stderr: 'Linking timed out', exitCode: -1, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: 'Link Timeout', phase: 'compile' };
+        throw e;
+      }
+      // Run
+      try {
+        const runResult = await runCommand('./main', [], { cwd: sandbox, timeout: TIMEOUT_MS, stdin });
+        const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
+        return { success: runResult.exitCode === 0, stdout: runResult.stdout, stderr: runResult.stderr, exitCode: runResult.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: runResult.exitCode === 0 ? 'Success' : `Exit Code: ${runResult.exitCode}`, phase: 'run' };
+      } catch (runErr) {
+        const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
+        if (runErr.message === 'TIME_LIMIT_EXCEEDED') return { success: false, stdout: '', stderr: `Time Limit Exceeded`, exitCode: -1, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: 'Time Limit Exceeded', phase: 'run' };
+        throw runErr;
+      }
+    }
+
+    // Standard compiled languages
     if (!lang.interpreted && lang.compile) {
       const compileArgs = lang.compile.args(lang.fileName);
       let compileResult;
@@ -216,6 +333,8 @@ async function executeLocal(code, language, stdin) {
         throw runErr;
       }
     }
+
+    // Interpreted languages
     const runArgs = lang.runArgs(lang.fileName);
     try {
       const result = await runCommand(lang.runner, runArgs, { cwd: sandbox, timeout: TIMEOUT_MS, stdin });

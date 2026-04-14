@@ -1,18 +1,19 @@
 /**
- * Editor Component v6.0
+ * Editor Component v7.0
  * 
- * Monaco Editor + Yjs CRDT. 15 languages.
+ * Monaco Editor + Yjs CRDT. 20 languages.
  * 
- * CRITICAL FIX: Eliminates double-typing and double-enter bugs.
- * The root cause was a feedback loop in the Yjs <-> Monaco binding:
- *   1. User types -> onDidChangeModelContent fires -> ytext.insert/delete
- *   2. ytext.observe fires immediately (synchronously) for the same edit
- *   3. Observer tries to apply the edit AGAIN to Monaco -> double character
+ * CRITICAL FIX v7: Bulletproof Yjs <-> Monaco binding.
  * 
- * Solution: Track the "origin" of each Yjs transaction. When the origin
- * is the Monaco editor instance itself, the observer skips the edit.
- * This is the same pattern used by y-monaco and y-codemirror.
- * 
+ * Root cause of double-typing/double-enter: The Yjs observer fires synchronously
+ * for local mutations and the guard was racy. Fixed by:
+ *   1. Using a Symbol as transaction origin (identity-based, not string-based)
+ *   2. Wrapping all Yjs->Monaco edits in _isApplyingRemote = true
+ *   3. All Monaco->Yjs in transact(fn, ORIGIN) — observer checks origin identity
+ *   4. Observer bails EARLY when origin matches OR _isApplyingRemote is set
+ *   5. Debounced cursor awareness (50ms)
+ *   6. Proper disposal of all listeners on cleanup
+ *
  * made with <3 by Namish
  */
 
@@ -24,6 +25,8 @@ const MONACO_LANGUAGES = {
   java: 'java', cpp: 'cpp', c: 'c', go: 'go', rust: 'rust',
   ruby: 'ruby', php: 'php', perl: 'perl', r: 'r',
   bash: 'shell', shell: 'shell', awk: 'plaintext',
+  lua: 'lua', fortran: 'plaintext', tcl: 'tcl',
+  sqlite: 'sql', nasm: 'plaintext',
 };
 
 const DEFAULT_CODE = {
@@ -56,19 +59,14 @@ users.forEach(u => console.log(greet(u)));
 console.log("TypeScript running on CollabCode!");
 `,
   python: `# Python — CollabCode
-# Tip: Use input() for interactive input - type in the terminal below
+# Supports input() — type in the terminal below!
 
-import math
-from collections import Counter
+name = input("What's your name? ")
+print(f"Hello, {name}!")
 
-numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-print("Numbers:", numbers)
+numbers = [1, 2, 3, 4, 5]
 print("Sum:", sum(numbers))
-print("Average:", sum(numbers) / len(numbers))
-print("Pi:", round(math.pi, 6))
-print("Factorial of 10:", math.factorial(10))
-print()
-print("Hello from CollabCode!")
+print("Squares:", [n**2 for n in numbers])
 `,
   java: `// Java — CollabCode
 import java.util.Arrays;
@@ -236,6 +234,121 @@ BEGIN {
     }
 }
 `,
+  lua: `-- Lua — CollabCode
+print("Hello from Lua!")
+
+local numbers = {5, 3, 1, 4, 2}
+table.sort(numbers)
+io.write("Sorted: ")
+for i, v in ipairs(numbers) do
+    io.write(v .. " ")
+end
+print()
+
+local sum = 0
+for _, v in ipairs(numbers) do sum = sum + v end
+print("Sum: " .. sum)
+
+-- Fibonacci
+local a, b = 0, 1
+io.write("Fibonacci: ")
+for i = 1, 10 do
+    io.write(b .. " ")
+    a, b = b, a + b
+end
+print()
+`,
+  fortran: `! Fortran — CollabCode
+program hello
+    implicit none
+    integer :: i, sum_val
+    integer, dimension(5) :: nums = (/5, 3, 1, 4, 2/)
+    
+    print *, "Hello from Fortran!"
+    
+    sum_val = 0
+    do i = 1, 5
+        sum_val = sum_val + nums(i)
+    end do
+    print *, "Sum:", sum_val
+    
+    ! Fibonacci
+    integer :: a, b, c
+    a = 0; b = 1
+    write(*, '(A)', advance='no') " Fibonacci: "
+    do i = 1, 10
+        write(*, '(I4)', advance='no') b
+        c = a + b; a = b; b = c
+    end do
+    print *
+end program hello
+`,
+  tcl: `# Tcl — CollabCode
+puts "Hello from Tcl!"
+
+set numbers {5 3 1 4 2}
+set sorted [lsort -integer $numbers]
+puts "Sorted: $sorted"
+
+set sum 0
+foreach n $numbers { incr sum $n }
+puts "Sum: $sum"
+
+# Fibonacci
+set a 0; set b 1
+set fib {}
+for {set i 0} {$i < 10} {incr i} {
+    lappend fib $b
+    set c [expr {$a + $b}]
+    set a $b; set b $c
+}
+puts "Fibonacci: $fib"
+puts "Tcl version: [info patchlevel]"
+`,
+  sqlite: `-- SQLite — CollabCode
+-- Create a sample database and query it
+
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    age INTEGER
+);
+
+INSERT INTO users (name, age) VALUES ('Alice', 30);
+INSERT INTO users (name, age) VALUES ('Bob', 25);
+INSERT INTO users (name, age) VALUES ('Charlie', 35);
+
+SELECT 'All users:';
+SELECT id, name, age FROM users;
+
+SELECT 'Average age: ' || AVG(age) FROM users;
+SELECT 'Total users: ' || COUNT(*) FROM users;
+
+DROP TABLE users;
+`,
+  nasm: `; x86-64 Assembly (NASM) — CollabCode
+; Prints "Hello from Assembly!"
+
+section .data
+    msg db "Hello from Assembly!", 10
+    len equ $ - msg
+
+section .text
+    global _start
+
+_start:
+    ; sys_write(1, msg, len)
+    mov rax, 1      ; syscall: write
+    mov rdi, 1      ; file descriptor: stdout
+    mov rsi, msg    ; buffer
+    mov rdx, len    ; count
+    syscall
+
+    ; sys_exit(0)
+    mov rax, 60     ; syscall: exit
+    xor rdi, rdi    ; status: 0
+    syscall
+`,
 };
 
 const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fontSize, tabSize, minimap, wordWrap }) {
@@ -245,8 +358,7 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
   const decorationsRef = useRef([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Stable ref for the "origin" marker — we use this object identity to mark
-  // transactions that originate from Monaco so the Yjs observer can skip them.
+  // Stable origin marker — uses Symbol identity so it can never collide
   const editorOriginRef = useRef(Symbol('monaco-editor'));
 
   const handleEditorDidMount = useCallback((editor, monaco) => {
@@ -278,32 +390,35 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
   }, [ydoc, provider, user, language]);
 
   /**
-   * Core Yjs <-> Monaco binding.
-   * 
-   * KEY INSIGHT for eliminating double-typing:
-   * 
-   * When Monaco content changes (user types), we:
-   *   1. Wrap ytext mutations in ydoc.transact(() => {...}, editorOriginRef.current)
-   *   2. This sets the "origin" of the transaction to our editor symbol
-   *   3. In the ytext observer, we check if event.transaction.origin === editorOriginRef.current
-   *   4. If yes, we SKIP applying changes back to Monaco (they already happened there)
-   *   5. If no (remote update), we apply changes to Monaco using delta operations
+   * Bulletproof Yjs <-> Monaco binding v7.
+   *
+   * Two guards prevent double-typing:
+   *   (a) _isApplyingRemote — set TRUE around Yjs->Monaco pushEditOperations
+   *       so onDidChangeModelContent skips those changes.
+   *   (b) transaction.origin === ORIGIN — the Yjs observer skips transactions
+   *       that came from our own editor.
+   * Both guards are checked; belt AND suspenders.
    */
   function setupYjsBinding(editor, monaco) {
     if (!ydoc) return;
     const ytext = ydoc.getText('monaco');
     const ORIGIN = editorOriginRef.current;
 
-    // Initialize with default code if empty
+    // Guard: true while we push remote edits into Monaco
+    let _isApplyingRemote = false;
+
+    // Initialize with default code if the ytext is empty
     if (ytext.length === 0) {
       const defaultCode = DEFAULT_CODE[language] || DEFAULT_CODE.javascript;
-      ytext.insert(0, defaultCode);
+      ydoc.transact(() => {
+        ytext.insert(0, defaultCode);
+      }, ORIGIN);
     }
 
-    // Set initial content
+    // Set initial content from ytext -> Monaco
     const currentContent = ytext.toString();
     if (editor.getValue() !== currentContent) {
-      // Use executeEdits to set content without triggering onDidChangeModelContent
+      _isApplyingRemote = true;
       const model = editor.getModel();
       if (model) {
         model.pushEditOperations(
@@ -312,27 +427,26 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
           () => null
         );
       }
+      _isApplyingRemote = false;
     }
 
     // ──────────────────────────────────────────────────────────
-    // Yjs -> Monaco (remote changes)
-    // 
-    // This observer fires for ALL ytext mutations, both local and remote.
-    // We only apply changes to Monaco when they come from a remote source.
+    // Yjs -> Monaco (remote changes only)
     // ──────────────────────────────────────────────────────────
     const yObserver = (event, transaction) => {
-      // CRITICAL: Skip if this transaction originated from our own editor.
-      // This is what prevents double-typing.
+      // Guard (b): skip our own local transactions
       if (transaction.origin === ORIGIN) return;
 
       const model = editor.getModel();
       if (!model) return;
 
+      // Guard (a): set flag before touching Monaco
+      _isApplyingRemote = true;
       try {
         let index = 0;
         const ops = [];
 
-        event.delta.forEach(delta => {
+        for (const delta of event.delta) {
           if (delta.retain !== undefined) {
             index += delta.retain;
           } else if (delta.insert !== undefined) {
@@ -352,46 +466,39 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
               forceMoveMarkers: true,
             });
           }
-        });
+        }
 
         if (ops.length > 0) {
-          // Use pushEditOperations to apply remote changes without triggering
-          // our onDidChangeModelContent handler (because we set _isApplyingRemote)
-          _isApplyingRemote = true;
           model.pushEditOperations([], ops, () => null);
-          _isApplyingRemote = false;
         }
       } catch (err) {
-        console.warn('[Editor] Delta apply failed, falling back to full replace:', err.message);
-        _isApplyingRemote = true;
+        // Fallback: full document replace (rare)
+        console.warn('[Editor] Delta apply failed, fallback full replace:', err.message);
         const newContent = ytext.toString();
         const model2 = editor.getModel();
         if (model2 && model2.getValue() !== newContent) {
-          const fullRange = model2.getFullModelRange();
-          model2.pushEditOperations([], [{ range: fullRange, text: newContent, forceMoveMarkers: true }], () => null);
+          model2.pushEditOperations(
+            [],
+            [{ range: model2.getFullModelRange(), text: newContent, forceMoveMarkers: true }],
+            () => null
+          );
         }
+      } finally {
         _isApplyingRemote = false;
       }
     };
 
-    // Flag to prevent Monaco -> Yjs feedback when applying remote changes
-    let _isApplyingRemote = false;
-
     ytext.observe(yObserver);
 
     // ──────────────────────────────────────────────────────────
-    // Monaco -> Yjs (local changes)
-    //
-    // When the user types in Monaco, we convert the change events
-    // to ytext operations inside a transaction with our editor origin.
+    // Monaco -> Yjs (local changes only)
     // ──────────────────────────────────────────────────────────
     const changeDisposable = editor.onDidChangeModelContent((event) => {
-      // Skip if we're applying remote changes to Monaco
+      // Guard (a): skip changes caused by remote Yjs updates
       if (_isApplyingRemote) return;
 
-      // Apply changes to Yjs with our origin marker
       ydoc.transact(() => {
-        // Process changes in reverse offset order to maintain correct positions
+        // Apply changes in reverse offset order to preserve positions
         const changes = [...event.changes].sort((a, b) => b.rangeOffset - a.rangeOffset);
         for (const change of changes) {
           if (change.rangeLength > 0) {
@@ -401,17 +508,17 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
             ytext.insert(change.rangeOffset, change.text);
           }
         }
-      }, ORIGIN); // <-- This origin is checked in yObserver above
+      }, ORIGIN); // <- tagged with ORIGIN so yObserver skips it
     });
 
     // ──────────────────────────────────────────────────────────
-    // Awareness (cursor positions)
+    // Awareness (cursor positions, debounced)
     // ──────────────────────────────────────────────────────────
-    let awarenessDebounce = null;
+    let awarenessTimer = null;
     const cursorDisposable = editor.onDidChangeCursorPosition((e) => {
       if (!provider) return;
-      clearTimeout(awarenessDebounce);
-      awarenessDebounce = setTimeout(() => {
+      clearTimeout(awarenessTimer);
+      awarenessTimer = setTimeout(() => {
         const position = e.position;
         const selection = editor.getSelection();
         provider.setAwarenessState({
@@ -430,7 +537,7 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
       });
     }
 
-    bindingRef.current = { yObserver, changeDisposable, cursorDisposable, awarenessDebounce, ytext };
+    bindingRef.current = { yObserver, changeDisposable, cursorDisposable, awarenessTimer, ytext };
   }
 
   function updateRemoteCursors(editor, monaco, awarenessStates, localUserId) {
@@ -474,7 +581,7 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
     styleEl.textContent = css;
   }
 
-  // Update editor options when extension settings change
+  // Update editor options live from Extensions panel
   useEffect(() => {
     if (editorRef.current) {
       editorRef.current.updateOptions({
@@ -486,7 +593,7 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
     }
   }, [fontSize, tabSize, minimap, wordWrap]);
 
-  // Update language mode
+  // Update language mode live
   useEffect(() => {
     if (editorRef.current && monacoRef.current) {
       const model = editorRef.current.getModel();
@@ -498,11 +605,11 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
   useEffect(() => {
     return () => {
       if (bindingRef.current) {
-        const { yObserver, changeDisposable, cursorDisposable, awarenessDebounce, ytext } = bindingRef.current;
+        const { yObserver, changeDisposable, cursorDisposable, awarenessTimer, ytext } = bindingRef.current;
         ytext.unobserve(yObserver);
         changeDisposable?.dispose();
         cursorDisposable?.dispose();
-        clearTimeout(awarenessDebounce);
+        clearTimeout(awarenessTimer);
       }
       decorationsRef.current = [];
     };
@@ -517,7 +624,7 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
         onMount={handleEditorDidMount}
         loading={
           <div className="h-full flex items-center justify-center bg-[#1e1e1e]">
-            <div className="text-center"><div className="spinner mx-auto mb-3" /><p className="text-gray-500 text-sm">Loading Monaco Editor...</p></div>
+            <div className="text-center"><div className="spinner mx-auto mb-3" /><p className="text-gray-500 text-sm">Loading Editor...</p></div>
           </div>
         }
         options={{
