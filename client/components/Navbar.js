@@ -1,7 +1,9 @@
 /**
- * Navbar Component v6.0
+ * Navbar v8.0 — Less toolbar, more personality
  * 
- * 20 languages, public/private toggle, responsive design.
+ * Ditched the VSCode-clone look. Now it's a minimal bar 
+ * that gets out of your way but still feels warm.
+ * 
  * made with <3 by Namish
  */
 
@@ -32,9 +34,9 @@ const LANGUAGES = [
 ];
 
 const STATUS = {
-  connected: { label: 'Connected', color: 'bg-green-400', pulse: false },
-  connecting: { label: 'Connecting...', color: 'bg-yellow-400', pulse: true },
-  disconnected: { label: 'Disconnected', color: 'bg-red-400', pulse: false },
+  connected: { label: 'Connected', color: '#5bd882', pulse: false },
+  connecting: { label: 'Connecting...', color: '#ffb347', pulse: true },
+  disconnected: { label: 'Disconnected', color: '#ff6b6b', pulse: false },
 };
 
 const Navbar = memo(function Navbar({
@@ -52,7 +54,6 @@ const Navbar = memo(function Navbar({
   const status = STATUS[connectionStatus] || STATUS.disconnected;
   const currentLang = LANGUAGES.find(l => l.id === language) || LANGUAGES[0];
 
-  // Close language dropdown on outside click
   useEffect(() => {
     if (!langOpen) return;
     const close = (e) => {
@@ -76,110 +77,116 @@ const Navbar = memo(function Navbar({
   }, [roomId]);
 
   return (
-    <nav className="flex items-center justify-between px-1.5 sm:px-3 py-1 sm:py-1.5 bg-[#252526] border-b border-editor-border z-50 flex-shrink-0">
-      <div className="flex items-center gap-0.5 sm:gap-1.5 min-w-0 overflow-x-auto scrollbar-none">
+    <nav className="flex items-center justify-between px-2 sm:px-3 h-9 bg-[#19191c] border-b border-[#282828] z-50 flex-shrink-0">
+      {/* Left side */}
+      <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 overflow-x-auto scrollbar-none">
         {/* Home */}
-        <button onClick={() => router.push('/')} className="flex items-center px-1 py-1 rounded-md hover:bg-[#2a2d2e] transition flex-shrink-0" title="Home">
-          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white">{'<>'}</div>
+        <button onClick={() => router.push('/')} className="flex items-center p-1 rounded-md hover:bg-[#222] transition flex-shrink-0" title="Home">
+          <div className="w-5 h-5 rounded bg-[#222] border border-[#333] flex items-center justify-center text-[8px] font-mono font-bold text-[#5e9eff]">{'//'}
+          </div>
         </button>
 
-        {/* File Explorer Toggle */}
+        {/* File Explorer */}
         <button onClick={onToggleFiles}
-          className={`p-1 sm:p-1.5 rounded-md transition flex-shrink-0 ${filesOpen ? 'bg-[#2a2d2e] text-blue-400' : 'text-gray-500 hover:text-gray-300 hover:bg-[#2a2d2e]'}`}
-          title="File Explorer">
+          className={`p-1.5 rounded-md transition flex-shrink-0 ${filesOpen ? 'bg-[#5e9eff]/10 text-[#5e9eff]' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}
+          title="Files">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
         </button>
 
-        <div className="w-px h-4 bg-editor-border/50 hidden sm:block flex-shrink-0" />
+        <div className="w-px h-3.5 bg-[#282828] hidden sm:block flex-shrink-0" />
 
         {/* Room Code */}
-        <button onClick={handleCopy} className="flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 py-1 rounded-md hover:bg-[#2a2d2e] transition group flex-shrink-0" title={copied ? 'Copied!' : 'Copy room code'}>
-          <span className="text-[9px] sm:text-xs text-gray-400 font-mono tracking-widest font-bold">{roomId}</span>
+        <button onClick={handleCopy} className="flex items-center gap-1 px-1.5 py-1 rounded-md hover:bg-[#222] transition group flex-shrink-0" title={copied ? 'Copied!' : 'Copy room code'}>
+          <span className="text-[10px] text-[#777] font-mono tracking-widest font-bold">{roomId}</span>
           {copied ? (
-            <svg className="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            <svg className="w-3 h-3 text-[#5bd882]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
           ) : (
-            <svg className="w-3 h-3 text-gray-500 group-hover:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+            <svg className="w-3 h-3 text-[#555] group-hover:text-[#888]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
           )}
         </button>
 
-        {/* Public/Private Toggle */}
+        {/* Public/Private */}
         <button onClick={onTogglePublic}
-          className={`flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-1 rounded-md text-[10px] transition flex-shrink-0 ${
-            isPublic ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30' : 'bg-[#2a2d2e] text-gray-500 hover:text-gray-300'
+          className={`flex items-center gap-1 px-1.5 py-1 rounded-md text-[10px] transition flex-shrink-0 font-mono ${
+            isPublic ? 'text-[#5bd882] bg-[#5bd882]/8' : 'text-[#555] hover:text-[#888] hover:bg-[#222]'
           }`}
-          title={isPublic ? 'Room is Public' : 'Room is Private'}>
+          title={isPublic ? 'Public' : 'Private'}>
           {isPublic ? (
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           ) : (
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
           )}
-          <span className="hidden md:inline">{isPublic ? 'Public' : 'Private'}</span>
+          <span className="hidden md:inline">{isPublic ? 'pub' : 'prv'}</span>
         </button>
 
-        <div className="w-px h-4 bg-editor-border/50 hidden sm:block flex-shrink-0" />
+        <div className="w-px h-3.5 bg-[#282828] hidden sm:block flex-shrink-0" />
 
         {/* Language Selector */}
         <div className="relative flex-shrink-0 lang-dropdown-container">
-          <button onClick={() => setLangOpen(!langOpen)} className="flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 py-1 rounded-md hover:bg-[#2a2d2e] border border-editor-border/50 transition">
-            <span className="text-[10px] sm:text-xs font-mono font-bold px-0.5 rounded" style={{ color: currentLang.color }}>{currentLang.icon}</span>
-            <span className="text-[10px] sm:text-xs text-gray-300 hidden md:inline">{currentLang.name}</span>
-            <svg className={`w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-500 transition-transform ${langOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+          <button onClick={() => setLangOpen(!langOpen)} className="flex items-center gap-1 px-1.5 py-1 rounded-md hover:bg-[#222] transition">
+            <span className="text-[10px] font-mono font-bold" style={{ color: currentLang.color }}>{currentLang.icon}</span>
+            <span className="text-[10px] text-[#888] hidden md:inline">{currentLang.name}</span>
+            <svg className={`w-2.5 h-2.5 text-[#555] transition-transform ${langOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
           </button>
           {langOpen && (
-            <div className="absolute top-full left-0 mt-1 w-44 sm:w-48 bg-[#252526] border border-editor-border rounded-lg shadow-xl z-50 py-1 max-h-72 sm:max-h-80 overflow-y-auto">
+            <div className="absolute top-full left-0 mt-1 w-44 bg-[#1a1b1e] border border-[#333] rounded-xl shadow-2xl z-50 py-1 max-h-72 overflow-y-auto">
               {LANGUAGES.map(lang => (
                 <button key={lang.id} onClick={() => { onLanguageChange(lang.id); setLangOpen(false); }}
-                  className={`w-full flex items-center gap-2 px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs transition ${language === lang.id ? 'bg-blue-600/20 text-blue-300' : 'hover:bg-[#2a2d2e] text-gray-300'}`}>
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] transition ${language === lang.id ? 'bg-[#5e9eff]/10 text-[#5e9eff]' : 'hover:bg-[#222] text-[#999]'}`}>
                   <span className="font-mono font-bold w-5 flex-shrink-0" style={{ color: lang.color }}>{lang.icon}</span>
                   <span>{lang.name}</span>
-                  {language === lang.id && <svg className="w-3 h-3 ml-auto text-blue-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>}
+                  {language === lang.id && <svg className="w-3 h-3 ml-auto text-[#5e9eff] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>}
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        {/* File operations */}
+        {/* File ops (desktop) */}
         <div className="hidden md:flex items-center gap-0.5">
-          <button onClick={onOpenFile} className="p-1.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-[#2a2d2e] transition" title="Open File (Ctrl+O)">
+          <button onClick={onOpenFile} className="p-1.5 rounded-md text-[#555] hover:text-[#aaa] hover:bg-[#222] transition" title="Open (Ctrl+O)">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" /></svg>
           </button>
-          <button onClick={onSaveFile} className="p-1.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-[#2a2d2e] transition" title="Save File (Ctrl+S)">
+          <button onClick={onSaveFile} className="p-1.5 rounded-md text-[#555] hover:text-[#aaa] hover:bg-[#222] transition" title="Save (Ctrl+S)">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
           </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-0.5 sm:gap-1.5 flex-shrink-0">
-        {/* Connection status */}
-        <div className="flex items-center gap-1 px-1 sm:px-1.5 py-1 rounded-md" title={status.label}>
-          <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${status.color} ${status.pulse ? 'animate-pulse' : ''}`} />
-          <span className="text-[9px] sm:text-[10px] text-gray-400 hidden lg:inline">{status.label}</span>
+      {/* Right side */}
+      <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
+        {/* Connection dot */}
+        <div className="flex items-center gap-1 px-1.5 py-1" title={status.label}>
+          <div className="w-[6px] h-[6px] rounded-full" style={{ background: status.color, boxShadow: status.pulse ? `0 0 6px ${status.color}` : 'none' }}>
+            {status.pulse && <div className="w-full h-full rounded-full animate-ping" style={{ background: status.color, opacity: 0.4 }} />}
+          </div>
+          <span className="text-[9px] text-[#666] hidden lg:inline font-mono">{connectionStatus}</span>
         </div>
 
         {/* Extensions */}
         <button onClick={onToggleExtensions}
-          className={`p-1 sm:p-1.5 rounded-md transition ${extensionsOpen ? 'bg-[#2a2d2e] text-purple-400' : 'text-gray-500 hover:text-gray-300 hover:bg-[#2a2d2e]'}`}
-          title="Extensions & Themes">
-          <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+          className={`p-1.5 rounded-md transition ${extensionsOpen ? 'bg-[#c4b5fd]/10 text-[#c4b5fd]' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}
+          title="Settings">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
         </button>
 
-        {/* Terminal Toggle */}
-        <button onClick={onToggleOutput} className={`p-1 sm:p-1.5 rounded-md transition ${outputOpen ? 'bg-[#2a2d2e] text-blue-400' : 'text-gray-500 hover:text-gray-300 hover:bg-[#2a2d2e]'}`} title="Toggle Terminal (Ctrl+`)">
-          <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+        {/* Terminal */}
+        <button onClick={onToggleOutput} className={`p-1.5 rounded-md transition ${outputOpen ? 'bg-[#5e9eff]/10 text-[#5e9eff]' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`} title="Terminal">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
         </button>
 
-        {/* Chat Toggle */}
-        <button onClick={onToggleChat} className={`p-1 sm:p-1.5 rounded-md transition ${chatOpen ? 'bg-[#2a2d2e] text-blue-400' : 'text-gray-500 hover:text-gray-300 hover:bg-[#2a2d2e]'}`} title="Toggle Chat (Ctrl+B)">
-          <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+        {/* Chat */}
+        <button onClick={onToggleChat} className={`p-1.5 rounded-md transition ${chatOpen ? 'bg-[#5e9eff]/10 text-[#5e9eff]' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`} title="Chat">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
         </button>
 
-        {/* User count */}
-        <div className="flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 py-1 bg-[#2a2d2e] rounded-md">
-          <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-          <span className="text-[10px] sm:text-xs text-gray-300 font-medium">{users?.length || 0}</span>
+        {/* User count — a subtle pill, not a badge */}
+        <div className="flex items-center gap-1 px-2 py-1 bg-[#1e1f22] rounded-md border border-[#282828]">
+          <div className="w-1 h-1 rounded-full bg-[#5bd882]" />
+          <span className="text-[10px] text-[#888] font-mono">{users?.length || 0}</span>
         </div>
       </div>
     </nav>

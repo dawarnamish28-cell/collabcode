@@ -1,7 +1,5 @@
 /**
- * FileExplorer v2.0 — Multi-file support, 20 languages
- * 
- * VSCode-style file explorer with tabs.
+ * FileExplorer v8.0 — Clean, breathing room
  * made with <3 by Namish
  */
 
@@ -97,27 +95,27 @@ const FileExplorer = memo(function FileExplorer({
     input.click();
   };
 
-  const langInfo = LANG_ICONS[language] || { icon: '?', color: '#858585' };
+  const langInfo = LANG_ICONS[language] || { icon: '?', color: '#666' };
 
   return (
-    <div className="h-full flex flex-col bg-[#252526] border-r border-editor-border overflow-hidden"
+    <div className="h-full flex flex-col bg-[#19191c] border-r border-[#282828] overflow-hidden"
       onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
       
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-editor-border/50">
-        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Explorer</span>
-        <div className="flex items-center gap-1">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[#222]">
+        <span className="text-[10px] font-mono text-[#666] uppercase tracking-wider">files</span>
+        <div className="flex items-center gap-0.5">
           <button onClick={handleOpenFiles}
-            className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-[#2a2d2e] transition"
+            className="p-1 rounded text-[#555] hover:text-[#aaa] hover:bg-[#222] transition"
             title="Open Files">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
           </button>
           <button onClick={onOpenFolder}
-            className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-[#2a2d2e] transition"
+            className="p-1 rounded text-[#555] hover:text-[#aaa] hover:bg-[#222] transition"
             title="Open Folder">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
           </button>
@@ -127,29 +125,26 @@ const FileExplorer = memo(function FileExplorer({
       {/* File List */}
       <div className="flex-1 overflow-y-auto py-1">
         {files.length === 0 ? (
-          <div className={`mx-2 my-2 p-3 border border-dashed rounded-lg text-center ${dragOver ? 'border-blue-400 bg-blue-500/10' : 'border-editor-border/50'}`}>
-            <svg className="w-6 h-6 text-gray-600 mx-auto mb-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            <p className="text-[10px] text-gray-500">Drop files here</p>
-            <p className="text-[9px] text-gray-600 mt-0.5">or click + to add</p>
+          <div className={`mx-2.5 my-3 p-4 border border-dashed rounded-xl text-center transition-colors ${dragOver ? 'border-[#5e9eff]/40 bg-[#5e9eff]/5' : 'border-[#333]'}`}>
+            <p className="text-[10px] text-[#555] font-mono">drop files here</p>
+            <p className="text-[9px] text-[#444] mt-0.5 font-mono">or click + above</p>
           </div>
         ) : (
           files.map(file => {
-            const fileLang = LANG_ICONS[file.language] || { icon: '?', color: '#858585' };
+            const fileLang = LANG_ICONS[file.language] || { icon: '?', color: '#666' };
             const isActive = file.id === activeFileId;
             return (
               <div key={file.id}
                 onClick={() => onSelectFile(file.id)}
-                className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 cursor-pointer transition group ${
-                  isActive ? 'bg-[#37373d] text-white' : 'text-gray-400 hover:bg-[#2a2d2e] hover:text-gray-200'
+                className={`flex items-center gap-1.5 px-3 py-1.5 cursor-pointer transition group ${
+                  isActive ? 'bg-[#222] text-[#ddd]' : 'text-[#777] hover:bg-[#1e1f22] hover:text-[#bbb]'
                 }`}>
-                <span className="text-[9px] sm:text-[10px] font-mono font-bold w-4 text-center flex-shrink-0" style={{ color: fileLang.color }}>{fileLang.icon}</span>
-                <span className="text-[11px] sm:text-xs truncate flex-1">{file.name}</span>
-                {file.modified && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 flex-shrink-0" title="Modified" />}
+                <span className="text-[9px] font-mono font-bold w-4 text-center flex-shrink-0" style={{ color: fileLang.color }}>{fileLang.icon}</span>
+                <span className="text-[11px] truncate flex-1 font-mono">{file.name}</span>
+                {file.modified && <div className="w-1.5 h-1.5 rounded-full bg-[#ffb347] flex-shrink-0" title="Modified" />}
                 <button onClick={(e) => { e.stopPropagation(); onRemoveFile(file.id); }}
-                  className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-[#555] transition">
-                  <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-[#333] transition">
+                  <svg className="w-2.5 h-2.5 text-[#666]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
@@ -159,11 +154,11 @@ const FileExplorer = memo(function FileExplorer({
         )}
       </div>
 
-      {/* Current Language Info */}
-      <div className="px-3 py-1.5 border-t border-editor-border/50">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono font-bold" style={{ color: langInfo.color }}>{langInfo.icon}</span>
-          <span className="text-[10px] text-gray-500 truncate">Active: {language}</span>
+      {/* Footer */}
+      <div className="px-3 py-1.5 border-t border-[#222]">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] font-mono font-bold" style={{ color: langInfo.color }}>{langInfo.icon}</span>
+          <span className="text-[9px] text-[#555] font-mono truncate">{language}</span>
         </div>
       </div>
     </div>

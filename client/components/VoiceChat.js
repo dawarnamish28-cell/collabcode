@@ -1,9 +1,6 @@
 /**
- * VoiceChat Component
- * 
- * Optional WebRTC-based voice chat.
- * Uses Socket.io for signaling (offer/answer/ICE candidates).
- * Peer-to-peer audio streams between users in the room.
+ * VoiceChat v8.0 — Minimal, warm
+ * made with <3 by Namish
  */
 
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
@@ -18,22 +15,18 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
   const [isMuted, setIsMuted] = useState(false);
   const [voiceUsers, setVoiceUsers] = useState([]);
   const [error, setError] = useState('');
-  const peersRef = useRef(new Map()); // socketId -> { pc, stream }
+  const peersRef = useRef(new Map());
   const localStreamRef = useRef(null);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => { leaveVoice(); };
   }, []);
 
-  // Socket events for voice signaling
   useEffect(() => {
     if (!socket) return;
 
     socket.on('voice:peers', (peers) => {
-      // When we join, we get the list of existing voice users
       setVoiceUsers(peers.map(p => ({ userId: p.userId, username: p.username })));
-      // Initiate call to each existing peer
       peers.forEach(peer => createOffer(peer.socketId, peer.username));
     });
 
@@ -42,12 +35,10 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
         if (prev.find(u => u.userId === data.userId)) return prev;
         return [...prev, { userId: data.userId, username: data.username }];
       });
-      // The newcomer will send us an offer; we just wait
     });
 
     socket.on('voice:user-left', (data) => {
       setVoiceUsers(prev => prev.filter(u => u.userId !== data.userId));
-      // Close peer connection
       for (const [sid, peer] of peersRef.current) {
         if (peer.userId === data.userId) {
           peer.pc.close();
@@ -61,37 +52,24 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
       try {
         const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
         localStreamRef.current.getTracks().forEach(t => pc.addTrack(t, localStreamRef.current));
-
-        pc.onicecandidate = (e) => {
-          if (e.candidate) socket.emit('voice:ice-candidate', { to: data.from, candidate: e.candidate });
-        };
-        pc.ontrack = (e) => {
-          playRemoteAudio(e.streams[0], data.from);
-        };
-
+        pc.onicecandidate = (e) => { if (e.candidate) socket.emit('voice:ice-candidate', { to: data.from, candidate: e.candidate }); };
+        pc.ontrack = (e) => { playRemoteAudio(e.streams[0], data.from); };
         await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         socket.emit('voice:answer', { to: data.from, answer });
-
         peersRef.current.set(data.from, { pc, userId: data.userId, username: data.username });
-      } catch (err) {
-        console.error('[Voice] Offer handling error:', err);
-      }
+      } catch (err) { console.error('[Voice] Offer handling error:', err); }
     });
 
     socket.on('voice:answer', async (data) => {
       const peer = peersRef.current.get(data.from);
-      if (peer) {
-        try { await peer.pc.setRemoteDescription(new RTCSessionDescription(data.answer)); } catch (e) {}
-      }
+      if (peer) { try { await peer.pc.setRemoteDescription(new RTCSessionDescription(data.answer)); } catch (e) {} }
     });
 
     socket.on('voice:ice-candidate', async (data) => {
       const peer = peersRef.current.get(data.from);
-      if (peer) {
-        try { await peer.pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (e) {}
-      }
+      if (peer) { try { await peer.pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (e) {} }
     });
 
     return () => {
@@ -104,22 +82,13 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
     try {
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
       localStreamRef.current.getTracks().forEach(t => pc.addTrack(t, localStreamRef.current));
-
-      pc.onicecandidate = (e) => {
-        if (e.candidate) socket.emit('voice:ice-candidate', { to: targetSocketId, candidate: e.candidate });
-      };
-      pc.ontrack = (e) => {
-        playRemoteAudio(e.streams[0], targetSocketId);
-      };
-
+      pc.onicecandidate = (e) => { if (e.candidate) socket.emit('voice:ice-candidate', { to: targetSocketId, candidate: e.candidate }); };
+      pc.ontrack = (e) => { playRemoteAudio(e.streams[0], targetSocketId); };
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       socket.emit('voice:offer', { to: targetSocketId, offer });
-
       peersRef.current.set(targetSocketId, { pc, username });
-    } catch (err) {
-      console.error('[Voice] Create offer error:', err);
-    }
+    } catch (err) { console.error('[Voice] Create offer error:', err); }
   }
 
   function playRemoteAudio(stream, id) {
@@ -141,7 +110,7 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
       setIsInVoice(true);
       socket.emit('voice:join');
     } catch (err) {
-      setError('Microphone access denied');
+      setError('mic access denied');
       console.error('[Voice] Mic error:', err);
     }
   }
@@ -153,7 +122,6 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
     }
     peersRef.current.forEach(({ pc }) => pc.close());
     peersRef.current.clear();
-    // Clean up audio elements
     document.querySelectorAll('[id^="voice-audio-"]').forEach(el => el.remove());
     setIsInVoice(false);
     setVoiceUsers([]);
@@ -168,46 +136,43 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
   }
 
   return (
-    <div className="px-3 py-2 bg-[#252526] border-b border-editor-border flex-shrink-0">
+    <div className="px-3 py-2 bg-[#19191c] border-b border-[#282828] flex-shrink-0">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-          </svg>
-          <span className="text-xs font-medium text-gray-400">Voice</span>
-          {isInVoice && <span className="text-[10px] px-1.5 py-0.5 bg-green-600/20 text-green-400 rounded-full">{voiceUsers.length + 1} in call</span>}
+          <span className="text-[11px] font-mono text-[#666]">voice</span>
+          {isInVoice && <span className="text-[9px] px-1.5 py-0.5 bg-[#5bd882]/10 text-[#5bd882] rounded font-mono">{voiceUsers.length + 1} in call</span>}
         </div>
 
         <div className="flex items-center gap-1">
           {isInVoice && (
             <button onClick={toggleMute}
-              className={`p-1.5 rounded-md transition-colors ${isMuted ? 'bg-red-600/20 text-red-400' : 'bg-[#2a2d2e] text-gray-300 hover:text-white'}`}
+              className={`p-1.5 rounded-md transition ${isMuted ? 'bg-[#ff6b6b]/10 text-[#ff6b6b]' : 'bg-[#222] text-[#aaa] hover:text-white'}`}
               title={isMuted ? 'Unmute' : 'Mute'}>
               {isMuted ? (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
                 </svg>
               ) : (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                 </svg>
               )}
             </button>
           )}
           <button onClick={isInVoice ? leaveVoice : joinVoice}
-            className={`text-[10px] px-3 py-1.5 rounded-md font-medium transition-all ${isInVoice
-              ? 'bg-red-600 hover:bg-red-500 text-white'
-              : 'bg-green-600 hover:bg-green-500 text-white'}`}>
-            {isInVoice ? 'Leave' : 'Join Voice'}
+            className={`text-[10px] px-2.5 py-1 rounded-md font-mono transition-all ${isInVoice
+              ? 'bg-[#ff6b6b]/10 hover:bg-[#ff6b6b]/20 text-[#ff6b6b] border border-[#ff6b6b]/15'
+              : 'bg-[#5bd882]/10 hover:bg-[#5bd882]/20 text-[#5bd882] border border-[#5bd882]/15'}`}>
+            {isInVoice ? 'leave' : 'join voice'}
           </button>
         </div>
       </div>
-      {error && <p className="text-red-400 text-[10px] mt-1">{error}</p>}
+      {error && <p className="text-[#ff6b6b] text-[10px] mt-1 font-mono">{error}</p>}
       {isInVoice && voiceUsers.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
+        <div className="flex flex-wrap gap-1 mt-1.5">
           {voiceUsers.map(u => (
-            <span key={u.userId} className="text-[10px] px-2 py-0.5 bg-green-600/10 text-green-400 rounded-full border border-green-600/20">
+            <span key={u.userId} className="text-[9px] px-1.5 py-0.5 bg-[#5bd882]/5 text-[#5bd882] rounded font-mono border border-[#5bd882]/10">
               {u.username}
             </span>
           ))}

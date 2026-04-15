@@ -1,13 +1,11 @@
 /**
- * Landing Page v5.0
+ * Landing Page v8.0 — "Handcrafted" Redesign
  * 
- * Major update:
- * - Public rooms listing on home screen
- * - Code gallery for sharing projects
- * - Room validation (no room found for invalid codes)
- * - 15 languages
- * - Remember me auth
- * - "made with <3 by Namish" branding
+ * Design philosophy: less symmetry, more personality.
+ * No more generic hero gradients. Warm, opinionated, 
+ * slightly rough around the edges — like a real dev built it.
+ * 
+ * made with <3 by Namish
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -62,7 +60,7 @@ export default function Home() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [langVersions, setLangVersions] = useState({});
-  const [tab, setTab] = useState('rooms'); // 'rooms' | 'gallery'
+  const [tab, setTab] = useState('rooms');
   const [gallery, setGallery] = useState([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -110,7 +108,6 @@ export default function Home() {
     const code = joinCode.trim().toUpperCase();
     if (!code) { setError('Enter a room code'); return; }
     if (code.length < 3) { setError('Code too short'); return; }
-
     setJoinLoading(true);
     setError('');
     try {
@@ -118,10 +115,9 @@ export default function Home() {
       if (res.data.exists) {
         router.push(`/room/${code}`);
       } else {
-        setError('No room found with this code. Create a new room instead.');
+        setError('No room found with this code. Create a new one instead.');
       }
     } catch (err) {
-      // If API fails, still try to join (room might not be in memory yet)
       setError('No room found. Check the code or create a new room.');
     } finally {
       setJoinLoading(false);
@@ -140,7 +136,6 @@ export default function Home() {
       const res = await axios.post(`${SERVER_URL}${endpoint}`, body);
       const user = res.data;
       setUser(user);
-      // Remember me: store in localStorage
       if (authForm.remember) {
         localStorage.setItem('collabcode_auth', JSON.stringify(user));
       }
@@ -171,147 +166,168 @@ export default function Home() {
   const getLangInfo = (id) => LANGUAGES.find(l => l.id === id) || LANGUAGES[0];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0d1117] via-[#161b22] to-[#0d1117] flex flex-col">
-      {/* Header */}
-      <header className="border-b border-editor-border/30 backdrop-blur-sm bg-black/20 sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-sm font-bold text-white shadow-lg shadow-blue-600/20">{'<>'}</div>
+    <div className="min-h-screen bg-[#131416] flex flex-col grain">
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <header className="border-b border-[#222] sticky top-0 z-40 bg-[#131416]/80 backdrop-blur-md">
+        <div className="max-w-5xl mx-auto px-5 sm:px-8 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#222] border border-[#333] flex items-center justify-center text-[11px] font-mono font-bold text-[#5e9eff] shadow-inner-subtle">
+              {'//'}
+            </div>
             <div>
-              <h1 className="text-lg font-bold text-white leading-tight">CollabCode</h1>
-              <p className="text-[9px] text-gray-600 -mt-0.5">made with &lt;3 by Namish</p>
+              <h1 className="text-[15px] font-display font-semibold text-white tracking-tight leading-none">CollabCode</h1>
+              <p className="text-[9px] text-[#555] font-mono mt-0.5">by namish</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             {state.user && (
-              <div className="hidden sm:flex items-center gap-2 text-sm text-gray-400">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: state.user.color }} />
-                <span className="text-xs">{state.user.username}</span>
-                {state.user.authenticated && <span className="text-[9px] px-1.5 py-0.5 bg-green-600/20 text-green-400 rounded-full font-medium">PRO</span>}
+              <div className="hidden sm:flex items-center gap-2 text-xs text-[#888]">
+                <div className="w-2 h-2 rounded-full ring-1 ring-white/10" style={{ backgroundColor: state.user.color }} />
+                <span className="font-mono text-[11px]">{state.user.username}</span>
+                {state.user.authenticated && <span className="text-[9px] px-1.5 py-0.5 bg-[#5bd882]/10 text-[#5bd882] rounded font-mono">pro</span>}
               </div>
             )}
             {state.isAuthenticated ? (
               <button onClick={() => { localStorage.removeItem('collabcode_auth'); window.location.reload(); }}
-                className="text-xs px-3 py-1.5 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600/30 transition">Sign Out</button>
+                className="text-[11px] px-3 py-1.5 text-[#888] hover:text-white bg-transparent hover:bg-[#222] rounded-lg transition-all border border-transparent hover:border-[#333]">
+                sign out
+              </button>
             ) : (
               <button onClick={() => setShowAuth(true)}
-                className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition font-medium shadow-lg shadow-blue-600/20">Sign In</button>
+                className="text-[11px] px-4 py-1.5 bg-[#222] text-white rounded-lg hover:bg-[#2a2b30] transition-all border border-[#333] font-medium">
+                sign in
+              </button>
             )}
           </div>
         </div>
       </header>
 
-      <main className="flex-1 px-4 sm:px-6 py-6 sm:py-10">
-        <div className="max-w-6xl mx-auto">
-          {/* Hero */}
-          <div className="text-center mb-8">
-            <h2 className="text-3xl sm:text-5xl font-bold text-white mb-3 leading-tight">
-              Code Together,{' '}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">In Real-Time</span>
+      <main className="flex-1 px-5 sm:px-8 py-8 sm:py-14">
+        <div className="max-w-5xl mx-auto">
+          {/* ── Hero ─────────────────────────────────────────── */}
+          <div className="mb-10 sm:mb-14 fade-up">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-2 h-2 rounded-full bg-[#5bd882] breathe" />
+              <span className="text-[11px] text-[#666] font-mono">20 languages, 0 latency, real-time sync</span>
+            </div>
+            <h2 className="text-[28px] sm:text-[42px] font-display font-bold text-white leading-[1.1] tracking-tight max-w-xl">
+              Your code.{' '}
+              <br className="hidden sm:block" />
+              <span className="text-[#5e9eff]">Their code.</span>{' '}
+              <br className="hidden sm:block" />
+              <span className="text-[#888]">Same editor.</span>
             </h2>
-            <p className="text-sm sm:text-base text-gray-400 max-w-2xl mx-auto">
-              Collaborative code editor with 20 language runtimes, voice chat, real-time sync, and interactive terminal with input() support. Now with Lua, Fortran, Tcl, SQLite, and Assembly!
+            <p className="text-[13px] sm:text-[15px] text-[#666] mt-4 max-w-lg leading-relaxed">
+              Pair program with anyone. CRDT-synced editor, voice chat, 
+              interactive terminal. Runs everything from Python to Assembly
+              right in the browser.
             </p>
           </div>
 
-          {/* Create + Join */}
-          <div className="grid md:grid-cols-2 gap-4 sm:gap-6 mb-8">
+          {/* ── Create + Join (asymmetric layout) ────────────── */}
+          <div className="grid md:grid-cols-[1.15fr_1fr] gap-4 sm:gap-5 mb-10 sm:mb-14 stagger-in">
             {/* Create Room */}
-            <div className="bg-[#161b22] border border-editor-border/40 rounded-2xl p-5 sm:p-6 hover:border-blue-500/40 transition-all">
-              <div className="flex items-center gap-2 mb-4">
-                <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                <h3 className="text-lg font-semibold text-white">Create Room</h3>
+            <div className="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-5 sm:p-6 hover-lift fade-up">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-[13px] font-display font-semibold text-white">new room</h3>
+                <span className="text-[10px] text-[#555] font-mono">pick a language, hit go</span>
               </div>
-              <div className="mb-3">
-                <label className="block text-xs text-gray-400 mb-2">Choose Language</label>
-                <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
+              
+              {/* Language Grid — more breathing room, less mechanical */}
+              <div className="mb-4">
+                <div className="grid grid-cols-5 sm:grid-cols-5 gap-1">
                   {LANGUAGES.map(lang => (
                     <button key={lang.id} onClick={() => setSelectedLang(lang.id)}
-                      className={`relative px-1 py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all ${selectedLang === lang.id
-                        ? 'text-white ring-2 ring-blue-400/50 shadow-lg'
-                        : 'text-gray-400 hover:text-white border border-editor-border/30 hover:border-gray-500'}`}
-                      style={selectedLang === lang.id ? { backgroundColor: lang.color + '30' } : { backgroundColor: '#0d1117' }}
-                      title={`${lang.name}${langVersions[lang.id] ? ` — ${langVersions[lang.id]}` : ''}`}>
+                      className={`relative px-1 py-2 rounded-lg text-[10px] font-mono font-bold transition-all duration-150 ${
+                        selectedLang === lang.id
+                          ? 'ring-1 ring-[#5e9eff]/40 bg-[#5e9eff]/8 scale-[1.03]'
+                          : 'text-[#666] hover:text-[#aaa] hover:bg-[#222] bg-transparent'
+                      }`}
+                      title={`${lang.name}${langVersions[lang.id] ? ` (${langVersions[lang.id]})` : ''}`}>
                       <span style={{ color: selectedLang === lang.id ? lang.color : undefined }}>{lang.icon}</span>
                     </button>
                   ))}
                 </div>
-                <p className="text-[10px] text-gray-600 mt-1.5">
-                  {getLangInfo(selectedLang).name}
-                  {langVersions[selectedLang] && <span className="ml-1 text-gray-700">({langVersions[selectedLang]?.split(' ')[0]?.split('(')[0]})</span>}
-                </p>
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: getLangInfo(selectedLang).color }} />
+                  <p className="text-[11px] text-[#777]">
+                    {getLangInfo(selectedLang).name}
+                    {langVersions[selectedLang] && <span className="text-[#555] ml-1">({langVersions[selectedLang]?.split(' ')[0]?.split('(')[0]})</span>}
+                  </p>
+                </div>
               </div>
 
-              {/* Public/Private Toggle */}
-              <label className="flex items-center gap-2 mb-4 cursor-pointer group">
+              {/* Public Toggle — less boxy */}
+              <label className="flex items-center gap-2.5 mb-5 cursor-pointer group">
                 <button onClick={() => setIsPublicRoom(!isPublicRoom)}
-                  className={`w-8 h-4 rounded-full transition-all relative ${isPublicRoom ? 'bg-green-500' : 'bg-[#555]'}`}>
-                  <div className={`w-3 h-3 rounded-full bg-white absolute top-0.5 transition-all`}
-                    style={{ left: isPublicRoom ? '17px' : '2px' }} />
+                  className={`w-7 h-[15px] rounded-full transition-all relative ${isPublicRoom ? 'bg-[#5bd882]' : 'bg-[#444]'}`}>
+                  <div className={`w-[11px] h-[11px] rounded-full bg-white absolute top-[2px] transition-all shadow-sm`}
+                    style={{ left: isPublicRoom ? '14px' : '2px' }} />
                 </button>
-                <span className="text-xs text-gray-400 group-hover:text-gray-200 transition">
-                  {isPublicRoom ? '🌍 Public Room' : '🔒 Private Room'}
-                </span>
-                <span className="text-[10px] text-gray-600">
-                  {isPublicRoom ? '— visible on home screen' : '— invite only'}
+                <span className="text-[11px] text-[#777] group-hover:text-[#aaa] transition font-mono">
+                  {isPublicRoom ? 'public — listed on home' : 'private — invite only'}
                 </span>
               </label>
 
               <button onClick={handleCreateRoom}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-medium rounded-xl transition-all shadow-lg shadow-blue-600/20 active:scale-[0.98]">
-                Create Room
+                className="w-full py-2.5 bg-[#5e9eff] hover:bg-[#7ab3ff] text-[#0a0a0a] text-[13px] font-display font-semibold rounded-xl transition-all active:scale-[0.97] shadow-glow">
+                create room
               </button>
             </div>
 
-            {/* Join Room */}
-            <div className="bg-[#161b22] border border-editor-border/40 rounded-2xl p-5 sm:p-6 hover:border-purple-500/40 transition-all">
-              <div className="flex items-center gap-2 mb-4">
-                <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                <h3 className="text-lg font-semibold text-white">Join Room</h3>
+            {/* Join Room — slightly different style, intentionally */}
+            <div className="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-5 sm:p-6 hover-lift fade-up" style={{ animationDelay: '80ms' }}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-[13px] font-display font-semibold text-white">join room</h3>
+                <span className="text-[10px] text-[#555] font-mono">got a code?</span>
               </div>
               <form onSubmit={handleJoinRoom}>
-                <div className="mb-4">
-                  <label className="block text-xs text-gray-400 mb-2">Room Code</label>
+                <div className="mb-5">
                   <input type="text" value={joinCode}
                     onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setError(''); }}
                     placeholder="ABC123" maxLength={6}
-                    className="w-full px-4 py-3 bg-[#0d1117] border border-editor-border/40 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500/50 font-mono text-center text-2xl tracking-[0.3em] uppercase" />
+                    className="w-full px-4 py-3 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 font-mono text-center text-xl tracking-[0.3em] uppercase transition-colors" />
                   {error && (
-                    <div className="flex items-center gap-1.5 mt-2 text-red-400 text-xs bg-red-600/10 border border-red-600/20 rounded-lg px-3 py-2">
-                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                      {error}
-                    </div>
+                    <p className="mt-2 text-[#ff6b6b] text-[11px] font-mono pl-1">{error}</p>
                   )}
                 </div>
                 <button type="submit" disabled={joinLoading}
-                  className="w-full py-3 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white font-medium rounded-xl transition-all shadow-lg shadow-purple-600/20 active:scale-[0.98] disabled:opacity-50">
-                  {joinLoading ? 'Checking...' : 'Join Room'}
+                  className="w-full py-2.5 bg-[#222] hover:bg-[#2a2b30] text-white text-[13px] font-display font-semibold rounded-xl transition-all active:scale-[0.97] border border-[#333] disabled:opacity-40">
+                  {joinLoading ? 'checking...' : 'join room'}
                 </button>
               </form>
             </div>
           </div>
 
-          {/* Tabs: Public Rooms / Gallery */}
-          <div className="flex items-center gap-1 mb-4 bg-[#161b22] rounded-xl p-1 max-w-xs">
-            <button onClick={() => setTab('rooms')} className={`flex-1 py-2 px-4 rounded-lg text-xs font-medium transition ${tab === 'rooms' ? 'bg-[#252526] text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-              🌍 Public Rooms
+          {/* ── Tabs: Rooms / Gallery ──────────────────────── */}
+          <div className="flex items-center gap-4 mb-5">
+            <button onClick={() => setTab('rooms')}
+              className={`text-[12px] font-mono pb-1 transition-all ${tab === 'rooms' ? 'text-white border-b border-[#5e9eff]' : 'text-[#555] hover:text-[#888]'}`}>
+              live rooms
             </button>
-            <button onClick={() => { setTab('gallery'); fetchGallery(); }} className={`flex-1 py-2 px-4 rounded-lg text-xs font-medium transition ${tab === 'gallery' ? 'bg-[#252526] text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-              📦 Gallery
+            <button onClick={() => { setTab('gallery'); fetchGallery(); }}
+              className={`text-[12px] font-mono pb-1 transition-all ${tab === 'gallery' ? 'text-white border-b border-[#5e9eff]' : 'text-[#555] hover:text-[#888]'}`}>
+              gallery
             </button>
+            <div className="flex-1" />
+            {tab === 'rooms' && (
+              <button onClick={fetchPublicRooms} className="text-[10px] text-[#555] hover:text-[#888] transition font-mono">refresh</button>
+            )}
+            {tab === 'gallery' && (
+              <button onClick={() => setShowShareModal(true)}
+                className="text-[10px] px-2.5 py-1 bg-[#222] text-[#888] hover:text-white rounded-lg border border-[#333] hover:border-[#444] transition font-mono">
+                + share code
+              </button>
+            )}
           </div>
 
-          {/* Public Rooms */}
+          {/* ── Public Rooms ─────────────────────────────────── */}
           {tab === 'rooms' && (
-            <div className="bg-[#161b22] border border-editor-border/40 rounded-2xl p-5 mb-8">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Public Rooms</h3>
-                <button onClick={fetchPublicRooms} className="text-[10px] text-gray-500 hover:text-gray-300 transition">Refresh</button>
-              </div>
+            <div className="mb-10 fade-up">
               {publicRooms.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-600 text-sm">No public rooms right now</p>
-                  <p className="text-gray-700 text-xs mt-1">Create a public room and it'll show up here!</p>
+                <div className="py-12 text-center">
+                  <p className="text-[#555] text-[13px]">no public rooms right now</p>
+                  <p className="text-[#444] text-[11px] mt-1 font-mono">create one and it shows up here</p>
                 </div>
               ) : (
                 <div className="space-y-1.5">
@@ -319,17 +335,17 @@ export default function Home() {
                     const langInfo = getLangInfo(room.language);
                     return (
                       <button key={room.roomId} onClick={() => router.push(`/room/${room.roomId}`)}
-                        className="w-full flex items-center justify-between px-4 py-3 bg-[#0d1117] hover:bg-[#21262d] rounded-xl transition-all group">
+                        className="w-full flex items-center justify-between px-4 py-3 bg-[#1a1b1e] hover:bg-[#1e1f22] rounded-xl transition-all group border border-transparent hover:border-[#282828]">
                         <div className="flex items-center gap-3">
-                          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                          <span className="text-sm font-mono text-gray-300 tracking-wider">{room.roomId}</span>
-                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded" style={{ color: langInfo.color, background: langInfo.color + '20' }}>
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#5bd882] breathe" />
+                          <span className="text-[13px] font-mono text-[#aaa] tracking-wider">{room.roomId}</span>
+                          <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded" style={{ color: langInfo.color, background: langInfo.color + '12' }}>
                             {langInfo.icon}
                           </span>
                         </div>
-                        <div className="flex items-center gap-3 text-xs text-gray-500">
-                          <span>{room.userCount} user{room.userCount !== 1 ? 's' : ''}</span>
-                          <svg className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <div className="flex items-center gap-3 text-[11px] text-[#555] font-mono">
+                          <span>{room.userCount} online</span>
+                          <svg className="w-3 h-3 opacity-0 group-hover:opacity-60 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         </div>
                       </button>
                     );
@@ -339,23 +355,15 @@ export default function Home() {
             </div>
           )}
 
-          {/* Gallery */}
+          {/* ── Gallery ──────────────────────────────────────── */}
           {tab === 'gallery' && (
-            <div className="bg-[#161b22] border border-editor-border/40 rounded-2xl p-5 mb-8">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Code Gallery</h3>
-                <button onClick={() => setShowShareModal(true)}
-                  className="text-xs px-3 py-1.5 bg-blue-600/20 text-blue-400 rounded-lg hover:bg-blue-600/30 transition flex items-center gap-1">
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                  Share Code
-                </button>
-              </div>
+            <div className="mb-10 fade-up">
               {galleryLoading ? (
-                <div className="text-center py-8"><div className="spinner mx-auto mb-3" /><p className="text-gray-600 text-xs">Loading gallery...</p></div>
+                <div className="text-center py-12"><div className="spinner mx-auto mb-3" /><p className="text-[#555] text-[11px] font-mono">loading...</p></div>
               ) : gallery.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-600 text-sm">Gallery is empty</p>
-                  <p className="text-gray-700 text-xs mt-1">Be the first to share your code!</p>
+                <div className="py-12 text-center">
+                  <p className="text-[#555] text-[13px]">gallery is empty</p>
+                  <p className="text-[#444] text-[11px] mt-1 font-mono">be the first to share something</p>
                 </div>
               ) : (
                 <div className="grid sm:grid-cols-2 gap-3">
@@ -364,18 +372,18 @@ export default function Home() {
                     return (
                       <div key={snippet.id}
                         onClick={() => setSelectedSnippet(snippet.id === selectedSnippet?.id ? null : snippet)}
-                        className="bg-[#0d1117] border border-editor-border/30 rounded-xl p-4 hover:border-editor-border/60 cursor-pointer transition">
+                        className="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 hover:border-[#333] cursor-pointer transition-all hover-lift">
                         <div className="flex items-center justify-between mb-2">
-                          <h4 className="text-sm font-medium text-gray-200 truncate">{snippet.title}</h4>
-                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 ml-2" style={{ color: langInfo.color, background: langInfo.color + '20' }}>
+                          <h4 className="text-[13px] font-medium text-[#ccc] truncate">{snippet.title}</h4>
+                          <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ml-2 flex-shrink-0" style={{ color: langInfo.color, background: langInfo.color + '12' }}>
                             {langInfo.icon}
                           </span>
                         </div>
-                        {snippet.description && <p className="text-[11px] text-gray-500 mb-2 line-clamp-2">{snippet.description}</p>}
-                        <pre className="text-[10px] text-gray-400 bg-[#161b22] rounded-lg p-2 overflow-hidden max-h-20 font-mono leading-relaxed">{snippet.code}</pre>
-                        <div className="flex items-center justify-between mt-2 text-[10px] text-gray-600">
+                        {snippet.description && <p className="text-[11px] text-[#555] mb-2 line-clamp-2">{snippet.description}</p>}
+                        <pre className="text-[10px] text-[#666] bg-[#111] rounded-lg p-2.5 overflow-hidden max-h-20 font-mono leading-relaxed border border-[#1e1e1e]">{snippet.code}</pre>
+                        <div className="flex items-center justify-between mt-2.5 text-[10px] text-[#555] font-mono">
                           <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: snippet.authorColor || '#858585' }} />
+                            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: snippet.authorColor || '#666' }} />
                             <span>{snippet.author}</span>
                           </div>
                           <span>{snippet.views || 0} views</span>
@@ -388,77 +396,79 @@ export default function Home() {
             </div>
           )}
 
-          {/* Features */}
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mb-8">
-            {[
-              { icon: '⚡', label: 'Real-time Sync', desc: 'CRDT-based' },
-              { icon: '🎙️', label: 'Voice Chat', desc: 'WebRTC P2P' },
-              { icon: '▶️', label: '20 Languages', desc: 'Local exec' },
-              { icon: '📁', label: 'Multi-File', desc: 'File explorer' },
-              { icon: '🎨', label: 'Themes', desc: 'Extensions' },
-            ].map((feat, i) => (
-              <div key={i} className="text-center py-3 px-2 bg-[#161b22]/50 rounded-xl border border-editor-border/20">
-                <div className="text-xl mb-1">{feat.icon}</div>
-                <div className="text-xs font-medium text-gray-300">{feat.label}</div>
-                <div className="text-[10px] text-gray-600">{feat.desc}</div>
-              </div>
-            ))}
+          {/* ── What's in the box (replaces generic features grid) ─ */}
+          <div className="mb-6 fade-up" style={{ animationDelay: '200ms' }}>
+            <h3 className="text-[11px] text-[#555] font-mono mb-4 uppercase tracking-wider">what you get</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {[
+                { label: 'CRDT Sync', detail: 'Yjs-powered, no conflicts', color: '#5e9eff' },
+                { label: 'Voice Chat', detail: 'WebRTC peer-to-peer', color: '#5bd882' },
+                { label: '20 Languages', detail: 'All run server-side', color: '#ffb347' },
+                { label: 'Themes & Settings', detail: '6 terminal themes + more', color: '#c4b5fd' },
+              ].map((feat, i) => (
+                <div key={i} className="p-3 bg-[#1a1b1e] rounded-xl border border-[#222]">
+                  <div className="w-1 h-1 rounded-full mb-2" style={{ background: feat.color }} />
+                  <div className="text-[12px] font-medium text-[#ccc]">{feat.label}</div>
+                  <div className="text-[10px] text-[#555] font-mono mt-0.5">{feat.detail}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </main>
 
-      {/* Snippet Detail Modal */}
+      {/* ── Snippet Detail Modal ───────────────────────────── */}
       {selectedSnippet && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setSelectedSnippet(null); }}>
-          <div className="bg-[#161b22] border border-editor-border/40 rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setSelectedSnippet(null); }}>
+          <div className="bg-[#1a1b1e] border border-[#333] rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto shadow-2xl">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white">{selectedSnippet.title}</h3>
-              <button onClick={() => setSelectedSnippet(null)} className="p-1 text-gray-500 hover:text-white transition">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              <h3 className="text-[15px] font-display font-semibold text-white">{selectedSnippet.title}</h3>
+              <button onClick={() => setSelectedSnippet(null)} className="p-1.5 text-[#666] hover:text-white transition rounded-lg hover:bg-[#222]">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            {selectedSnippet.description && <p className="text-sm text-gray-400 mb-4">{selectedSnippet.description}</p>}
-            <pre className="text-sm text-gray-300 bg-[#0d1117] rounded-xl p-4 overflow-auto max-h-96 font-mono leading-relaxed">{selectedSnippet.code}</pre>
+            {selectedSnippet.description && <p className="text-[13px] text-[#777] mb-4">{selectedSnippet.description}</p>}
+            <pre className="text-[12px] text-[#ccc] bg-[#111] rounded-xl p-4 overflow-auto max-h-96 font-mono leading-relaxed border border-[#222]">{selectedSnippet.code}</pre>
             <div className="flex items-center justify-between mt-4">
-              <div className="flex items-center gap-2 text-xs text-gray-500">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: selectedSnippet.authorColor || '#858585' }} />
+              <div className="flex items-center gap-2 text-[11px] text-[#666] font-mono">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: selectedSnippet.authorColor || '#666' }} />
                 <span>{selectedSnippet.author}</span>
-                <span>•</span>
+                <span className="text-[#444]">/</span>
                 <span>{getLangInfo(selectedSnippet.language).name}</span>
               </div>
               <button onClick={() => {
                 navigator.clipboard.writeText(selectedSnippet.code).catch(() => {});
-              }} className="text-xs px-3 py-1.5 bg-blue-600/20 text-blue-400 rounded-lg hover:bg-blue-600/30 transition">
-                Copy Code
+              }} className="text-[11px] px-3 py-1.5 bg-[#222] text-[#aaa] rounded-lg hover:bg-[#2a2b30] hover:text-white transition border border-[#333] font-mono">
+                copy
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Share Code Modal */}
+      {/* ── Share Code Modal ────────────────────────────────── */}
       {showShareModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowShareModal(false); }}>
-          <div className="bg-[#161b22] border border-editor-border/40 rounded-2xl p-6 w-full max-w-lg">
-            <h3 className="text-lg font-bold text-white mb-4">Share Your Code</h3>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowShareModal(false); }}>
+          <div className="bg-[#1a1b1e] border border-[#333] rounded-2xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-[15px] font-display font-semibold text-white mb-4">share your code</h3>
             <form onSubmit={handleShareCode} className="space-y-3">
-              <input type="text" placeholder="Title" value={shareForm.title}
+              <input type="text" placeholder="title" value={shareForm.title}
                 onChange={(e) => setShareForm(p => ({ ...p, title: e.target.value }))}
-                className="w-full px-4 py-2.5 bg-[#0d1117] border border-editor-border/40 rounded-xl text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500/50 focus:outline-none text-sm" required maxLength={100} />
-              <input type="text" placeholder="Description (optional)" value={shareForm.description}
+                className="w-full px-4 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 text-[13px] transition-colors" required maxLength={100} />
+              <input type="text" placeholder="description (optional)" value={shareForm.description}
                 onChange={(e) => setShareForm(p => ({ ...p, description: e.target.value }))}
-                className="w-full px-4 py-2.5 bg-[#0d1117] border border-editor-border/40 rounded-xl text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500/50 focus:outline-none text-sm" maxLength={500} />
+                className="w-full px-4 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 text-[13px] transition-colors" maxLength={500} />
               <select value={shareForm.language} onChange={(e) => setShareForm(p => ({ ...p, language: e.target.value }))}
-                className="w-full px-4 py-2.5 bg-[#0d1117] border border-editor-border/40 rounded-xl text-white focus:ring-2 focus:ring-blue-500/50 focus:outline-none text-sm">
+                className="w-full px-4 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white focus:outline-none focus:border-[#5e9eff]/40 text-[13px] transition-colors">
                 {LANGUAGES.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
-              <textarea placeholder="Paste your code here..." value={shareForm.code}
+              <textarea placeholder="paste your code..." value={shareForm.code}
                 onChange={(e) => setShareForm(p => ({ ...p, code: e.target.value }))}
-                className="w-full px-4 py-2.5 bg-[#0d1117] border border-editor-border/40 rounded-xl text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500/50 focus:outline-none text-sm font-mono h-40 resize-none" required maxLength={50000} />
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setShowShareModal(false)} className="flex-1 py-2.5 bg-[#252526] text-gray-300 rounded-xl hover:bg-[#2a2d2e] transition text-sm">Cancel</button>
-                <button type="submit" disabled={shareLoading} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition text-sm disabled:opacity-50">
-                  {shareLoading ? 'Sharing...' : 'Share'}
+                className="w-full px-4 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 text-[13px] font-mono h-40 resize-none transition-colors" required maxLength={50000} />
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setShowShareModal(false)} className="flex-1 py-2.5 bg-[#222] text-[#aaa] rounded-xl hover:bg-[#2a2b30] transition text-[13px] border border-[#333]">cancel</button>
+                <button type="submit" disabled={shareLoading} className="flex-1 py-2.5 bg-[#5e9eff] text-[#0a0a0a] rounded-xl hover:bg-[#7ab3ff] transition text-[13px] font-semibold disabled:opacity-40">
+                  {shareLoading ? 'sharing...' : 'share'}
                 </button>
               </div>
             </form>
@@ -466,70 +476,69 @@ export default function Home() {
         </div>
       )}
 
-      {/* Auth Modal */}
+      {/* ── Auth Modal ──────────────────────────────────────── */}
       {showAuth && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) { setShowAuth(false); setAuthError(''); } }}>
-          <div className="bg-[#161b22] border border-editor-border/40 rounded-2xl p-6 w-full max-w-md relative">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) { setShowAuth(false); setAuthError(''); } }}>
+          <div className="bg-[#1a1b1e] border border-[#333] rounded-2xl p-6 w-full max-w-sm relative shadow-2xl">
             <button onClick={() => { setShowAuth(false); setAuthError(''); }}
-              className="absolute top-4 right-4 text-gray-500 hover:text-white transition w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#2a2d2e]">
+              className="absolute top-4 right-4 text-[#555] hover:text-white transition p-1.5 rounded-lg hover:bg-[#222]">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
-            <h3 className="text-xl font-bold text-white mb-1">{authMode === 'signup' ? 'Create Account' : 'Welcome Back'}</h3>
-            <p className="text-sm text-gray-500 mb-6">{authMode === 'signup' ? 'Sign up to save your settings' : 'Sign in to your account'}</p>
-            <form onSubmit={handleAuth} className="space-y-3">
+            <h3 className="text-[16px] font-display font-semibold text-white mb-1">{authMode === 'signup' ? 'create account' : 'welcome back'}</h3>
+            <p className="text-[12px] text-[#666] mb-5 font-mono">{authMode === 'signup' ? 'save your settings across sessions' : 'pick up where you left off'}</p>
+            <form onSubmit={handleAuth} className="space-y-2.5">
               {authMode === 'signup' && (
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">Username</label>
-                  <input type="text" placeholder="e.g. CodeNinja" value={authForm.username}
+                  <label className="block text-[10px] text-[#666] mb-1 font-mono uppercase tracking-wider">username</label>
+                  <input type="text" placeholder="CodeNinja" value={authForm.username}
                     onChange={(e) => setAuthForm(p => ({ ...p, username: e.target.value }))}
-                    className="w-full px-4 py-2.5 bg-[#0d1117] border border-editor-border/40 rounded-xl text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500/50 focus:outline-none text-sm" required minLength={3} maxLength={20} />
+                    className="w-full px-3.5 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 text-[13px] transition-colors" required minLength={3} maxLength={20} />
                 </div>
               )}
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Email</label>
+                <label className="block text-[10px] text-[#666] mb-1 font-mono uppercase tracking-wider">email</label>
                 <input type="email" placeholder="you@example.com" value={authForm.email}
                   onChange={(e) => setAuthForm(p => ({ ...p, email: e.target.value }))}
-                  className="w-full px-4 py-2.5 bg-[#0d1117] border border-editor-border/40 rounded-xl text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500/50 focus:outline-none text-sm" required />
+                  className="w-full px-3.5 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 text-[13px] transition-colors" required />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Password</label>
-                <input type="password" placeholder="Min 6 characters" value={authForm.password}
+                <label className="block text-[10px] text-[#666] mb-1 font-mono uppercase tracking-wider">password</label>
+                <input type="password" placeholder="min 6 characters" value={authForm.password}
                   onChange={(e) => setAuthForm(p => ({ ...p, password: e.target.value }))}
-                  className="w-full px-4 py-2.5 bg-[#0d1117] border border-editor-border/40 rounded-xl text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500/50 focus:outline-none text-sm" required minLength={6} />
+                  className="w-full px-3.5 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 text-[13px] transition-colors" required minLength={6} />
               </div>
-              {/* Remember Me */}
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex items-center gap-2 cursor-pointer pt-1">
                 <input type="checkbox" checked={authForm.remember}
                   onChange={(e) => setAuthForm(p => ({ ...p, remember: e.target.checked }))}
-                  className="w-3.5 h-3.5 rounded bg-[#0d1117] border-editor-border text-blue-500 focus:ring-blue-500" />
-                <span className="text-xs text-gray-400">Remember me</span>
+                  className="w-3.5 h-3.5 rounded bg-[#111] border-[#333] text-[#5e9eff] focus:ring-[#5e9eff]/30 accent-[#5e9eff]" />
+                <span className="text-[11px] text-[#666] font-mono">remember me</span>
               </label>
               {authError && (
-                <div className="flex items-center gap-2 text-red-400 text-xs bg-red-600/10 border border-red-600/20 rounded-lg px-3 py-2">
-                  <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  {authError}
-                </div>
+                <p className="text-[#ff6b6b] text-[11px] font-mono bg-[#ff6b6b]/8 rounded-lg px-3 py-2">{authError}</p>
               )}
               <button type="submit" disabled={authLoading}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition disabled:opacity-50 shadow-lg shadow-blue-600/20 mt-2">
-                {authLoading ? 'Loading...' : (authMode === 'signup' ? 'Create Account' : 'Sign In')}
+                className="w-full py-2.5 bg-[#5e9eff] hover:bg-[#7ab3ff] text-[#0a0a0a] rounded-xl font-display font-semibold transition disabled:opacity-40 mt-1 text-[13px]">
+                {authLoading ? 'loading...' : (authMode === 'signup' ? 'create account' : 'sign in')}
               </button>
             </form>
-            <p className="text-center text-sm text-gray-500 mt-4">
-              {authMode === 'signup' ? 'Already have an account?' : "Don't have an account?"}
+            <p className="text-center text-[11px] text-[#555] mt-4 font-mono">
+              {authMode === 'signup' ? 'already have an account?' : "don't have an account?"}
               <button onClick={() => { setAuthMode(authMode === 'signup' ? 'signin' : 'signup'); setAuthError(''); }}
-                className="text-blue-400 ml-1 hover:underline font-medium">{authMode === 'signup' ? 'Sign In' : 'Sign Up'}</button>
+                className="text-[#5e9eff] ml-1 hover:underline">{authMode === 'signup' ? 'sign in' : 'sign up'}</button>
             </p>
-            <p className="text-center text-[10px] text-gray-700 mt-3">
-              Or skip sign-in — anonymous access with unique username per tab
+            <p className="text-center text-[9px] text-[#444] mt-2.5 font-mono">
+              or just skip — you get a unique anonymous name per tab
             </p>
           </div>
         </div>
       )}
 
-      <footer className="border-t border-editor-border/20 py-4 text-center">
-        <p className="text-xs text-gray-500">made with &lt;3 by Namish</p>
-        <p className="text-[10px] text-gray-700 mt-1">CollabCode — Real-time Collaborative Coding Platform</p>
+      {/* ── Footer ──────────────────────────────────────────── */}
+      <footer className="border-t border-[#1e1e1e] py-4 px-5">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <p className="text-[10px] text-[#444] font-mono">made with &lt;3 by namish</p>
+          <p className="text-[10px] text-[#333] font-mono">collabcode v8</p>
+        </div>
       </footer>
     </div>
   );

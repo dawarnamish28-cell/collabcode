@@ -1,14 +1,8 @@
 /**
- * Room Workspace v7.0
+ * Room Workspace v8.0 — Warm, organic workspace
  * 
- * Critical fixes:
- * - FIXED: Double-typing / double-enter Yjs bug (origin-based + _isApplyingRemote)
- * - FIXED: Screen flash on remote edits (delta-based sync)
- * - FIXED: OutputConsole Enter adds exactly one line (not two)
- * - IMPROVED: Interactive input (Python IDLE-style) — no more stdin buffering
- * - IMPROVED: Responsive layout for mobile/tablet
- * - IMPROVED: 20 languages
- * - All features: multi-file, extensions, public/private rooms
+ * Same robust functionality (CRDT sync, 20 langs, stdin, voice chat)
+ * but with the v8 visual language. Warmer colors, less mechanical.
  * 
  * made with <3 by Namish
  */
@@ -53,18 +47,16 @@ export default function RoomPage() {
   const [output, setOutput] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
   const [awarenessStates, setAwarenessStates] = useState(new Map());
-  const [panelWidth, setPanelWidth] = useState(320);
-  const [outputHeight, setOutputHeight] = useState(280);
+  const [panelWidth, setPanelWidth] = useState(300);
+  const [outputHeight, setOutputHeight] = useState(260);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeType, setResizeType] = useState(null);
   const [ready, setReady] = useState(false);
 
-  // Multi-file support
   const [files, setFiles] = useState([]);
   const [activeFileId, setActiveFileId] = useState(null);
   const [filesOpen, setFilesOpen] = useState(false);
 
-  // Extensions panel
   const [extensionsOpen, setExtensionsOpen] = useState(false);
   const [terminalTheme, setTerminalTheme] = useState('vs-dark');
   const [editorFontSize, setEditorFontSize] = useState(14);
@@ -72,13 +64,11 @@ export default function RoomPage() {
   const [editorMinimap, setEditorMinimap] = useState(true);
   const [editorWordWrap, setEditorWordWrap] = useState(true);
 
-  // Public/private
   const [isPublic, setIsPublic] = useState(false);
 
   const queryLang = router.query.lang;
   const queryPublic = router.query.public;
 
-  // Load settings from localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -95,7 +85,6 @@ export default function RoomPage() {
     } catch (e) {}
   }, []);
 
-  // Save settings to localStorage
   const saveSettings = useCallback(() => {
     try {
       localStorage.setItem('collabcode_settings', JSON.stringify({
@@ -182,7 +171,6 @@ export default function RoomPage() {
     setIsRunning(true);
     setOutput({ type: 'info', content: 'Running code...' });
 
-    // Auto-open output if closed
     if (!state.outputOpen) toggleOutput();
 
     try {
@@ -262,7 +250,6 @@ export default function RoomPage() {
     input.click();
   }, [handleLanguageChange]);
 
-  // Multi-file operations
   const handleAddFile = useCallback((fileData) => {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const newFile = { id, name: fileData.name, content: fileData.content, language: fileData.language, modified: false };
@@ -329,7 +316,7 @@ export default function RoomPage() {
     input.click();
   }, [handleAddFile]);
 
-  // ─── Panel Resize (mouse + touch) ─────────────────────────────────
+  // ─── Resize ─────────────────────────────────────────────────────
   const handleMouseDown = useCallback((type) => (e) => { e.preventDefault(); setIsResizing(true); setResizeType(type); }, []);
 
   useEffect(() => {
@@ -358,7 +345,7 @@ export default function RoomPage() {
     const handle = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         const tag = e.target.tagName?.toLowerCase();
-        if (tag === 'input') return; // Let terminal input handle it
+        if (tag === 'input') return;
         e.preventDefault();
         handleMainRun();
       }
@@ -373,17 +360,20 @@ export default function RoomPage() {
 
   if (!state.user || !roomId) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-[#1e1e1e]">
-        <div className="text-center"><div className="spinner mx-auto mb-4" /><p className="text-gray-400 text-sm">Connecting...</p></div>
+      <div className="h-screen w-screen flex items-center justify-center bg-[#131416]">
+        <div className="text-center">
+          <div className="spinner mx-auto mb-4" />
+          <p className="text-[#666] text-[12px] font-mono">connecting...</p>
+        </div>
       </div>
     );
   }
 
   const leftPanelOpen = filesOpen || extensionsOpen;
-  const leftPanelWidth = 220;
+  const leftPanelWidth = 200;
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#1e1e1e]" style={{ userSelect: isResizing ? 'none' : 'auto' }}>
+    <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#1a1b1e]" style={{ userSelect: isResizing ? 'none' : 'auto' }}>
       <Navbar
         roomId={roomId} language={state.language} onLanguageChange={handleLanguageChange}
         connectionStatus={state.connectionStatus} users={state.users}
@@ -397,34 +387,25 @@ export default function RoomPage() {
       />
 
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Left Panel: File Explorer or Extensions */}
+        {/* Left Panel */}
         {leftPanelOpen && (
           <div style={{ width: leftPanelWidth }} className="flex-shrink-0 hidden sm:block">
             {filesOpen && (
               <FileExplorer
-                files={files}
-                activeFileId={activeFileId}
-                onSelectFile={handleSelectFile}
-                onAddFile={handleAddFile}
-                onRemoveFile={handleRemoveFile}
-                onOpenFolder={handleOpenFolder}
+                files={files} activeFileId={activeFileId}
+                onSelectFile={handleSelectFile} onAddFile={handleAddFile}
+                onRemoveFile={handleRemoveFile} onOpenFolder={handleOpenFolder}
                 language={state.language}
               />
             )}
             {extensionsOpen && (
               <Extensions
-                editorTheme={state.theme}
-                onEditorThemeChange={(t) => setTheme(t)}
-                terminalTheme={terminalTheme}
-                onTerminalThemeChange={setTerminalTheme}
-                fontSize={editorFontSize}
-                onFontSizeChange={setEditorFontSize}
-                tabSize={editorTabSize}
-                onTabSizeChange={setEditorTabSize}
-                minimap={editorMinimap}
-                onMinimapToggle={() => setEditorMinimap(!editorMinimap)}
-                wordWrap={editorWordWrap}
-                onWordWrapToggle={() => setEditorWordWrap(!editorWordWrap)}
+                editorTheme={state.theme} onEditorThemeChange={(t) => setTheme(t)}
+                terminalTheme={terminalTheme} onTerminalThemeChange={setTerminalTheme}
+                fontSize={editorFontSize} onFontSizeChange={setEditorFontSize}
+                tabSize={editorTabSize} onTabSizeChange={setEditorTabSize}
+                minimap={editorMinimap} onMinimapToggle={() => setEditorMinimap(!editorMinimap)}
+                wordWrap={editorWordWrap} onWordWrapToggle={() => setEditorWordWrap(!editorWordWrap)}
               />
             )}
           </div>
@@ -434,20 +415,20 @@ export default function RoomPage() {
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* File Tabs */}
           {files.length > 0 && (
-            <div className="flex items-center bg-[#252526] border-b border-editor-border overflow-x-auto flex-shrink-0 scrollbar-none">
+            <div className="flex items-center bg-[#19191c] border-b border-[#222] overflow-x-auto flex-shrink-0 scrollbar-none">
               {files.map(file => (
                 <button key={file.id}
                   onClick={() => handleSelectFile(file.id)}
-                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs border-r border-editor-border/50 transition group min-w-0 ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono border-r border-[#222] transition group min-w-0 ${
                     file.id === activeFileId
-                      ? 'bg-[#1e1e1e] text-white border-t-2 border-t-blue-400'
-                      : 'text-gray-400 hover:text-gray-200 hover:bg-[#2a2d2e] border-t-2 border-t-transparent'
+                      ? 'bg-[#1a1b1e] text-[#ddd] border-t-2 border-t-[#5e9eff]'
+                      : 'text-[#666] hover:text-[#aaa] hover:bg-[#1e1f22] border-t-2 border-t-transparent'
                   }`}>
-                  <span className="truncate max-w-[80px] sm:max-w-[120px]">{file.name.split('/').pop()}</span>
-                  {file.modified && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 flex-shrink-0" />}
+                  <span className="truncate max-w-[100px]">{file.name.split('/').pop()}</span>
+                  {file.modified && <div className="w-1.5 h-1.5 rounded-full bg-[#ffb347] flex-shrink-0" />}
                   <span onClick={(e) => { e.stopPropagation(); handleRemoveFile(file.id); }}
-                    className="ml-0.5 sm:ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-[#555] transition">
-                    <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    className="ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-[#333] transition">
+                    <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                   </span>
                 </button>
               ))}
@@ -455,22 +436,23 @@ export default function RoomPage() {
           )}
 
           <UserPresence users={state.users} currentUser={state.user} awarenessStates={awarenessStates} />
-          
+
           <div className="flex-1 min-h-0 relative">
             {ready && ydocRef.current ? (
               <Editor
-                ydoc={ydocRef.current}
-                provider={providerRef.current}
-                language={state.language}
-                theme={state.theme}
-                user={state.user}
-                fontSize={editorFontSize}
-                tabSize={editorTabSize}
-                minimap={editorMinimap}
+                ydoc={ydocRef.current} provider={providerRef.current}
+                language={state.language} theme={state.theme}
+                user={state.user} fontSize={editorFontSize}
+                tabSize={editorTabSize} minimap={editorMinimap}
                 wordWrap={editorWordWrap}
               />
             ) : (
-              <div className="h-full flex items-center justify-center"><div className="text-center"><div className="spinner mx-auto mb-3" /><p className="text-gray-500 text-sm">Loading editor...</p></div></div>
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center">
+                  <div className="spinner mx-auto mb-3" />
+                  <p className="text-[#666] text-[11px] font-mono">loading editor...</p>
+                </div>
+              </div>
             )}
             <RunButton onRun={handleMainRun} isRunning={isRunning} language={state.language} />
           </div>
@@ -478,17 +460,15 @@ export default function RoomPage() {
           {state.outputOpen && (
             <>
               <div
-                className={`resizer resizer-horizontal h-1.5 w-full flex-shrink-0 ${isResizing && resizeType === 'output' ? 'active' : ''}`}
+                className={`resizer resizer-horizontal h-[3px] w-full flex-shrink-0 ${isResizing && resizeType === 'output' ? 'active' : ''}`}
                 onMouseDown={handleMouseDown('output')}
                 onTouchStart={handleMouseDown('output')}
               />
               <div style={{ height: outputHeight }} className="flex-shrink-0">
                 <OutputConsole
                   ref={outputConsoleRef}
-                  output={output}
-                  onClear={() => setOutput(null)}
-                  isRunning={isRunning}
-                  language={state.language}
+                  output={output} onClear={() => setOutput(null)}
+                  isRunning={isRunning} language={state.language}
                   code={ydocRef.current ? ydocRef.current.getText('monaco').toString() : ''}
                   onRunWithStdin={(stdin) => {
                     if (ydocRef.current) handleRunCode(ydocRef.current.getText('monaco').toString(), stdin);
@@ -504,11 +484,11 @@ export default function RoomPage() {
         {state.chatOpen && (
           <>
             <div
-              className={`resizer w-1.5 flex-shrink-0 hidden sm:block ${isResizing && resizeType === 'sidebar' ? 'active' : ''}`}
+              className={`resizer w-[3px] flex-shrink-0 hidden sm:block ${isResizing && resizeType === 'sidebar' ? 'active' : ''}`}
               onMouseDown={handleMouseDown('sidebar')}
               onTouchStart={handleMouseDown('sidebar')}
             />
-            <div style={{ width: panelWidth }} className="flex-shrink-0 border-l border-editor-border flex flex-col hidden sm:flex">
+            <div style={{ width: panelWidth }} className="flex-shrink-0 border-l border-[#282828] flex flex-col hidden sm:flex">
               <VoiceChat socket={socketRef.current} currentUser={state.user} />
               <div className="flex-1 min-h-0">
                 <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketRef.current} />
