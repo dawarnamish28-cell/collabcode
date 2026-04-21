@@ -5,9 +5,7 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@400;450;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 /* ─── Color Philosophy ───────────────────────────────────────────
-   Warmer darks instead of pure #1e1e1e. Slight hue shifts 
-   instead of dead grays. Accent colors that feel handpicked,
-   not straight from a generator.
+   Warmer darks, handpicked accents, personality over perfection.
 ──────────────────────────────────────────────────────────────── */
 :root {
   --bg-primary: #1a1b1e;
@@ -57,39 +55,17 @@ body {
 }
 
 /* ─── Scrollbar ──────────────────────────────────────────────── */
-::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #444;
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #555;
-}
-
-/* Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #444 transparent;
-}
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #444; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
+* { scrollbar-width: thin; scrollbar-color: #444 transparent; }
 
 /* ─── Monaco Editor ──────────────────────────────────────────── */
 .monaco-editor .cursors-layer .cursor {
   transition: all 80ms ease-out !important;
 }
-
-.yRemoteSelection {
-  opacity: 0.25;
-}
-
+.yRemoteSelection { opacity: 0.25; }
 .yRemoteSelectionHead {
   position: absolute;
   border-left: 2px solid;
@@ -97,7 +73,6 @@ body {
   height: 100%;
   box-sizing: border-box;
 }
-
 .yRemoteSelectionHead::after {
   content: attr(data-username);
   position: absolute;
@@ -112,14 +87,12 @@ body {
   font-weight: 500;
   pointer-events: none;
   z-index: 10;
-  letter-spacing: 0.01em;
 }
 
 /* ─── Chat Animations ────────────────────────────────────────── */
 .chat-message-enter {
   animation: msgSlide 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
-
 @keyframes msgSlide {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -129,27 +102,21 @@ body {
 .typing-dots span {
   animation: typingBounce 1.4s infinite ease-in-out;
   display: inline-block;
-  width: 5px;
-  height: 5px;
+  width: 5px; height: 5px;
   border-radius: 50%;
   background-color: var(--text-muted);
   margin: 0 1.5px;
 }
-
 .typing-dots span:nth-child(1) { animation-delay: 0s; }
 .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
 .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
-
 @keyframes typingBounce {
   0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
   40% { transform: translateY(-6px); opacity: 1; }
 }
 
 /* ─── Tooltip ────────────────────────────────────────────────── */
-.tooltip {
-  position: relative;
-}
-
+.tooltip { position: relative; }
 .tooltip::after {
   content: attr(data-tooltip);
   position: absolute;
@@ -167,7 +134,6 @@ body {
   pointer-events: none;
   transition: opacity 0.15s, transform 0.15s;
 }
-
 .tooltip:hover::after {
   opacity: 1;
   transform: translateX(-50%) scale(1);
@@ -179,32 +145,22 @@ body {
   cursor: col-resize;
   transition: background 0.2s;
 }
-
-.resizer:hover,
-.resizer.active {
-  background: var(--accent);
-}
-
-.resizer-horizontal {
-  cursor: row-resize;
-}
+.resizer:hover, .resizer.active { background: var(--accent); }
+.resizer-horizontal { cursor: row-resize; }
 
 /* ─── Buttons ────────────────────────────────────────────────── */
 .btn-primary {
   @apply px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium
          transition-all duration-150 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed;
 }
-
 .btn-secondary {
   @apply px-4 py-2 bg-editor-tab hover:bg-editor-hover text-editor-text rounded-lg font-medium
          border border-editor-border transition-all duration-150 active:scale-[0.97];
 }
-
 .btn-success {
   @apply px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium
          transition-all duration-150 active:scale-[0.97];
 }
-
 .btn-danger {
   @apply px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium
          transition-all duration-150 active:scale-[0.97];
@@ -215,23 +171,13 @@ body {
   border: 2px solid var(--border-color);
   border-top: 2px solid var(--accent);
   border-radius: 50%;
-  width: 20px;
-  height: 20px;
+  width: 20px; height: 20px;
   animation: spin 0.7s linear infinite;
 }
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ─── Status Dots ────────────────────────────────────────────── */
-.status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
+.status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .status-dot.connected { background-color: var(--success); }
 .status-dot.disconnected { background-color: var(--error); }
 .status-dot.connecting { background-color: var(--warning); animation: pulse 1.5s infinite; }
@@ -245,109 +191,273 @@ body {
 }
 
 /* ─── Landing Page Overflow ──────────────────────────────────── */
-body:has(.min-h-screen) {
-  overflow: auto;
-}
-
-html:has(.min-h-screen), body:has(.min-h-screen), #__next:has(.min-h-screen) {
-  overflow: auto;
-}
+body:has(.min-h-screen) { overflow: auto; }
+html:has(.min-h-screen), body:has(.min-h-screen), #__next:has(.min-h-screen) { overflow: auto; }
 
 /* ─── Scrollbar Hide ─────────────────────────────────────────── */
-.scrollbar-none {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.scrollbar-none::-webkit-scrollbar {
-  display: none;
-}
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
 
 /* ─── Touch Targets ──────────────────────────────────────────── */
 @media (hover: none) and (pointer: coarse) {
-  .resizer {
-    min-height: 8px;
-    min-width: 8px;
-  }
-  .resizer-horizontal {
-    min-height: 10px;
-  }
+  .resizer { min-height: 8px; min-width: 8px; }
+  .resizer-horizontal { min-height: 10px; }
 }
 
 /* ─── Placeholder Fix ────────────────────────────────────────── */
-input::placeholder, textarea::placeholder {
-  color: var(--text-muted);
-}
+input::placeholder, textarea::placeholder { color: var(--text-muted); }
 
 /* ─── Safe Area ──────────────────────────────────────────────── */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .h-screen {
-    height: calc(100vh - env(safe-area-inset-bottom));
-  }
+  .h-screen { height: calc(100vh - env(safe-area-inset-bottom)); }
 }
 
-/* ─── Human Touches ──────────────────────────────────────────── 
-   Subtle grain overlay, organic entrance animations, 
-   slight imperfections that feel real.
-──────────────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════
+   HOMEPAGE ANIMATIONS & CUSTOM CURSOR — v9.0
+   Fun, playful, attractive. Not AI-sterile.
+═══════════════════════════════════════════════════════════════════ */
 
-/* Stagger children entrance */
+/* ─── Custom Cursor ──────────────────────────────────────────── */
+.custom-cursor {
+  position: fixed;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  pointer-events: none;
+  z-index: 9999;
+  transition: width 0.15s ease, height 0.15s ease, border-color 0.2s, background 0.2s, transform 0.08s ease-out;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: difference;
+  background: transparent;
+}
+.custom-cursor.hovering {
+  width: 44px;
+  height: 44px;
+  background: rgba(94, 158, 255, 0.08);
+  border-color: #5bd882;
+}
+.custom-cursor.clicking {
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.custom-cursor-dot {
+  position: fixed;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 10000;
+  transform: translate(-50%, -50%);
+  transition: background 0.15s;
+}
+
+/* Hide default cursor on landing */
+.landing-cursor-hide, .landing-cursor-hide * {
+  cursor: none !important;
+}
+
+/* ─── Navbar Dropdown Drop-In ────────────────────────────────── */
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ─── Stagger Entrance ───────────────────────────────────────── */
 .stagger-in > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-in > *:nth-child(2) { animation-delay: 60ms; }
-.stagger-in > *:nth-child(3) { animation-delay: 120ms; }
-.stagger-in > *:nth-child(4) { animation-delay: 180ms; }
-.stagger-in > *:nth-child(5) { animation-delay: 240ms; }
+.stagger-in > *:nth-child(2) { animation-delay: 80ms; }
+.stagger-in > *:nth-child(3) { animation-delay: 160ms; }
+.stagger-in > *:nth-child(4) { animation-delay: 240ms; }
+.stagger-in > *:nth-child(5) { animation-delay: 320ms; }
+.stagger-in > *:nth-child(6) { animation-delay: 400ms; }
 
-/* Fade up entrance */
+/* ─── Fade Up ────────────────────────────────────────────────── */
 .fade-up {
-  animation: fadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: fadeUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(16px); }
+  from { opacity: 0; transform: translateY(24px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Soft breathe for live indicators */
+/* ─── Fade In Scale ──────────────────────────────────────────── */
+.fade-in-scale {
+  animation: fadeInScale 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.92) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ─── Slide In From Left ─────────────────────────────────────── */
+.slide-in-left {
+  animation: slideInLeft 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ─── Slide In From Right ────────────────────────────────────── */
+.slide-in-right {
+  animation: slideInRight 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ─── Breathe (live dots) ────────────────────────────────────── */
 @keyframes breathe {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+  0%, 100% { opacity: 0.4; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
 }
+.breathe { animation: breathe 2.5s ease-in-out infinite; }
 
-.breathe {
-  animation: breathe 3s ease-in-out infinite;
-}
-
-/* Subtle hover lift for cards */
+/* ─── Hover Lift ─────────────────────────────────────────────── */
 .hover-lift {
-  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s;
 }
 .hover-lift:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.3);
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(94, 158, 255, 0.06);
 }
 
-/* Noise texture overlay for landing page */
+/* ─── Magnetic Button Effect ─────────────────────────────────── */
+.magnetic-btn {
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.magnetic-btn:hover {
+  transform: scale(1.03);
+}
+.magnetic-btn:active {
+  transform: scale(0.97);
+}
+
+/* ─── Glow Pulse ─────────────────────────────────────────────── */
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 20px -5px rgba(94, 158, 255, 0.2); }
+  50% { box-shadow: 0 0 30px -3px rgba(94, 158, 255, 0.35); }
+}
+.glow-pulse { animation: glowPulse 3s ease-in-out infinite; }
+
+/* ─── Typing Cursor Blink ────────────────────────────────────── */
+@keyframes cursorBlink {
+  0%, 45% { opacity: 1; }
+  50%, 95% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background: var(--accent);
+  margin-left: 1px;
+  animation: cursorBlink 1s step-end infinite;
+  vertical-align: text-bottom;
+}
+
+/* ─── Float animation ────────────────────────────────────────── */
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-8px) rotate(1deg); }
+  75% { transform: translateY(4px) rotate(-1deg); }
+}
+.float { animation: float 6s ease-in-out infinite; }
+.float-delayed { animation: float 7s ease-in-out infinite; animation-delay: -2s; }
+.float-slow { animation: float 9s ease-in-out infinite; animation-delay: -4s; }
+
+/* ─── Orbit animation for hero decorations ───────────────────── */
+@keyframes orbit {
+  from { transform: rotate(0deg) translateX(80px) rotate(0deg); }
+  to { transform: rotate(360deg) translateX(80px) rotate(-360deg); }
+}
+.orbit { animation: orbit 20s linear infinite; }
+.orbit-reverse { animation: orbit 25s linear infinite reverse; }
+
+/* ─── Shimmer effect ─────────────────────────────────────────── */
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.shimmer-text {
+  background: linear-gradient(90deg, #5e9eff 0%, #5bd882 25%, #ffb347 50%, #c4b5fd 75%, #5e9eff 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 4s linear infinite;
+}
+
+/* ─── Noise / Grain Overlay ──────────────────────────────────── */
 .grain::before {
   content: '';
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  opacity: 0.015;
+  top: 0; left: 0; right: 0; bottom: 0;
+  opacity: 0.02;
   pointer-events: none;
   z-index: 100;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* Organic glow — not the usual blue→purple AI gradient */
+/* ─── Gradient Orbs (background blobs) ───────────────────────── */
+@keyframes blobMove {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(30px, -20px) scale(1.05); }
+  50% { transform: translate(-20px, 20px) scale(0.95); }
+  75% { transform: translate(10px, -10px) scale(1.02); }
+}
+.gradient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.12;
+  pointer-events: none;
+  animation: blobMove 20s ease-in-out infinite;
+}
+
+/* ─── Interactive Language Pill ───────────────────────────────── */
+.lang-pill {
+  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.lang-pill:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 8px 20px -6px rgba(0,0,0,0.3);
+}
+.lang-pill.selected {
+  transform: scale(1.08);
+}
+
+/* ─── Particle Canvas ────────────────────────────────────────── */
+.particle-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── Code Rain (decorative) ─────────────────────────────────── */
+@keyframes codeRain {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 0.4; }
+  90% { opacity: 0.4; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
+/* ─── Glow Warm ──────────────────────────────────────────────── */
 .glow-warm {
   box-shadow: 
     0 0 20px -5px rgba(255, 179, 71, 0.15),
     0 0 60px -10px rgba(94, 158, 255, 0.08);
 }
 
-/* Handwritten-feel underline */
+/* ─── Handwritten Underline ──────────────────────────────────── */
 .hand-underline {
   background-image: linear-gradient(120deg, var(--accent) 0%, #5bd882 100%);
   background-repeat: no-repeat;
@@ -356,14 +466,14 @@ input::placeholder, textarea::placeholder {
   padding-bottom: 2px;
 }
 
-/* Focus ring that feels intentional */
+/* ─── Focus Ring ─────────────────────────────────────────────── */
 .focus-ring:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--accent);
   border-radius: 8px;
 }
 
-/* Kbd styling */
+/* ─── Kbd Styling ────────────────────────────────────────────── */
 kbd {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.65rem;
@@ -373,4 +483,65 @@ kbd {
   border-radius: 4px;
   padding: 1px 5px;
   color: var(--text-secondary);
+}
+
+/* ─── Ripple Button Effect ───────────────────────────────────── */
+.ripple-btn {
+  position: relative;
+  overflow: hidden;
+}
+.ripple-btn::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 0; height: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  transform: translate(-50%, -50%);
+  transition: width 0.4s, height 0.4s, opacity 0.4s;
+  opacity: 0;
+}
+.ripple-btn:active::after {
+  width: 250px; height: 250px;
+  opacity: 1;
+  transition: 0s;
+}
+
+/* ─── Scroll Reveal ──────────────────────────────────────────── */
+.reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ─── Marquee ────────────────────────────────────────────────── */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee-track {
+  animation: marquee 30s linear infinite;
+}
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+/* ─── Tilt Card ──────────────────────────────────────────────── */
+.tilt-card {
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-style: preserve-3d;
+  perspective: 800px;
+}
+
+/* ─── Modal Backdrop Blur ────────────────────────────────────── */
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.modal-enter {
+  animation: modalIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }

@@ -8,7 +8,6 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Warmer palette — slight warm tint instead of dead gray
         'editor-bg': '#1a1b1e',
         'editor-sidebar': '#222327',
         'editor-tab': '#2a2b30',
@@ -34,6 +33,9 @@ module.exports = {
         'slide-in': 'slideIn 0.2s ease-out',
         'fade-in': 'fadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
         'float': 'float 6s ease-in-out infinite',
+        'shimmer': 'shimmer 4s linear infinite',
+        'breathe': 'breathe 2.5s ease-in-out infinite',
+        'glow-pulse': 'glowPulse 3s ease-in-out infinite',
       },
       keyframes: {
         slideIn: {
@@ -47,6 +49,18 @@ module.exports = {
         float: {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-8px)' },
+        },
+        shimmer: {
+          '0%': { backgroundPosition: '-200% center' },
+          '100%': { backgroundPosition: '200% center' },
+        },
+        breathe: {
+          '0%, 100%': { opacity: 0.4, transform: 'scale(0.8)' },
+          '50%': { opacity: 1, transform: 'scale(1.2)' },
+        },
+        glowPulse: {
+          '0%, 100%': { boxShadow: '0 0 20px -5px rgba(94, 158, 255, 0.2)' },
+          '50%': { boxShadow: '0 0 30px -3px rgba(94, 158, 255, 0.35)' },
         },
       },
       borderRadius: {
