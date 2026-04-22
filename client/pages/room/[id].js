@@ -480,15 +480,30 @@ export default function RoomPage() {
           )}
         </div>
 
-        {/* Chat Sidebar */}
+        {/* Chat Sidebar — desktop: side panel, mobile: fullscreen overlay */}
         {state.chatOpen && (
           <>
+            {/* Desktop: resizable side panel */}
             <div
               className={`resizer w-[3px] flex-shrink-0 hidden sm:block ${isResizing && resizeType === 'sidebar' ? 'active' : ''}`}
               onMouseDown={handleMouseDown('sidebar')}
               onTouchStart={handleMouseDown('sidebar')}
             />
-            <div style={{ width: panelWidth }} className="flex-shrink-0 border-l border-[#282828] flex flex-col hidden sm:flex">
+            {/* Desktop sidebar */}
+            <div style={{ width: panelWidth }} className="flex-shrink-0 border-l border-[#282828] flex-col hidden sm:flex">
+              <VoiceChat socket={socketRef.current} currentUser={state.user} />
+              <div className="flex-1 min-h-0">
+                <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketRef.current} />
+              </div>
+            </div>
+            {/* Mobile: fullscreen overlay */}
+            <div className="fixed inset-0 z-50 bg-[#1a1b1e] flex flex-col sm:hidden">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-[#282828] bg-[#19191c] flex-shrink-0">
+                <span className="text-[12px] font-mono text-[#888]">chat & voice</span>
+                <button onClick={toggleChat} className="p-2 text-[#666] hover:text-white rounded-lg hover:bg-[#222] active:scale-95 transition">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
               <VoiceChat socket={socketRef.current} currentUser={state.user} />
               <div className="flex-1 min-h-0">
                 <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketRef.current} />
