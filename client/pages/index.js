@@ -1,8 +1,9 @@
 /**
- * Landing Page v9.0 — Fun, Animated, Human
+ * Landing Page v11.0 — Fun, Animated, Human, with Account Settings
  * 
  * Custom cursor, particle background, typing hero,
  * floating language pills, scroll reveals, magnetic buttons,
+ * account settings modal, interactive code demo preview,
  * and enough personality to feel like a real dev built it.
  * 
  * made with <3 by Namish
@@ -11,6 +12,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { useAppContext } from '../context/AppContext';
+import AccountSettings from '../components/AccountSettings';
 import axios from 'axios';
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
@@ -67,7 +69,6 @@ function useCustomCursor() {
       dot.style.top = my + 'px';
     };
 
-    // Smooth follow with lerp
     let raf;
     const lerp = () => {
       cx += (mx - cx) * 0.15;
@@ -138,8 +139,6 @@ function ParticleBackground() {
 
     const draw = () => {
       ctx.clearRect(0, 0, w, h);
-
-      // Draw connections
       for (let i = 0; i < particles.length; i++) {
         for (let j = i + 1; j < particles.length; j++) {
           const dx = particles[i].x - particles[j].x;
@@ -155,8 +154,6 @@ function ParticleBackground() {
           }
         }
       }
-
-      // Draw particles
       particles.forEach(p => {
         p.x += p.vx;
         p.y += p.vy;
@@ -172,18 +169,13 @@ function ParticleBackground() {
         ctx.fill();
         ctx.globalAlpha = 1;
       });
-
       raf = requestAnimationFrame(draw);
     };
 
     init();
     draw();
     window.addEventListener('resize', resize);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener('resize', resize);
-    };
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
   }, []);
 
   return <canvas ref={canvasRef} className="particle-canvas" />;
@@ -207,24 +199,16 @@ function TypingHero() {
   useEffect(() => {
     const phrase = phrases[phraseIdx];
     let timer;
-
     if (!deleting && charIdx < phrase.length) {
-      timer = setTimeout(() => {
-        setText(phrase.slice(0, charIdx + 1));
-        setCharIdx(charIdx + 1);
-      }, 50 + Math.random() * 40);
+      timer = setTimeout(() => { setText(phrase.slice(0, charIdx + 1)); setCharIdx(charIdx + 1); }, 50 + Math.random() * 40);
     } else if (!deleting && charIdx === phrase.length) {
       timer = setTimeout(() => setDeleting(true), 2000);
     } else if (deleting && charIdx > 0) {
-      timer = setTimeout(() => {
-        setText(phrase.slice(0, charIdx - 1));
-        setCharIdx(charIdx - 1);
-      }, 25);
+      timer = setTimeout(() => { setText(phrase.slice(0, charIdx - 1)); setCharIdx(charIdx - 1); }, 25);
     } else if (deleting && charIdx === 0) {
       setDeleting(false);
       setPhraseIdx((phraseIdx + 1) % phrases.length);
     }
-
     return () => clearTimeout(timer);
   }, [charIdx, deleting, phraseIdx]);
 
@@ -256,20 +240,83 @@ function LanguageMarquee() {
   );
 }
 
+// ─── Interactive Code Demo Preview ─────────────────────────────
+function CodeDemoPreview() {
+  const lines = [
+    { num: 1, code: '<span style="color:#c678dd">def</span> <span style="color:#61afef">fibonacci</span>(n):', indent: 0 },
+    { num: 2, code: '<span style="color:#c678dd">if</span> n <= <span style="color:#d19a66">1</span>:', indent: 1 },
+    { num: 3, code: '<span style="color:#c678dd">return</span> n', indent: 2 },
+    { num: 4, code: '<span style="color:#c678dd">return</span> <span style="color:#61afef">fibonacci</span>(n-<span style="color:#d19a66">1</span>) + <span style="color:#61afef">fibonacci</span>(n-<span style="color:#d19a66">2</span>)', indent: 1 },
+    { num: 5, code: '', indent: 0 },
+    { num: 6, code: '<span style="color:#61afef">print</span>(<span style="color:#61afef">fibonacci</span>(<span style="color:#d19a66">10</span>))', indent: 0 },
+  ];
+
+  const [visibleLines, setVisibleLines] = useState(0);
+  const [showOutput, setShowOutput] = useState(false);
+
+  useEffect(() => {
+    const timers = [];
+    lines.forEach((_, i) => {
+      timers.push(setTimeout(() => setVisibleLines(i + 1), 400 + i * 300));
+    });
+    timers.push(setTimeout(() => setShowOutput(true), 400 + lines.length * 300 + 500));
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  return (
+    <div className="bg-[#1e1f23] rounded-xl border border-[#333] overflow-hidden shadow-2xl">
+      {/* Title bar */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-[#19191c] border-b border-[#282828]">
+        <div className="flex gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f56]" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#27c93f]" />
+        </div>
+        <span className="text-[10px] text-[#555] font-mono ml-2">fibonacci.py</span>
+        <div className="flex-1" />
+        <div className="flex items-center gap-1">
+          <div className="w-1.5 h-1.5 rounded-full bg-[#5bd882] animate-pulse" />
+          <span className="text-[9px] text-[#666] font-mono">2 collaborators</span>
+        </div>
+      </div>
+      {/* Code */}
+      <div className="p-3 font-mono text-[11px] leading-relaxed">
+        {lines.slice(0, visibleLines).map((line, i) => (
+          <div key={i} className="flex" style={{ animation: 'fadeUp 0.3s ease both', animationDelay: `${i * 50}ms` }}>
+            <span className="text-[#555] w-6 text-right mr-3 select-none text-[10px]">{line.num}</span>
+            <span style={{ paddingLeft: `${line.indent * 16}px` }}
+              dangerouslySetInnerHTML={{ __html: line.code || '&nbsp;' }} />
+          </div>
+        ))}
+        {visibleLines < lines.length && (
+          <div className="flex items-center mt-0.5">
+            <span className="text-[#555] w-6 text-right mr-3 text-[10px]">&nbsp;</span>
+            <span className="inline-block w-[2px] h-[14px] bg-[#5e9eff] animate-pulse" />
+          </div>
+        )}
+      </div>
+      {/* Output */}
+      {showOutput && (
+        <div className="border-t border-[#282828] px-3 py-2 bg-[#16171a]" style={{ animation: 'fadeUp 0.3s ease' }}>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[9px] text-[#5bd882] font-mono uppercase tracking-wider">output</span>
+            <span className="text-[8px] text-[#444] font-mono">0.02s</span>
+          </div>
+          <p className="text-[12px] font-mono text-[#5bd882]">55</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Scroll Reveal Observer ─────────────────────────────────────
 function useScrollReveal() {
   useEffect(() => {
     const els = document.querySelectorAll('.reveal');
     if (!els.length) return;
-
     const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('visible');
-        }
-      });
+      entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });
     }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
-
     els.forEach(el => observer.observe(el));
     return () => observer.disconnect();
   }, []);
@@ -298,38 +345,36 @@ export default function Home() {
   const [shareForm, setShareForm] = useState({ title: '', description: '', code: '', language: 'python' });
   const [shareLoading, setShareLoading] = useState(false);
   const [selectedSnippet, setSelectedSnippet] = useState(null);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const { cursorRef, dotRef, hovering, clicking } = useCustomCursor();
+  const userMenuRef = useRef(null);
   useScrollReveal();
 
+  useEffect(() => { fetchPublicRooms(); fetchLanguages(); fetchGallery(); }, []);
+
+  // Close user menu on outside click
   useEffect(() => {
-    fetchPublicRooms();
-    fetchLanguages();
-    fetchGallery();
-  }, []);
+    if (!userMenuOpen) return;
+    const close = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setUserMenuOpen(false);
+    };
+    const timer = setTimeout(() => document.addEventListener('mousedown', close), 0);
+    return () => { clearTimeout(timer); document.removeEventListener('mousedown', close); };
+  }, [userMenuOpen]);
 
   async function fetchPublicRooms() {
-    try {
-      const res = await axios.get(`${SERVER_URL}/api/rooms?public=true`);
-      setPublicRooms(res.data.rooms || []);
-    } catch (err) {}
+    try { const res = await axios.get(`${SERVER_URL}/api/rooms?public=true`); setPublicRooms(res.data.rooms || []); } catch (err) {}
   }
 
   async function fetchLanguages() {
-    try {
-      const res = await axios.get(`${SERVER_URL}/api/languages`);
-      const versions = {};
-      (res.data.languages || []).forEach(l => { versions[l.id] = l.version; });
-      setLangVersions(versions);
-    } catch (err) {}
+    try { const res = await axios.get(`${SERVER_URL}/api/languages`); const versions = {}; (res.data.languages || []).forEach(l => { versions[l.id] = l.version; }); setLangVersions(versions); } catch (err) {}
   }
 
   async function fetchGallery() {
     setGalleryLoading(true);
-    try {
-      const res = await axios.get(`${SERVER_URL}/api/gallery`);
-      setGallery(res.data.snippets || []);
-    } catch (err) {} finally { setGalleryLoading(false); }
+    try { const res = await axios.get(`${SERVER_URL}/api/gallery`); setGallery(res.data.snippets || []); } catch (err) {} finally { setGalleryLoading(false); }
   }
 
   function handleCreateRoom() {
@@ -342,26 +387,18 @@ export default function Home() {
     const code = joinCode.trim().toUpperCase();
     if (!code) { setError('Enter a room code'); return; }
     if (code.length < 3) { setError('Code too short'); return; }
-    setJoinLoading(true);
-    setError('');
+    setJoinLoading(true); setError('');
     try {
       const res = await axios.get(`${SERVER_URL}/api/rooms/${code}/check`);
-      if (res.data.exists) {
-        router.push(`/room/${code}`);
-      } else {
-        setError('No room found with this code. Create a new one instead.');
-      }
+      if (res.data.exists) router.push(`/room/${code}`);
+      else setError('No room found with this code. Create a new one instead.');
     } catch (err) {
       setError('No room found. Check the code or create a new room.');
-    } finally {
-      setJoinLoading(false);
-    }
+    } finally { setJoinLoading(false); }
   }
 
   async function handleAuth(e) {
-    e.preventDefault();
-    setAuthError('');
-    setAuthLoading(true);
+    e.preventDefault(); setAuthError(''); setAuthLoading(true);
     try {
       const endpoint = authMode === 'signup' ? '/api/auth/signup' : '/api/auth/signin';
       const body = authMode === 'signup'
@@ -370,16 +407,12 @@ export default function Home() {
       const res = await axios.post(`${SERVER_URL}${endpoint}`, body);
       const user = res.data;
       setUser(user);
-      if (authForm.remember) {
-        localStorage.setItem('collabcode_auth', JSON.stringify(user));
-      }
+      if (authForm.remember) localStorage.setItem('collabcode_auth', JSON.stringify(user));
       setShowAuth(false);
       setAuthForm({ email: '', password: '', username: '', remember: true });
     } catch (err) {
       setAuthError(err.response?.data?.message || 'Authentication failed');
-    } finally {
-      setAuthLoading(false);
-    }
+    } finally { setAuthLoading(false); }
   }
 
   async function handleShareCode(e) {
@@ -396,6 +429,10 @@ export default function Home() {
       fetchGallery();
     } catch (err) {} finally { setShareLoading(false); }
   }
+
+  const handleUpdateUser = useCallback((updatedUser) => {
+    setUser(updatedUser);
+  }, [setUser]);
 
   const getLangInfo = (id) => LANGUAGES.find(l => l.id === id) || LANGUAGES[0];
 
@@ -420,22 +457,57 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-2.5">
             {state.user && (
-              <div className="hidden sm:flex items-center gap-2 text-xs text-[#888]">
-                <div className="w-2 h-2 rounded-full ring-1 ring-white/10 breathe" style={{ backgroundColor: state.user.color }} />
-                <span className="font-mono text-[11px]">{state.user.username}</span>
-                {state.user.authenticated && <span className="text-[9px] px-1.5 py-0.5 bg-[#5bd882]/10 text-[#5bd882] rounded font-mono">pro</span>}
+              <div className="relative" ref={userMenuRef}>
+                <button onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#222] transition active:scale-95">
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] border border-[#333]"
+                    style={{ background: (state.user.color || '#5e9eff') + '20', color: state.user.color || '#5e9eff' }}>
+                    {state.user.emoji || state.user.username?.charAt(0)?.toUpperCase() || '?'}
+                  </div>
+                  <span className="text-[11px] text-[#888] font-mono hidden sm:inline max-w-[80px] truncate">{state.user.username}</span>
+                  {state.user.authenticated && <span className="text-[8px] px-1 py-0.5 bg-[#5bd882]/10 text-[#5bd882] rounded font-mono hidden sm:inline">pro</span>}
+                  <svg className={`w-2.5 h-2.5 text-[#555] transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </button>
+
+                {/* User dropdown menu */}
+                {userMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-52 bg-[#1a1b1e] border border-[#333] rounded-xl shadow-2xl py-1 z-50"
+                    style={{ animation: 'dropIn 0.15s cubic-bezier(0.22, 1, 0.36, 1)' }}>
+                    <div className="px-3 py-2.5 border-b border-[#282828]">
+                      <p className="text-[12px] font-medium text-white truncate">{state.user.username}</p>
+                      <p className="text-[9px] text-[#555] font-mono">{state.isAuthenticated ? state.user.email || 'signed in' : 'anonymous'}</p>
+                    </div>
+                    <div className="py-1">
+                      <button onClick={() => { setUserMenuOpen(false); setShowAccountSettings(true); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-[#999] hover:text-[#ccc] hover:bg-[#222] transition">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        Account Settings
+                      </button>
+                    </div>
+                    <div className="border-t border-[#282828] py-1">
+                      {state.isAuthenticated ? (
+                        <button onClick={() => { setUserMenuOpen(false); localStorage.removeItem('collabcode_auth'); window.location.reload(); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-[#ff6b6b] hover:bg-[#ff6b6b]/8 transition">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                          Sign Out
+                        </button>
+                      ) : (
+                        <button onClick={() => { setUserMenuOpen(false); setShowAuth(true); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-[#5e9eff] hover:bg-[#5e9eff]/8 transition">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                          Sign In
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-            {state.isAuthenticated ? (
-              <button onClick={() => { localStorage.removeItem('collabcode_auth'); window.location.reload(); }}
-                className="text-[11px] px-3 py-1.5 text-[#888] hover:text-white bg-transparent hover:bg-[#222] rounded-lg transition-all border border-transparent hover:border-[#333]">
-                sign out
-              </button>
-            ) : (
-              <button onClick={() => setShowAuth(true)}
-                className="magnetic-btn text-[11px] px-4 py-1.5 bg-[#222] text-white rounded-lg hover:bg-[#2a2b30] transition-all border border-[#333] font-medium">
-                sign in
-              </button>
             )}
           </div>
         </div>
@@ -446,55 +518,58 @@ export default function Home() {
 
           {/* ── Hero Section ────────────────────────────────────── */}
           <section className="relative pt-12 sm:pt-20 pb-8 sm:pb-16">
-            {/* Background orbs */}
             <div className="gradient-orb w-[400px] h-[400px] bg-[#5e9eff] top-[-100px] left-[-150px]" style={{ animationDelay: '0s' }} />
             <div className="gradient-orb w-[300px] h-[300px] bg-[#5bd882] top-[50px] right-[-100px]" style={{ animationDelay: '-7s' }} />
             <div className="gradient-orb w-[200px] h-[200px] bg-[#c4b5fd] bottom-[0] left-[30%]" style={{ animationDelay: '-14s' }} />
-
-            {/* Particles */}
             <ParticleBackground />
 
-            <div className="relative z-10">
-              <div className="flex items-center gap-2 mb-4 fade-up">
-                <div className="w-2 h-2 rounded-full bg-[#5bd882] breathe" />
-                <span className="text-[11px] text-[#666] font-mono">20 languages &middot; 0 latency &middot; real-time sync</span>
-              </div>
+            <div className="relative z-10 grid md:grid-cols-[1.1fr_1fr] gap-8 items-center">
+              {/* Left: Text */}
+              <div>
+                <div className="flex items-center gap-2 mb-4 fade-up">
+                  <div className="w-2 h-2 rounded-full bg-[#5bd882] breathe" />
+                  <span className="text-[11px] text-[#666] font-mono">20 languages &middot; 0 latency &middot; real-time sync</span>
+                </div>
 
-              <h2 className="text-[32px] sm:text-[52px] font-display font-bold text-white leading-[1.05] tracking-tight max-w-2xl fade-up" style={{ animationDelay: '100ms' }}>
-                Your code.{' '}
-                <br className="hidden sm:block" />
-                <span className="shimmer-text">Their code.</span>{' '}
-                <br className="hidden sm:block" />
-                <span className="text-[#555]">Same editor.</span>
-              </h2>
+                <h2 className="text-[32px] sm:text-[48px] font-display font-bold text-white leading-[1.05] tracking-tight max-w-lg fade-up" style={{ animationDelay: '100ms' }}>
+                  Your code.{' '}
+                  <br className="hidden sm:block" />
+                  <span className="shimmer-text">Their code.</span>{' '}
+                  <br className="hidden sm:block" />
+                  <span className="text-[#555]">Same editor.</span>
+                </h2>
 
-              <p className="text-[13px] sm:text-[16px] text-[#666] mt-5 max-w-lg leading-relaxed fade-up" style={{ animationDelay: '200ms' }}>
-                Pair program with anyone, anywhere. CRDT-synced editor, voice chat, 
-                interactive terminal — runs everything from Python to Assembly
-                in the browser.
-              </p>
+                <p className="text-[13px] sm:text-[15px] text-[#666] mt-5 max-w-lg leading-relaxed fade-up" style={{ animationDelay: '200ms' }}>
+                  Pair program with anyone, anywhere. CRDT-synced editor, voice chat, 
+                  interactive terminal — runs everything from Python to Assembly
+                  in the browser.
+                </p>
 
-              {/* Typing animation */}
-              <div className="mt-6 fade-up" style={{ animationDelay: '300ms' }}>
-                <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#1a1b1e] border border-[#282828] rounded-xl">
-                  <span className="text-[10px] text-[#555] font-mono">$</span>
-                  <TypingHero />
+                <div className="mt-6 fade-up" style={{ animationDelay: '300ms' }}>
+                  <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#1a1b1e] border border-[#282828] rounded-xl">
+                    <span className="text-[10px] text-[#555] font-mono">$</span>
+                    <TypingHero />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-6 mt-8 fade-up" style={{ animationDelay: '400ms' }}>
+                  {[
+                    { value: '20', label: 'languages', color: '#ffb347' },
+                    { value: 'CRDT', label: 'sync engine', color: '#5e9eff' },
+                    { value: 'P2P', label: 'voice chat', color: '#5bd882' },
+                    { value: '6', label: 'themes', color: '#c4b5fd' },
+                  ].map((stat, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-[18px] font-display font-bold" style={{ color: stat.color }}>{stat.value}</span>
+                      <span className="text-[11px] text-[#555] font-mono">{stat.label}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {/* Quick stats */}
-              <div className="flex flex-wrap gap-6 mt-8 fade-up" style={{ animationDelay: '400ms' }}>
-                {[
-                  { value: '20', label: 'languages', color: '#ffb347' },
-                  { value: 'CRDT', label: 'sync engine', color: '#5e9eff' },
-                  { value: 'P2P', label: 'voice chat', color: '#5bd882' },
-                  { value: '6', label: 'themes', color: '#c4b5fd' },
-                ].map((stat, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <span className="text-[18px] font-display font-bold" style={{ color: stat.color }}>{stat.value}</span>
-                    <span className="text-[11px] text-[#555] font-mono">{stat.label}</span>
-                  </div>
-                ))}
+              {/* Right: Live code demo */}
+              <div className="fade-up hidden md:block" style={{ animationDelay: '500ms' }}>
+                <CodeDemoPreview />
               </div>
             </div>
           </section>
@@ -516,7 +591,6 @@ export default function Home() {
                 <span className="text-[10px] text-[#555] font-mono">pick a language, hit go</span>
               </div>
               
-              {/* Language Grid */}
               <div className="mb-5">
                 <div className="grid grid-cols-5 gap-1.5">
                   {LANGUAGES.map(lang => (
@@ -543,7 +617,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Public Toggle */}
               <label className="flex items-center gap-2.5 mb-6 cursor-pointer group">
                 <button onClick={() => setIsPublicRoom(!isPublicRoom)}
                   className={`w-8 h-[17px] rounded-full transition-all relative ${isPublicRoom ? 'bg-[#5bd882]' : 'bg-[#444]'}`}>
@@ -576,9 +649,7 @@ export default function Home() {
                     onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setError(''); }}
                     placeholder="ABC123" maxLength={6}
                     className="w-full px-4 py-3.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 focus:shadow-[0_0_0_3px_rgba(94,158,255,0.08)] font-mono text-center text-xl tracking-[0.3em] uppercase transition-all" />
-                  {error && (
-                    <p className="mt-2 text-[#ff6b6b] text-[11px] font-mono pl-1 fade-up">{error}</p>
-                  )}
+                  {error && <p className="mt-2 text-[#ff6b6b] text-[11px] font-mono pl-1 fade-up">{error}</p>}
                 </div>
                 <button type="submit" disabled={joinLoading}
                   className="magnetic-btn ripple-btn w-full py-3 bg-[#222] hover:bg-[#2a2b30] text-white text-[14px] font-display font-semibold rounded-xl transition-all border border-[#333] disabled:opacity-40 hover:border-[#444]">
@@ -598,45 +669,17 @@ export default function Home() {
             <h3 className="text-[11px] text-[#555] font-mono mb-5 uppercase tracking-wider">what you get</h3>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 stagger-in">
               {[
-                { 
-                  label: 'CRDT Sync', 
-                  detail: 'Yjs-powered, no conflicts ever. Type freely.', 
-                  color: '#5e9eff',
-                  icon: (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                  )
+                { label: 'CRDT Sync', detail: 'Yjs-powered, no conflicts ever. Type freely.', color: '#5e9eff',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                 },
-                { 
-                  label: 'Voice Chat', 
-                  detail: 'WebRTC peer-to-peer audio. No server relay.', 
-                  color: '#5bd882',
-                  icon: (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                    </svg>
-                  )
+                { label: 'Voice Chat', detail: 'WebRTC peer-to-peer audio. No server relay.', color: '#5bd882',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
                 },
-                { 
-                  label: '20 Languages', 
-                  detail: 'From Python to Assembly. All run server-side.', 
-                  color: '#ffb347',
-                  icon: (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                    </svg>
-                  )
+                { label: '20 Languages', detail: 'From Python to Assembly. All run server-side.', color: '#ffb347',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
                 },
-                { 
-                  label: 'Themes & More', 
-                  detail: '6 terminal themes, minimap, font control.', 
-                  color: '#c4b5fd',
-                  icon: (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                    </svg>
-                  )
+                { label: 'Themes & More', detail: '6 terminal themes, minimap, font control.', color: '#c4b5fd',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
                 },
               ].map((feat, i) => (
                 <div key={i} className="hover-lift p-4 bg-[#1a1b1e] rounded-xl border border-[#222] hover:border-[#333] transition-all group"
@@ -666,9 +709,7 @@ export default function Home() {
                 gallery
               </button>
               <div className="flex-1" />
-              {tab === 'rooms' && (
-                <button onClick={fetchPublicRooms} className="text-[10px] text-[#555] hover:text-[#888] transition font-mono hover:underline">refresh</button>
-              )}
+              {tab === 'rooms' && <button onClick={fetchPublicRooms} className="text-[10px] text-[#555] hover:text-[#888] transition font-mono hover:underline">refresh</button>}
               {tab === 'gallery' && (
                 <button onClick={() => setShowShareModal(true)}
                   className="magnetic-btn text-[10px] px-3 py-1.5 bg-[#222] text-[#888] hover:text-white rounded-lg border border-[#333] hover:border-[#444] transition font-mono">
@@ -677,7 +718,6 @@ export default function Home() {
               )}
             </div>
 
-            {/* Public Rooms */}
             {tab === 'rooms' && (
               <div className="mb-10 fade-up">
                 {publicRooms.length === 0 ? (
@@ -713,7 +753,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Gallery */}
             {tab === 'gallery' && (
               <div className="mb-10 fade-up">
                 {galleryLoading ? (
@@ -760,7 +799,7 @@ export default function Home() {
             )}
           </div>
 
-          {/* ── Keyboard Shortcuts (fun footer section) ──────────── */}
+          {/* ── Keyboard Shortcuts ──────────────────────────────── */}
           <div className="reveal mb-10 sm:mb-16">
             <div className="bg-[#1a1b1e] border border-[#222] rounded-2xl p-5 sm:p-6 text-center">
               <h3 className="text-[11px] text-[#555] font-mono mb-4 uppercase tracking-wider">keyboard shortcuts</h3>
@@ -878,9 +917,7 @@ export default function Home() {
                   className="w-3.5 h-3.5 rounded bg-[#111] border-[#333] text-[#5e9eff] focus:ring-[#5e9eff]/30 accent-[#5e9eff]" />
                 <span className="text-[11px] text-[#666] font-mono">remember me</span>
               </label>
-              {authError && (
-                <p className="text-[#ff6b6b] text-[11px] font-mono bg-[#ff6b6b]/8 rounded-lg px-3 py-2">{authError}</p>
-              )}
+              {authError && <p className="text-[#ff6b6b] text-[11px] font-mono bg-[#ff6b6b]/8 rounded-lg px-3 py-2">{authError}</p>}
               <button type="submit" disabled={authLoading}
                 className="magnetic-btn w-full py-2.5 bg-[#5e9eff] hover:bg-[#7ab3ff] text-[#0a0a0a] rounded-xl font-display font-semibold transition disabled:opacity-40 mt-1 text-[13px]">
                 {authLoading ? 'loading...' : (authMode === 'signup' ? 'create account' : 'sign in')}
@@ -898,6 +935,15 @@ export default function Home() {
         </div>
       )}
 
+      {/* ── Account Settings Modal ────────────────────────────── */}
+      <AccountSettings
+        isOpen={showAccountSettings}
+        onClose={() => setShowAccountSettings(false)}
+        user={state.user}
+        onUpdateUser={handleUpdateUser}
+        isAuthenticated={state.isAuthenticated}
+      />
+
       {/* ── Footer ──────────────────────────────────────────── */}
       <footer className="border-t border-[#1e1e1e] py-5 px-5">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
@@ -905,7 +951,7 @@ export default function Home() {
             made with <span className="text-[#ff6b6b]">&lt;3</span> by namish
           </p>
           <div className="flex items-center gap-3">
-            <span className="text-[10px] text-[#333] font-mono">collabcode v9</span>
+            <span className="text-[10px] text-[#333] font-mono">collabcode v11</span>
             <div className="w-1 h-1 rounded-full bg-[#5bd882] breathe" />
           </div>
         </div>

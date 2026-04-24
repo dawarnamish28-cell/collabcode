@@ -1,11 +1,15 @@
 /**
- * Navbar v10.0 — Fully working dropdown + mobile responsive
+ * Navbar v11.0 — Polished, accessible, smooth
  * 
- * FIXES:
+ * FIXES & IMPROVEMENTS:
  * - Language dropdown uses React Portal (createPortal to document.body)
- *   so it's NEVER clipped by overflow, z-index stacking, or transforms
- * - File open/save buttons always visible (not hidden on mobile)
+ *   100% escape from stacking contexts
+ * - File open/save buttons always visible
  * - Bigger touch targets on mobile
+ * - Search within language dropdown
+ * - Smooth animations
+ * - Better connection status indicator
+ * - Keyboard accessible (arrow keys in dropdown)
  * 
  * made with <3 by Namish
  */
@@ -63,22 +67,29 @@ const Navbar = memo(function Navbar({
   const [copied, setCopied] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+  const [langSearch, setLangSearch] = useState('');
+  const [focusedIdx, setFocusedIdx] = useState(-1);
   const langBtnRef = useRef(null);
   const dropdownRef = useRef(null);
+  const searchInputRef = useRef(null);
 
   const status = STATUS[connectionStatus] || STATUS.disconnected;
   const currentLang = LANGUAGES.find(l => l.id === language) || LANGUAGES[0];
+
+  const filteredLangs = langSearch
+    ? LANGUAGES.filter(l => l.name.toLowerCase().includes(langSearch.toLowerCase()) || l.icon.toLowerCase().includes(langSearch.toLowerCase()))
+    : LANGUAGES;
 
   // Close dropdown when clicking outside
   useEffect(() => {
     if (!langOpen) return;
     const close = (e) => {
-      // Check if the click was on the trigger button or inside the dropdown
       if (langBtnRef.current && langBtnRef.current.contains(e.target)) return;
       if (dropdownRef.current && dropdownRef.current.contains(e.target)) return;
       setLangOpen(false);
+      setLangSearch('');
+      setFocusedIdx(-1);
     };
-    // Use setTimeout to avoid immediate close on the same click that opened it
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', close);
       document.addEventListener('touchstart', close);
@@ -90,27 +101,57 @@ const Navbar = memo(function Navbar({
     };
   }, [langOpen]);
 
-  // Close on escape
+  // Close on escape & keyboard nav
   useEffect(() => {
     if (!langOpen) return;
-    const esc = (e) => { if (e.key === 'Escape') setLangOpen(false); };
-    document.addEventListener('keydown', esc);
-    return () => document.removeEventListener('keydown', esc);
+    const handle = (e) => {
+      if (e.key === 'Escape') {
+        setLangOpen(false);
+        setLangSearch('');
+        setFocusedIdx(-1);
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setFocusedIdx(prev => Math.min(prev + 1, filteredLangs.length - 1));
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setFocusedIdx(prev => Math.max(prev - 1, 0));
+      }
+      if (e.key === 'Enter' && focusedIdx >= 0 && focusedIdx < filteredLangs.length) {
+        e.preventDefault();
+        handleSelectLang(filteredLangs[focusedIdx].id);
+      }
+    };
+    document.addEventListener('keydown', handle);
+    return () => document.removeEventListener('keydown', handle);
+  }, [langOpen, focusedIdx, filteredLangs]);
+
+  // Focus search when dropdown opens
+  useEffect(() => {
+    if (langOpen) {
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    }
   }, [langOpen]);
 
   const toggleLangDropdown = useCallback(() => {
     if (!langOpen && langBtnRef.current) {
       const rect = langBtnRef.current.getBoundingClientRect();
-      // Position below the button, ensure it stays on screen
-      const left = Math.max(4, Math.min(rect.left, window.innerWidth - 200));
+      const left = Math.max(4, Math.min(rect.left, window.innerWidth - 220));
       setDropdownPos({ top: rect.bottom + 4, left });
     }
     setLangOpen(prev => !prev);
+    if (langOpen) {
+      setLangSearch('');
+      setFocusedIdx(-1);
+    }
   }, [langOpen]);
 
   const handleSelectLang = useCallback((langId) => {
     onLanguageChange(langId);
     setLangOpen(false);
+    setLangSearch('');
+    setFocusedIdx(-1);
   }, [onLanguageChange]);
 
   const handleCopy = useCallback(async () => {
@@ -159,7 +200,7 @@ const Navbar = memo(function Navbar({
           )}
         </button>
 
-        {/* Public/Private - hidden on very small screens */}
+        {/* Public/Private */}
         <button onClick={onTogglePublic}
           className={`hidden sm:flex items-center gap-1 px-1.5 py-1 rounded-md text-[10px] transition flex-shrink-0 font-mono ${
             isPublic ? 'text-[#5bd882] bg-[#5bd882]/8' : 'text-[#555] hover:text-[#888] hover:bg-[#222]'
@@ -175,11 +216,11 @@ const Navbar = memo(function Navbar({
 
         <div className="w-px h-3.5 bg-[#282828] hidden sm:block flex-shrink-0" />
 
-        {/* Language Selector — trigger button */}
+        {/* Language Selector */}
         <button
           ref={langBtnRef}
           onClick={toggleLangDropdown}
-          className="flex items-center gap-1 px-1.5 py-1.5 sm:py-1 rounded-md hover:bg-[#222] transition flex-shrink-0 active:scale-95"
+          className={`flex items-center gap-1 px-1.5 py-1.5 sm:py-1 rounded-md transition flex-shrink-0 active:scale-95 ${langOpen ? 'bg-[#222]' : 'hover:bg-[#222]'}`}
           title={`Language: ${currentLang.name}`}
         >
           <span className="text-[10px] font-mono font-bold" style={{ color: currentLang.color }}>{currentLang.icon}</span>
@@ -187,7 +228,7 @@ const Navbar = memo(function Navbar({
           <svg className={`w-2.5 h-2.5 text-[#555] transition-transform duration-200 ${langOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
         </button>
 
-        {/* File ops — ALWAYS visible, not just desktop */}
+        {/* File ops */}
         <div className="flex items-center gap-0.5">
           <button onClick={onOpenFile} className="p-2 sm:p-1.5 rounded-md text-[#555] hover:text-[#aaa] hover:bg-[#222] transition active:scale-95" title="Open File (Ctrl+O)">
             <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" /></svg>
@@ -200,11 +241,14 @@ const Navbar = memo(function Navbar({
 
       {/* Right side */}
       <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-        {/* Connection dot */}
-        <div className="flex items-center gap-1 px-1 py-1" title={status.label}>
-          <div className="w-[6px] h-[6px] rounded-full" style={{ background: status.color, boxShadow: status.pulse ? `0 0 6px ${status.color}` : 'none' }}>
-            {status.pulse && <div className="w-full h-full rounded-full animate-ping" style={{ background: status.color, opacity: 0.4 }} />}
+        {/* Connection status */}
+        <div className="flex items-center gap-1.5 px-1.5 py-1" title={status.label}>
+          <div className="relative">
+            <div className="w-[6px] h-[6px] rounded-full" style={{ background: status.color }}>
+              {status.pulse && <div className="absolute inset-0 rounded-full animate-ping opacity-40" style={{ background: status.color }} />}
+            </div>
           </div>
+          <span className="text-[9px] text-[#555] font-mono hidden sm:inline">{status.label.toLowerCase()}</span>
         </div>
 
         {/* Extensions */}
@@ -234,7 +278,7 @@ const Navbar = memo(function Navbar({
         </div>
       </div>
 
-      {/* Language Dropdown Portal — rendered into document.body to escape ALL stacking contexts */}
+      {/* Language Dropdown Portal */}
       {langOpen && (
         <DropdownPortal>
           <div
@@ -242,27 +286,47 @@ const Navbar = memo(function Navbar({
             className="fixed"
             style={{ top: dropdownPos.top, left: dropdownPos.left, zIndex: 99999 }}
           >
-            <div className="w-48 bg-[#1a1b1e] border border-[#333] rounded-xl shadow-2xl py-1 max-h-80 overflow-y-auto"
+            <div className="w-52 bg-[#1a1b1e] border border-[#333] rounded-xl shadow-2xl overflow-hidden"
               style={{ animation: 'dropIn 0.15s cubic-bezier(0.22, 1, 0.36, 1)' }}>
-              {LANGUAGES.map(lang => (
-                <button
-                  key={lang.id}
-                  onClick={() => handleSelectLang(lang.id)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-[11px] transition-all duration-100 ${
-                    language === lang.id
-                      ? 'bg-[#5e9eff]/10 text-[#5e9eff]'
-                      : 'hover:bg-[#222] text-[#999] hover:text-[#ccc]'
-                  }`}
-                >
-                  <span className="font-mono font-bold w-5 text-center flex-shrink-0" style={{ color: lang.color }}>{lang.icon}</span>
-                  <span className="flex-1 text-left">{lang.name}</span>
-                  {language === lang.id && (
-                    <svg className="w-3.5 h-3.5 text-[#5e9eff] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                </button>
-              ))}
+              {/* Search */}
+              <div className="px-2 pt-2 pb-1">
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={langSearch}
+                  onChange={(e) => { setLangSearch(e.target.value); setFocusedIdx(0); }}
+                  placeholder="search..."
+                  className="w-full px-2.5 py-1.5 bg-[#111] border border-[#282828] rounded-lg text-[11px] text-white placeholder-[#555] focus:outline-none focus:border-[#5e9eff]/30 font-mono"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+              {/* Language list */}
+              <div className="py-1 max-h-72 overflow-y-auto">
+                {filteredLangs.length === 0 ? (
+                  <div className="px-3 py-3 text-[11px] text-[#555] text-center font-mono">no matches</div>
+                ) : filteredLangs.map((lang, idx) => (
+                  <button
+                    key={lang.id}
+                    onClick={() => handleSelectLang(lang.id)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-[11px] transition-all duration-100 ${
+                      language === lang.id
+                        ? 'bg-[#5e9eff]/10 text-[#5e9eff]'
+                        : idx === focusedIdx
+                          ? 'bg-[#222] text-[#ccc]'
+                          : 'hover:bg-[#222] text-[#999] hover:text-[#ccc]'
+                    }`}
+                  >
+                    <span className="font-mono font-bold w-5 text-center flex-shrink-0" style={{ color: lang.color }}>{lang.icon}</span>
+                    <span className="flex-1 text-left">{lang.name}</span>
+                    {language === lang.id && (
+                      <svg className="w-3.5 h-3.5 text-[#5e9eff] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </DropdownPortal>

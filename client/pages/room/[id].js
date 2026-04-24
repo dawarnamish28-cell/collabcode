@@ -1,8 +1,9 @@
 /**
- * Room Workspace v8.0 — Warm, organic workspace
+ * Room Workspace v11.0 — Account settings, polished, enhanced
  * 
  * Same robust functionality (CRDT sync, 20 langs, stdin, voice chat)
- * but with the v8 visual language. Warmer colors, less mechanical.
+ * with v11 upgrades: account settings modal, user profile menu,
+ * better mobile support, smoother transitions.
  * 
  * made with <3 by Namish
  */
@@ -21,6 +22,7 @@ import OutputConsole from '../../components/OutputConsole';
 import VoiceChat from '../../components/VoiceChat';
 import FileExplorer from '../../components/FileExplorer';
 import Extensions from '../../components/Extensions';
+import AccountSettings from '../../components/AccountSettings';
 
 const Editor = dynamic(() => import('../../components/Editor'), { ssr: false });
 
@@ -36,7 +38,7 @@ const EXT_MAP = {
 export default function RoomPage() {
   const router = useRouter();
   const { id: roomId } = router.query;
-  const { state, setRoom, setUsers, addUser, removeUser, setConnectionStatus, setLanguage, setTheme, toggleChat, toggleOutput } = useAppContext();
+  const { state, setUser, setRoom, setUsers, addUser, removeUser, setConnectionStatus, setLanguage, setTheme, toggleChat, toggleOutput } = useAppContext();
 
   const socketRef = useRef(null);
   const ydocRef = useRef(null);
@@ -65,6 +67,7 @@ export default function RoomPage() {
   const [editorWordWrap, setEditorWordWrap] = useState(true);
 
   const [isPublic, setIsPublic] = useState(false);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
 
   const queryLang = router.query.lang;
   const queryPublic = router.query.public;
@@ -161,6 +164,19 @@ export default function RoomPage() {
     setIsPublic(newVal);
     if (socketRef.current) socketRef.current.emit('room:set-visibility', { isPublic: newVal });
   }, [isPublic]);
+
+  // ─── Update User Profile ─────────────────────────────────────────
+  const handleUpdateUser = useCallback((updatedUser) => {
+    setUser(updatedUser);
+    // Update the socket connection with new user info
+    if (socketRef.current) {
+      socketRef.current.emit('user:update-profile', {
+        username: updatedUser.username,
+        color: updatedUser.color,
+        emoji: updatedUser.emoji,
+      });
+    }
+  }, [setUser]);
 
   // ─── Code Execution ───────────────────────────────────────────────
   const handleRunCode = useCallback(async (code, explicitStdin) => {
@@ -361,9 +377,13 @@ export default function RoomPage() {
   if (!state.user || !roomId) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-[#131416]">
-        <div className="text-center">
-          <div className="spinner mx-auto mb-4" />
-          <p className="text-[#666] text-[12px] font-mono">connecting...</p>
+        <div className="text-center fade-up">
+          <div className="w-10 h-10 rounded-xl bg-[#222] border border-[#333] flex items-center justify-center text-[14px] font-mono font-bold text-[#5e9eff] mx-auto mb-4 glow-pulse">
+            {'//'}
+          </div>
+          <div className="spinner mx-auto mb-3" />
+          <p className="text-[#666] text-[12px] font-mono">connecting to room...</p>
+          <p className="text-[#444] text-[10px] font-mono mt-1">setting up CRDT sync</p>
         </div>
       </div>
     );
@@ -384,12 +404,14 @@ export default function RoomPage() {
         filesOpen={filesOpen}
         onToggleExtensions={() => { setExtensionsOpen(!extensionsOpen); setFilesOpen(false); }}
         extensionsOpen={extensionsOpen}
+        currentUser={state.user}
+        onOpenAccountSettings={() => setShowAccountSettings(true)}
       />
 
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Left Panel */}
         {leftPanelOpen && (
-          <div style={{ width: leftPanelWidth }} className="flex-shrink-0 hidden sm:block">
+          <div style={{ width: leftPanelWidth }} className="flex-shrink-0 hidden sm:block panel-slide-in">
             {filesOpen && (
               <FileExplorer
                 files={files} activeFileId={activeFileId}
@@ -447,10 +469,11 @@ export default function RoomPage() {
                 wordWrap={editorWordWrap}
               />
             ) : (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center">
+              <div className="h-full flex items-center justify-center bg-[#1a1b1e]">
+                <div className="text-center fade-up">
                   <div className="spinner mx-auto mb-3" />
                   <p className="text-[#666] text-[11px] font-mono">loading editor...</p>
+                  <p className="text-[#444] text-[9px] font-mono mt-1">initializing Monaco &amp; Yjs</p>
                 </div>
               </div>
             )}
@@ -497,9 +520,12 @@ export default function RoomPage() {
               </div>
             </div>
             {/* Mobile: fullscreen overlay */}
-            <div className="fixed inset-0 z-50 bg-[#1a1b1e] flex flex-col sm:hidden">
-              <div className="flex items-center justify-between px-3 py-2 border-b border-[#282828] bg-[#19191c] flex-shrink-0">
-                <span className="text-[12px] font-mono text-[#888]">chat & voice</span>
+            <div className="fixed inset-0 z-50 bg-[#1a1b1e] flex flex-col sm:hidden" style={{ animation: 'slideInRight 0.2s cubic-bezier(0.22, 1, 0.36, 1)' }}>
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#282828] bg-[#19191c] flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-[#5e9eff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                  <span className="text-[12px] font-mono text-[#888]">chat & voice</span>
+                </div>
                 <button onClick={toggleChat} className="p-2 text-[#666] hover:text-white rounded-lg hover:bg-[#222] active:scale-95 transition">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
@@ -512,6 +538,15 @@ export default function RoomPage() {
           </>
         )}
       </div>
+
+      {/* Account Settings Modal */}
+      <AccountSettings
+        isOpen={showAccountSettings}
+        onClose={() => setShowAccountSettings(false)}
+        user={state.user}
+        onUpdateUser={handleUpdateUser}
+        isAuthenticated={state.isAuthenticated}
+      />
     </div>
   );
 }

@@ -36,6 +36,7 @@ module.exports = {
         'shimmer': 'shimmer 4s linear infinite',
         'breathe': 'breathe 2.5s ease-in-out infinite',
         'glow-pulse': 'glowPulse 3s ease-in-out infinite',
+        'slide-up': 'slideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1)',
       },
       keyframes: {
         slideIn: {
@@ -62,6 +63,10 @@ module.exports = {
           '0%, 100%': { boxShadow: '0 0 20px -5px rgba(94, 158, 255, 0.2)' },
           '50%': { boxShadow: '0 0 30px -3px rgba(94, 158, 255, 0.35)' },
         },
+        slideUp: {
+          '0%': { opacity: 0, transform: 'translateY(12px)' },
+          '100%': { opacity: 1, transform: 'translateY(0)' },
+        },
       },
       borderRadius: {
         'xl': '12px',
@@ -72,6 +77,7 @@ module.exports = {
         'glow': '0 0 20px -5px rgba(94, 158, 255, 0.15)',
         'glow-warm': '0 0 30px -8px rgba(255, 179, 71, 0.12), 0 0 60px -12px rgba(94, 158, 255, 0.08)',
         'inner-subtle': 'inset 0 1px 0 0 rgba(255,255,255,0.03)',
+        'elevated': '0 8px 30px rgba(0, 0, 0, 0.3)',
       },
     },
   },
