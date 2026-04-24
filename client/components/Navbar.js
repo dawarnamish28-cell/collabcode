@@ -62,6 +62,7 @@ const Navbar = memo(function Navbar({
   isPublic, onTogglePublic,
   onToggleFiles, filesOpen,
   onToggleExtensions, extensionsOpen,
+  currentUser, onOpenAccountSettings,
 }) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
@@ -69,9 +70,13 @@ const Navbar = memo(function Navbar({
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const [langSearch, setLangSearch] = useState('');
   const [focusedIdx, setFocusedIdx] = useState(-1);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [userMenuPos, setUserMenuPos] = useState({ top: 0, right: 0 });
   const langBtnRef = useRef(null);
   const dropdownRef = useRef(null);
   const searchInputRef = useRef(null);
+  const userBtnRef = useRef(null);
+  const userMenuRef = useRef(null);
 
   const status = STATUS[connectionStatus] || STATUS.disconnected;
   const currentLang = LANGUAGES.find(l => l.id === language) || LANGUAGES[0];
@@ -100,6 +105,25 @@ const Navbar = memo(function Navbar({
       document.removeEventListener('touchstart', close);
     };
   }, [langOpen]);
+
+  // Close user menu when clicking outside
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const close = (e) => {
+      if (userBtnRef.current && userBtnRef.current.contains(e.target)) return;
+      if (userMenuRef.current && userMenuRef.current.contains(e.target)) return;
+      setUserMenuOpen(false);
+    };
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', close);
+      document.addEventListener('touchstart', close);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('touchstart', close);
+    };
+  }, [userMenuOpen]);
 
   // Close on escape & keyboard nav
   useEffect(() => {
@@ -133,6 +157,16 @@ const Navbar = memo(function Navbar({
       setTimeout(() => searchInputRef.current?.focus(), 50);
     }
   }, [langOpen]);
+
+  const toggleUserMenu = useCallback(() => {
+    setLangOpen(false);
+    if (!userMenuOpen && userBtnRef.current) {
+      const rect = userBtnRef.current.getBoundingClientRect();
+      const right = Math.max(4, window.innerWidth - rect.right);
+      setUserMenuPos({ top: rect.bottom + 4, right });
+    }
+    setUserMenuOpen(prev => !prev);
+  }, [userMenuOpen]);
 
   const toggleLangDropdown = useCallback(() => {
     if (!langOpen && langBtnRef.current) {
@@ -276,7 +310,79 @@ const Navbar = memo(function Navbar({
           <div className="w-1 h-1 rounded-full bg-[#5bd882]" />
           <span className="text-[10px] text-[#888] font-mono">{users?.length || 0}</span>
         </div>
+
+        <div className="w-px h-3.5 bg-[#282828] flex-shrink-0" />
+
+        {/* User Avatar / Profile Button */}
+        <button
+          ref={userBtnRef}
+          onClick={toggleUserMenu}
+          className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-[#222] transition active:scale-95"
+          title="Profile"
+        >
+          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] border border-[#333]"
+            style={{ background: (currentUser?.color || '#5e9eff') + '20', color: currentUser?.color || '#5e9eff' }}>
+            {currentUser?.emoji || currentUser?.username?.charAt(0)?.toUpperCase() || '?'}
+          </div>
+          <span className="text-[10px] text-[#888] font-mono hidden sm:inline max-w-[60px] truncate">
+            {currentUser?.username || 'user'}
+          </span>
+        </button>
       </div>
+
+      {/* User Menu Portal */}
+      {userMenuOpen && (
+        <DropdownPortal>
+          <div
+            ref={userMenuRef}
+            className="fixed"
+            style={{ top: userMenuPos.top, right: userMenuPos.right, zIndex: 99999 }}
+          >
+            <div className="w-52 bg-[#1a1b1e] border border-[#333] rounded-xl shadow-2xl py-1 overflow-hidden"
+              style={{ animation: 'dropIn 0.15s cubic-bezier(0.22, 1, 0.36, 1)' }}>
+              <div className="px-3 py-2.5 border-b border-[#282828]">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm border border-[#333]"
+                    style={{ background: (currentUser?.color || '#5e9eff') + '15' }}>
+                    {currentUser?.emoji || currentUser?.username?.charAt(0)?.toUpperCase() || '?'}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium text-white truncate">{currentUser?.username || 'Anonymous'}</p>
+                    <p className="text-[9px] text-[#555] font-mono truncate">
+                      {currentUser?.authenticated ? currentUser?.email || 'signed in' : 'anonymous'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="py-1">
+                <button onClick={() => { setUserMenuOpen(false); onOpenAccountSettings?.(); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-[#999] hover:text-[#ccc] hover:bg-[#222] transition">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  Account Settings
+                </button>
+                <button onClick={() => { setUserMenuOpen(false); onToggleExtensions?.(); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-[#999] hover:text-[#ccc] hover:bg-[#222] transition">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                  </svg>
+                  Editor Settings
+                </button>
+              </div>
+              <div className="border-t border-[#282828] py-1">
+                <button onClick={() => { setUserMenuOpen(false); router.push('/'); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-[#999] hover:text-[#ccc] hover:bg-[#222] transition">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                  </svg>
+                  Back to Home
+                </button>
+              </div>
+            </div>
+          </div>
+        </DropdownPortal>
+      )}
 
       {/* Language Dropdown Portal */}
       {langOpen && (
