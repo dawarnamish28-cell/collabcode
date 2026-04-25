@@ -1,5 +1,5 @@
 /**
- * RunButton v8.0 — Less shouty, more confident
+ * RunButton v12.0 — Confident, with language indicator
  * made with <3 by Namish
  */
 

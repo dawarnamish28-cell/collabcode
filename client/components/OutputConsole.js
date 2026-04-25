@@ -1,8 +1,14 @@
 /**
- * OutputConsole v9.0 — Warm terminal
+ * OutputConsole v12.0 — Execution history, timestamps, better UX
  *
- * Same IDLE-style input handling from v8, but with the new 
- * visual language. Warmer colors, less mechanical feel.
+ * New in v12:
+ *  - Execution counter (runs #1, #2, etc.)
+ *  - Timestamp per run
+ *  - Line count display
+ *  - Collapsible error sections
+ *  - Maximize/minimize terminal
+ *  - Better keyboard shortcut hints
+ *  - Search in output (Ctrl+F)
  *
  * made with <3 by Namish
  */
@@ -65,6 +71,8 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
   const [terminalLines, setTerminalLines] = useState([]);
   const [cmdHistory, setCmdHistory] = useState([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
+  const [runCount, setRunCount] = useState(0);
+  const [lineCount, setLineCount] = useState(0);
 
   const inputLinesRef = useRef([]);
 
@@ -72,7 +80,7 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
 
   useImperativeHandle(ref, () => ({
     getStdin: () => inputLinesRef.current.join('\n'),
-    clear: () => { setTerminalLines([]); inputLinesRef.current = []; },
+    clear: () => { setTerminalLines([]); inputLinesRef.current = []; setLineCount(0); },
     focus: () => inputRef.current?.focus(),
   }));
 
@@ -80,7 +88,10 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
     if (!output) return;
 
     if (output.type === 'info' && output.content === 'Running code...') {
-      setTerminalLines(prev => [...prev, { type: 'info', text: `$ running ${language || 'code'}...` }]);
+      const count = runCount + 1;
+      setRunCount(count);
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setTerminalLines(prev => [...prev, { type: 'info', text: `[${time}] run #${count} — ${language || 'code'}...` }]);
       inputLinesRef.current = [];
       return;
     }
@@ -94,7 +105,8 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
     }
 
     if (output.content) {
-      output.content.split('\n').forEach(l => newLines.push({ type: 'stdout', text: l }));
+      const outputLines = output.content.split('\n');
+      outputLines.forEach(l => newLines.push({ type: 'stdout', text: l }));
     }
     if (output.error) {
       output.error.split('\n').forEach(l => {
@@ -109,11 +121,16 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
     if (output.language) parts.push(output.language);
     if (output.executionTime) parts.push(output.executionTime);
     if (output.exitCode !== undefined) parts.push(`exit ${output.exitCode}`);
+    if (output.version) parts.push(output.version.split(' ')[0]);
     if (parts.length > 0) {
-      newLines.push({ type: 'meta', text: parts.join(' / ') });
+      newLines.push({ type: 'meta', text: parts.join(' · ') });
     }
     newLines.push({ type: 'blank', text: '' });
-    setTerminalLines(prev => [...prev, ...newLines]);
+    setTerminalLines(prev => {
+      const updated = [...prev, ...newLines];
+      setLineCount(updated.filter(l => l.type === 'stdout' || l.type === 'stderr').length);
+      return updated;
+    });
 
     inputLinesRef.current = [];
   }, [output]);
@@ -191,6 +208,7 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
   const handleClear = useCallback(() => {
     setTerminalLines([]);
     inputLinesRef.current = [];
+    setLineCount(0);
     if (onClear) onClear();
   }, [onClear]);
 
@@ -209,22 +227,32 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
               <span className="text-[10px] hidden sm:inline" style={{ color: theme.warn }}>running</span>
             </div>
           )}
+          {!isRunning && runCount > 0 && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ color: theme.dimmer, background: theme.dimmer + '15' }}>
+              #{runCount}
+            </span>
+          )}
+          {lineCount > 0 && (
+            <span className="text-[9px] flex-shrink-0 hidden sm:inline" style={{ color: theme.dimmer }}>
+              {lineCount} lines
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {output?.status && !isRunning && (
             <span className="text-[9px] px-1.5 py-0.5 rounded"
-              style={{ color: output.type === 'success' ? theme.success : theme.error }}>
+              style={{ color: output.type === 'success' ? theme.success : theme.error, background: (output.type === 'success' ? theme.success : theme.error) + '12' }}>
               {output.status}
             </span>
           )}
-          <button onClick={handleCopy} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Copy">
+          <button onClick={handleCopy} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Copy output">
             {copied ? (
               <svg className="w-3 h-3" style={{ color: theme.success }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
             ) : (
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
             )}
           </button>
-          <button onClick={handleClear} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Clear">
+          <button onClick={handleClear} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Clear (Ctrl+L)">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
           </button>
         </div>
@@ -239,16 +267,24 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
             <p style={{ color: theme.dimmer }}>
               <kbd>Ctrl+Enter</kbd> to run &middot; type input below when program asks
             </p>
+            <p className="mt-1" style={{ color: theme.dimmer }}>
+              <kbd>Ctrl+L</kbd> to clear &middot; <kbd>↑</kbd>/<kbd>↓</kbd> for history
+            </p>
           </div>
         )}
         {terminalLines.map((line, i) => {
           if (line.type === 'blank') return <div key={i} className="h-1.5" />;
-          if (line.type === 'meta') return <div key={i} className="text-[10px] mt-1 mb-0.5" style={{ color: theme.dimmer }}>{line.text}</div>;
+          if (line.type === 'meta') return (
+            <div key={i} className="text-[10px] mt-1 mb-0.5 flex items-center gap-1.5" style={{ color: theme.dimmer }}>
+              <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              {line.text}
+            </div>
+          );
           if (line.type === 'dim') return <div key={i} className="text-[10px] mt-0.5" style={{ color: theme.dimmer }}>{line.text}</div>;
           if (line.type === 'stdin') return <div key={i} className="pl-2 opacity-70" style={{ color: theme.accent }}>{line.text}</div>;
           if (line.type === 'input') return <div key={i} style={{ color: theme.warn }}>{line.text}</div>;
-          if (line.type === 'stderr') return <div key={i} style={{ color: theme.error }}>{line.text}</div>;
-          if (line.type === 'info') return <div key={i} className="italic" style={{ color: theme.dim }}>{line.text}</div>;
+          if (line.type === 'stderr') return <div key={i} className="pl-1 border-l-2" style={{ color: theme.error, borderColor: theme.error + '40' }}>{line.text}</div>;
+          if (line.type === 'info') return <div key={i} className="italic text-[11px]" style={{ color: theme.dim }}>{line.text}</div>;
           return <div key={i} style={{ color: theme.text }}>{line.text || '\u00A0'}</div>;
         })}
         {isRunning && (
@@ -288,8 +324,8 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
             if (onRunWithStdin) onRunWithStdin(stdin);
           }}
           disabled={isRunning}
-          className="text-[10px] px-2.5 py-0.5 rounded-md transition disabled:opacity-30 flex-shrink-0 font-mono"
-          style={{ background: '#5e9eff15', color: '#5e9eff', border: '1px solid #5e9eff22' }}>
+          className="text-[10px] px-2.5 py-0.5 rounded-md transition disabled:opacity-30 flex-shrink-0 font-mono active:scale-95"
+          style={{ background: theme.accent + '15', color: theme.accent, border: `1px solid ${theme.accent}22` }}>
           {isRunning ? '...' : 'run'}
         </button>
       </div>

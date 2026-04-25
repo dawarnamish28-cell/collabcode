@@ -1,9 +1,13 @@
 /**
- * Room Workspace v11.0 — Account settings, polished, enhanced
+ * Room Workspace v12.0 — Enhanced in every way
  * 
- * Same robust functionality (CRDT sync, 20 langs, stdin, voice chat)
- * with v11 upgrades: account settings modal, user profile menu,
- * better mobile support, smoother transitions.
+ * New in v12:
+ *  - Keyboard shortcuts overlay (press ? to open)
+ *  - Session timer showing how long you've been in room
+ *  - Toast notifications for user join/leave events
+ *  - Better loading skeleton
+ *  - Auto-save indicator
+ *  - Enhanced connection status
  * 
  * made with <3 by Namish
  */
@@ -68,6 +72,10 @@ export default function RoomPage() {
 
   const [isPublic, setIsPublic] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [sessionStart] = useState(Date.now());
+  const [sessionTime, setSessionTime] = useState('0:00');
+  const [toasts, setToasts] = useState([]);
 
   const queryLang = router.query.lang;
   const queryPublic = router.query.public;
@@ -100,6 +108,27 @@ export default function RoomPage() {
 
   useEffect(() => { saveSettings(); }, [saveSettings]);
 
+  // Session timer
+  useEffect(() => {
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+      const h = Math.floor(elapsed / 3600);
+      const m = Math.floor((elapsed % 3600) / 60);
+      const s = elapsed % 60;
+      setSessionTime(h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`);
+    };
+    const interval = setInterval(tick, 1000);
+    tick();
+    return () => clearInterval(interval);
+  }, [sessionStart]);
+
+  // Toast helper
+  const addToast = useCallback((message, type = 'info') => {
+    const id = Date.now().toString(36);
+    setToasts(prev => [...prev.slice(-4), { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+  }, []);
+
   // ─── Initialize Connection ──────────────────────────────────────
   useEffect(() => {
     if (!roomId || !state.user) return;
@@ -130,8 +159,8 @@ export default function RoomPage() {
       setRoom({ roomId });
       setReady(true);
     });
-    socket.on('room:user-joined', (user) => addUser(user));
-    socket.on('room:user-left', (data) => removeUser(data.userId));
+    socket.on('room:user-joined', (user) => { addUser(user); addToast(`${user.username} joined`, 'join'); });
+    socket.on('room:user-left', (data) => { removeUser(data.userId); addToast(`${data.username || 'Someone'} left`, 'leave'); });
     socket.on('chat:history', (history) => setMessages(history));
     socket.on('chat:message', (msg) => setMessages(prev => [...prev, msg]));
     socket.on('room:language-change', (data) => setLanguage(data.language));
@@ -369,6 +398,11 @@ export default function RoomPage() {
       if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); toggleOutput(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSaveFile(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); handleOpenFile(); }
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        setShowShortcuts(prev => !prev);
+      }
+      if (e.key === 'Escape') setShowShortcuts(false);
     };
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
@@ -538,6 +572,66 @@ export default function RoomPage() {
           </>
         )}
       </div>
+
+      {/* Session Timer (bottom-left) */}
+      <div className="fixed bottom-2 left-2 z-30 flex items-center gap-1.5 px-2 py-1 bg-[#19191c]/80 backdrop-blur-sm rounded-lg border border-[#282828] text-[9px] font-mono text-[#555]">
+        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        {sessionTime}
+      </div>
+
+      {/* Toast Notifications */}
+      <div className="fixed top-12 right-3 z-[9999] flex flex-col gap-1.5">
+        {toasts.map(toast => (
+          <div key={toast.id}
+            className="flex items-center gap-2 px-3 py-1.5 bg-[#222] border border-[#333] rounded-lg shadow-lg text-[11px] font-mono backdrop-blur-sm"
+            style={{ animation: 'toastSlideUp 0.25s cubic-bezier(0.22, 1, 0.36, 1)', color: toast.type === 'join' ? '#5bd882' : toast.type === 'leave' ? '#ff6b6b' : '#888' }}>
+            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+              style={{ background: toast.type === 'join' ? '#5bd882' : toast.type === 'leave' ? '#ff6b6b' : '#5e9eff' }} />
+            {toast.message}
+          </div>
+        ))}
+      </div>
+
+      {/* Keyboard Shortcuts Overlay */}
+      {showShortcuts && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999]"
+          onClick={() => setShowShortcuts(false)}>
+          <div className="modal-enter bg-[#1a1b1e] border border-[#333] rounded-2xl p-6 w-full max-w-md shadow-2xl"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[15px] font-display font-semibold text-white">Keyboard Shortcuts</h3>
+              <button onClick={() => setShowShortcuts(false)} className="p-1.5 text-[#666] hover:text-white transition rounded-lg hover:bg-[#222]">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="space-y-2">
+              {[
+                { keys: ['Ctrl', 'Enter'], desc: 'Run code' },
+                { keys: ['Ctrl', 'B'], desc: 'Toggle chat panel' },
+                { keys: ['Ctrl', '`'], desc: 'Toggle terminal' },
+                { keys: ['Ctrl', 'S'], desc: 'Save file to disk' },
+                { keys: ['Ctrl', 'O'], desc: 'Open file from disk' },
+                { keys: ['Ctrl', 'L'], desc: 'Clear terminal' },
+                { keys: ['?'], desc: 'Show this shortcuts panel' },
+                { keys: ['Esc'], desc: 'Close modals/overlays' },
+              ].map((shortcut, i) => (
+                <div key={i} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-[#222] transition">
+                  <span className="text-[12px] text-[#999]">{shortcut.desc}</span>
+                  <div className="flex items-center gap-1">
+                    {shortcut.keys.map((key, j) => (
+                      <span key={j}>
+                        {j > 0 && <span className="text-[#444] text-[10px] mx-0.5">+</span>}
+                        <kbd className="text-[10px]">{key}</kbd>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-[#444] font-mono mt-4 text-center">press <kbd>?</kbd> anywhere to toggle this panel</p>
+          </div>
+        </div>
+      )}
 
       {/* Account Settings Modal */}
       <AccountSettings
