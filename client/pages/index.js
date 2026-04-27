@@ -1,19 +1,13 @@
 /**
- * Landing Page v12.0 — Enhanced in every way
+ * Landing Page v13.0 — Professional service edition
  * 
- * New in v12:
- *  - Animated counter stats (count-up on scroll)
- *  - "How It Works" 3-step section with connecting line
- *  - Developer testimonial cards with avatar + rating
- *  - Better footer with GitHub link, version badge, social proof
- *  - "Recently active" pulse on live rooms
- *  - Improved hero badge ("open source", "free forever")
- *  - Interactive code demo with cursor + multi-user simulation
- *  - Room preview cards with language badge + avatar stack
- *  - Gallery with like/copy buttons
- *  - Toast notification system
- *  - Better auth modal with password strength indicator
- *  - Responsive command bar in hero (Ctrl+K hint)
+ * Changes in v13:
+ *  - Removed fake testimonials/reviews
+ *  - Removed GitHub button & open-source references
+ *  - Removed unnecessary emojis from toasts
+ *  - Positioned as a professional collaborative coding service
+ *  - Enhanced trust indicators with real feature highlights
+ *  - Cleaner, more professional footer
  * 
  * made with <3 by Namish
  */
@@ -64,7 +58,7 @@ function ToastContainer({ toasts, onDismiss }) {
         <div key={toast.id}
           className="flex items-center gap-2.5 px-4 py-2.5 bg-[#222] border border-[#333] rounded-xl shadow-2xl text-[12px] font-mono backdrop-blur-sm"
           style={{ animation: 'toastSlideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1)', color: toast.color || '#ccc' }}>
-          {toast.icon && <span className="text-[14px]">{toast.icon}</span>}
+          {toast.icon && <span className="text-[12px]">{toast.icon}</span>}
           <span>{toast.message}</span>
           <button onClick={() => onDismiss(toast.id)} className="text-[#555] hover:text-[#aaa] ml-1 p-0.5">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -516,7 +510,7 @@ export default function Home() {
 
   function handleCreateRoom() {
     const code = generateRoomCode();
-    showToast('Creating room...', { icon: '🚀', color: '#5e9eff' });
+    showToast('Creating room...', { color: '#5e9eff' });
     router.push(`/room/${code}?lang=${selectedLang}&public=${isPublicRoom}`);
   }
 
@@ -529,7 +523,7 @@ export default function Home() {
     try {
       const res = await axios.get(`${SERVER_URL}/api/rooms/${code}/check`);
       if (res.data.exists) {
-        showToast('Joining room...', { icon: '🔗', color: '#5bd882' });
+        showToast('Joining room...', { color: '#5bd882' });
         router.push(`/room/${code}`);
       }
       else setError('No room found with this code. Create a new one instead.');
@@ -551,7 +545,7 @@ export default function Home() {
       if (authForm.remember) localStorage.setItem('collabcode_auth', JSON.stringify(user));
       setShowAuth(false);
       setAuthForm({ email: '', password: '', username: '', remember: true });
-      showToast(authMode === 'signup' ? 'Account created!' : 'Welcome back!', { icon: '✨', color: '#5bd882' });
+      showToast(authMode === 'signup' ? 'Account created!' : 'Welcome back!', { color: '#5bd882' });
     } catch (err) {
       setAuthError(err.response?.data?.message || 'Authentication failed');
     } finally { setAuthLoading(false); }
@@ -569,9 +563,9 @@ export default function Home() {
       setShowShareModal(false);
       setShareForm({ title: '', description: '', code: '', language: 'python' });
       fetchGallery();
-      showToast('Snippet shared!', { icon: '📝', color: '#5e9eff' });
+      showToast('Snippet shared!', { color: '#5e9eff' });
     } catch (err) {
-      showToast('Failed to share', { icon: '❌', color: '#ff6b6b' });
+      showToast('Failed to share', { color: '#ff6b6b' });
     } finally { setShareLoading(false); }
   }
 
@@ -601,17 +595,10 @@ export default function Home() {
             </div>
             <div>
               <h1 className="text-[15px] font-display font-semibold text-white tracking-tight leading-none">CollabCode</h1>
-              <p className="text-[9px] text-[#555] font-mono mt-0.5">by namish</p>
+              <p className="text-[9px] text-[#555] font-mono mt-0.5">code together, ship faster</p>
             </div>
           </div>
           <div className="flex items-center gap-2.5">
-            {/* GitHub badge */}
-            <a href="https://github.com/dawarnamish28-cell/collabcode" target="_blank" rel="noopener noreferrer"
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1a1b1e] border border-[#282828] text-[10px] text-[#666] font-mono hover:text-[#aaa] hover:border-[#444] transition">
-              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" /></svg>
-              <span>Star</span>
-            </a>
-
             {state.user && (
               <div className="relative" ref={userMenuRef}>
                 <button onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -683,11 +670,11 @@ export default function Home() {
               {/* Left: Text */}
               <div>
                 <div className="flex items-center gap-2 mb-4 fade-up">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#5bd882]/8 border border-[#5bd882]/15 rounded-full">
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#5bd882] breathe" />
-                    <span className="text-[10px] text-[#5bd882] font-mono">free &amp; open source</span>
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#5e9eff]/8 border border-[#5e9eff]/15 rounded-full">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#5e9eff] breathe" />
+                    <span className="text-[10px] text-[#5e9eff] font-mono">collaborative coding platform</span>
                   </div>
-                  <span className="text-[10px] text-[#555] font-mono">&middot; 20 languages &middot; real-time sync</span>
+                  <span className="text-[10px] text-[#555] font-mono">20 languages &middot; real-time sync</span>
                 </div>
 
                 <h2 className="text-[32px] sm:text-[48px] font-display font-bold text-white leading-[1.05] tracking-tight max-w-lg fade-up" style={{ animationDelay: '100ms' }}>
@@ -894,7 +881,7 @@ export default function Home() {
                   { target: 20, suffix: '+', label: 'Languages', color: '#ffb347' },
                   { target: 6, suffix: '', label: 'Themes', color: '#c4b5fd' },
                   { target: 0, suffix: 'ms', label: 'Latency', color: '#5bd882', prefix: '~' },
-                  { target: 100, suffix: '%', label: 'Free', color: '#5e9eff' },
+                  { target: '<1', suffix: 's', label: 'Setup time', color: '#5e9eff' },
                 ].map((stat, i) => (
                   <div key={i}>
                     <AnimatedCounter target={stat.target} suffix={stat.suffix} prefix={stat.prefix || ''} color={stat.color} />
@@ -1010,7 +997,7 @@ export default function Home() {
                               <button onClick={(e) => {
                                 e.stopPropagation();
                                 navigator.clipboard.writeText(snippet.code).catch(() => {});
-                                showToast('Copied!', { icon: '📋', color: '#5e9eff' });
+                                showToast('Copied!', { color: '#5e9eff' });
                               }} className="text-[#555] hover:text-[#aaa] transition p-0.5">
                                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                               </button>
@@ -1025,35 +1012,29 @@ export default function Home() {
             )}
           </div>
 
-          {/* ── Testimonials ───────────────────────────────────── */}
+          {/* ── Why CollabCode ─────────────────────────────────── */}
           <div className="reveal mb-10 sm:mb-16">
-            <h3 className="text-[11px] text-[#555] font-mono mb-5 uppercase tracking-wider text-center">what devs say</h3>
+            <h3 className="text-[11px] text-[#555] font-mono mb-5 uppercase tracking-wider text-center">why collabcode</h3>
             <div className="grid sm:grid-cols-3 gap-4">
               {[
-                { name: 'Sarah K.', role: 'CS Student', text: 'Best tool for pair programming assignments. The CRDT sync is buttery smooth.', color: '#5e9eff', avatar: 'SK' },
-                { name: 'Marco R.', role: 'Frontend Dev', text: 'Replaced Google Meet screen sharing for code reviews. Voice chat + live editing = magic.', color: '#5bd882', avatar: 'MR' },
-                { name: 'Priya D.', role: 'Hackathon Enthusiast', text: '20 languages in one editor with actual execution? This is what replit wishes it was.', color: '#ffb347', avatar: 'PD' },
-              ].map((testimonial, i) => (
-                <div key={i} className="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 hover-lift gradient-border-card"
+                { title: 'No setup required', desc: 'No downloads, no extensions, no configs. Open a link and start coding together in seconds.', color: '#5e9eff',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                },
+                { title: 'Real code execution', desc: 'Run your code server-side in 20 languages with interactive stdin support and instant output.', color: '#5bd882',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                },
+                { title: 'Built-in voice chat', desc: 'Peer-to-peer WebRTC audio with zero relay servers. Talk while you code, no third-party app needed.', color: '#ffb347',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                },
+              ].map((item, i) => (
+                <div key={i} className="bg-[#1a1b1e] border border-[#282828] rounded-xl p-5 hover-lift gradient-border-card"
                   style={{ animationDelay: `${i * 80}ms` }}>
-                  <div className="flex items-center gap-2.5 mb-3">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold border border-[#333]"
-                      style={{ background: testimonial.color + '15', color: testimonial.color }}>
-                      {testimonial.avatar}
-                    </div>
-                    <div>
-                      <p className="text-[12px] text-[#ccc] font-medium">{testimonial.name}</p>
-                      <p className="text-[9px] text-[#555] font-mono">{testimonial.role}</p>
-                    </div>
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-3 border border-[#282828]"
+                    style={{ color: item.color, background: item.color + '10' }}>
+                    {item.icon}
                   </div>
-                  <p className="text-[11px] text-[#888] leading-relaxed">{testimonial.text}</p>
-                  <div className="flex gap-0.5 mt-2.5">
-                    {[...Array(5)].map((_, j) => (
-                      <svg key={j} className="w-3 h-3 text-[#ffb347]" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                      </svg>
-                    ))}
-                  </div>
+                  <h4 className="text-[13px] font-semibold text-white mb-1.5">{item.title}</h4>
+                  <p className="text-[11px] text-[#666] font-mono leading-relaxed">{item.desc}</p>
                 </div>
               ))}
             </div>
@@ -1103,7 +1084,7 @@ export default function Home() {
               </div>
               <button onClick={() => {
                 navigator.clipboard.writeText(selectedSnippet.code).catch(() => {});
-                showToast('Copied to clipboard!', { icon: '📋', color: '#5e9eff' });
+                showToast('Copied to clipboard!', { color: '#5e9eff' });
               }}
                 className="magnetic-btn text-[11px] px-3 py-1.5 bg-[#222] text-[#aaa] rounded-lg hover:bg-[#2a2b30] hover:text-white transition border border-[#333] font-mono">
                 copy
@@ -1227,20 +1208,16 @@ export default function Home() {
               </div>
               <div>
                 <p className="text-[11px] text-[#888] font-mono">
-                  made with <span className="text-[#ff6b6b]">&lt;3</span> by namish
+                  CollabCode
                 </p>
-                <p className="text-[9px] text-[#444] font-mono mt-0.5">collaborative code editor for everyone</p>
+                <p className="text-[9px] text-[#444] font-mono mt-0.5">real-time collaborative coding platform</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <a href="https://github.com/dawarnamish28-cell/collabcode" target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-[10px] text-[#555] font-mono hover:text-[#888] transition">
-                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" /></svg>
-                GitHub
-              </a>
+              <span className="text-[10px] text-[#444] font-mono">built by namish</span>
               <div className="w-px h-3 bg-[#282828]" />
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-[#333] font-mono">collabcode v12</span>
+                <span className="text-[10px] text-[#333] font-mono">v13</span>
                 <div className="w-1 h-1 rounded-full bg-[#5bd882] breathe" />
               </div>
             </div>
