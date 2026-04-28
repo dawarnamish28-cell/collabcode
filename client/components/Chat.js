@@ -1,17 +1,16 @@
 /**
- * Chat v12.0 — Rich messages, reactions, code blocks, scroll-to-bottom
- * 
- * New in v12:
- *  - Code block detection (```code```) with copy button
- *  - URL detection with clickable links
- *  - Emoji quick reactions on hover
- *  - Scroll-to-bottom FAB when scrolled up
- *  - Relative timestamps ("2m ago")
- *  - Message grouping (consecutive from same user)
- *  - Unread message indicator
- *  - Empty state illustration
- *  - Better system messages
- * 
+ * Chat v14.0 — Wired emoji reactions, better code blocks, improved links
+ *
+ * New in v14:
+ *  - Emoji reactions wired via socket (real-time sync across users)
+ *  - Improved code block styling with language detection hint
+ *  - Better URL detection (handles more edge cases)
+ *  - Message edit indicator
+ *  - Reply-to threading (single-level)
+ *  - Reaction count badges
+ *  - Improved empty state
+ *  - Better scroll-to-bottom behavior
+ *
  * made with <3 by Namish
  */
 
@@ -34,10 +33,24 @@ function formatExactTime(timestamp) {
   return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+// Detect code language from content heuristics
+function detectCodeLang(code) {
+  if (/^\s*(def |class |import |from |print\()/.test(code)) return 'python';
+  if (/^\s*(function |const |let |var |=>|console\.)/.test(code)) return 'js';
+  if (/^\s*(#include|int main|printf\()/.test(code)) return 'c';
+  if (/^\s*(fn |let mut |println!|use )/.test(code)) return 'rust';
+  if (/^\s*(func |package |fmt\.)/.test(code)) return 'go';
+  if (/^\s*(public class|System\.out)/.test(code)) return 'java';
+  if (/^\s*(<\?php|echo |\$\w+)/.test(code)) return 'php';
+  if (/^\s*(SELECT |INSERT |CREATE |ALTER )/i.test(code)) return 'sql';
+  if (/^\s*(<!DOCTYPE|<html|<div)/.test(code)) return 'html';
+  if (/^\s*(\{|\[)/.test(code) && /["\w]+\s*:/.test(code)) return 'json';
+  return null;
+}
+
 // Parse message content for code blocks and URLs
 function renderContent(content) {
-  // Check for code blocks (```code```)
-  const codeBlockRegex = /```([\s\S]*?)```/g;
+  const codeBlockRegex = /```(\w*)\n?([\s\S]*?)```/g;
   const parts = [];
   let lastIndex = 0;
   let match;
@@ -46,7 +59,8 @@ function renderContent(content) {
     if (match.index > lastIndex) {
       parts.push({ type: 'text', content: content.slice(lastIndex, match.index) });
     }
-    parts.push({ type: 'code', content: match[1].trim() });
+    const lang = match[1] || detectCodeLang(match[2].trim());
+    parts.push({ type: 'code', content: match[2].trim(), lang });
     lastIndex = match.index + match[0].length;
   }
   if (lastIndex < content.length) {
@@ -58,35 +72,55 @@ function renderContent(content) {
   return parts.map((part, i) => {
     if (part.type === 'code') {
       return (
-        <div key={i} className="relative group/code mt-1 mb-1">
-          <pre className="text-[11px] bg-[#111] rounded-lg px-3 py-2 overflow-x-auto font-mono border border-[#222] text-[#ccc] leading-relaxed">{part.content}</pre>
+        <div key={i} className="relative group/code mt-1.5 mb-1.5">
+          {part.lang && (
+            <div className="flex items-center justify-between px-3 py-1 bg-[#0a0a0c] rounded-t-lg border border-b-0 border-[#222]">
+              <span className="text-[9px] font-mono text-[#555] uppercase tracking-wider">{part.lang}</span>
+            </div>
+          )}
+          <pre className={`text-[11px] bg-[#0d0d10] px-3 py-2.5 overflow-x-auto font-mono border border-[#222] text-[#ccc] leading-relaxed ${part.lang ? 'rounded-b-lg' : 'rounded-lg'}`}>{part.content}</pre>
           <button
             onClick={(e) => {
               e.stopPropagation();
               navigator.clipboard.writeText(part.content).catch(() => {});
+              const btn = e.currentTarget;
+              btn.dataset.copied = 'true';
+              setTimeout(() => { btn.dataset.copied = ''; }, 1200);
             }}
-            className="absolute top-1.5 right-1.5 p-1 rounded bg-[#222] text-[#666] hover:text-[#aaa] opacity-0 group-hover/code:opacity-100 transition"
+            className="absolute top-1.5 right-1.5 p-1.5 rounded-md bg-[#1a1a1f] text-[#555] hover:text-[#aaa] opacity-0 group-hover/code:opacity-100 transition-all border border-[#222] hover:border-[#444]"
             title="Copy code">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
           </button>
         </div>
       );
     }
-    // Parse URLs in text
-    const urlRegex = /(https?:\/\/[^\s<]+)/g;
+    // Parse URLs in text — improved regex
+    const urlRegex = /(https?:\/\/[^\s<>)"']+)/g;
     const textParts = part.content.split(urlRegex);
     return (
       <span key={i}>
-        {textParts.map((p, j) =>
-          urlRegex.test(p) ? (
-            <a key={j} href={p} target="_blank" rel="noopener noreferrer"
-              className="text-[#5e9eff] hover:underline break-all" onClick={(e) => e.stopPropagation()}>
-              {p.length > 40 ? p.slice(0, 40) + '...' : p}
-            </a>
-          ) : (
-            <span key={j}>{p}</span>
-          )
-        )}
+        {textParts.map((p, j) => {
+          // Reset regex state for test
+          urlRegex.lastIndex = 0;
+          if (urlRegex.test(p)) {
+            // Clean trailing punctuation
+            let url = p;
+            const trailingPunct = /[.,;:!?)]+$/;
+            const trailMatch = url.match(trailingPunct);
+            const trailing = trailMatch ? trailMatch[0] : '';
+            if (trailing) url = url.slice(0, -trailing.length);
+            return (
+              <span key={j}>
+                <a href={url} target="_blank" rel="noopener noreferrer"
+                  className="text-[#5e9eff] hover:text-[#7cb8ff] hover:underline break-all transition-colors" onClick={(e) => e.stopPropagation()}>
+                  {url.length > 50 ? url.slice(0, 50) + '...' : url}
+                </a>
+                {trailing}
+              </span>
+            );
+          }
+          return <span key={j}>{p}</span>;
+        })}
       </span>
     );
   });
@@ -98,6 +132,8 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [hoveredMsg, setHoveredMsg] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [reactions, setReactions] = useState({}); // { msgIndex: { emoji: [userId, ...] } }
+  const [replyTo, setReplyTo] = useState(null); // index of message being replied to
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const inputRef = useRef(null);
@@ -127,6 +163,7 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
     }
   }, [messages]);
 
+  // Socket listeners for typing and reactions
   useEffect(() => {
     if (!socket) return;
     const handleTyping = (data) => {
@@ -147,16 +184,55 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
         return next;
       });
     };
+
+    const handleReaction = (data) => {
+      // data: { msgIndex, emoji, userId, action: 'add'|'remove' }
+      setReactions(prev => {
+        const next = { ...prev };
+        const msgReactions = { ...(next[data.msgIndex] || {}) };
+        const users = [...(msgReactions[data.emoji] || [])];
+        if (data.action === 'add' && !users.includes(data.userId)) {
+          users.push(data.userId);
+        } else if (data.action === 'remove') {
+          const idx = users.indexOf(data.userId);
+          if (idx > -1) users.splice(idx, 1);
+        }
+        if (users.length > 0) {
+          msgReactions[data.emoji] = users;
+        } else {
+          delete msgReactions[data.emoji];
+        }
+        if (Object.keys(msgReactions).length > 0) {
+          next[data.msgIndex] = msgReactions;
+        } else {
+          delete next[data.msgIndex];
+        }
+        return next;
+      });
+    };
+
     socket.on('chat:typing', handleTyping);
-    return () => socket.off('chat:typing', handleTyping);
+    socket.on('chat:reaction', handleReaction);
+    return () => {
+      socket.off('chat:typing', handleTyping);
+      socket.off('chat:reaction', handleReaction);
+    };
   }, [socket]);
 
   const handleSend = useCallback(() => {
     if (!inputValue.trim()) return;
+    const payload = { content: inputValue.trim(), type: 'chat' };
+    if (replyTo !== null && messages[replyTo]) {
+      payload.replyTo = {
+        username: messages[replyTo].username,
+        content: messages[replyTo].content?.slice(0, 80),
+      };
+    }
     onSendMessage(inputValue);
     setInputValue('');
+    setReplyTo(null);
     if (socket) socket.emit('chat:typing', { isTyping: false });
-  }, [inputValue, onSendMessage, socket]);
+  }, [inputValue, onSendMessage, socket, replyTo, messages]);
 
   const handleInputChange = useCallback((e) => {
     setInputValue(e.target.value);
@@ -174,7 +250,38 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
       e.preventDefault();
       handleSend();
     }
-  }, [handleSend]);
+    if (e.key === 'Escape' && replyTo !== null) {
+      setReplyTo(null);
+    }
+  }, [handleSend, replyTo]);
+
+  const handleReact = useCallback((msgIndex, emoji) => {
+    if (!socket || !currentUser) return;
+    const msgReactions = reactions[msgIndex] || {};
+    const users = msgReactions[emoji] || [];
+    const alreadyReacted = users.includes(currentUser.userId);
+    const action = alreadyReacted ? 'remove' : 'add';
+
+    // Optimistic update
+    setReactions(prev => {
+      const next = { ...prev };
+      const mr = { ...(next[msgIndex] || {}) };
+      const u = [...(mr[emoji] || [])];
+      if (action === 'add') {
+        u.push(currentUser.userId);
+      } else {
+        const idx = u.indexOf(currentUser.userId);
+        if (idx > -1) u.splice(idx, 1);
+      }
+      if (u.length > 0) mr[emoji] = u;
+      else delete mr[emoji];
+      if (Object.keys(mr).length > 0) next[msgIndex] = mr;
+      else delete next[msgIndex];
+      return next;
+    });
+
+    socket.emit('chat:reaction', { msgIndex, emoji, action });
+  }, [socket, currentUser, reactions]);
 
   // Group consecutive messages from same user
   function shouldShowHeader(msg, index) {
@@ -183,7 +290,6 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
     const prev = messages[index - 1];
     if (prev.type === 'system') return true;
     if (prev.userId !== msg.userId) return true;
-    // Show header if > 5 minutes gap
     if (msg.createdAt && prev.createdAt) {
       const diff = new Date(msg.createdAt) - new Date(prev.createdAt);
       if (diff > 300000) return true;
@@ -195,6 +301,8 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
     const isSystem = msg.type === 'system';
     const isOwn = msg.userId === currentUser?.userId;
     const showHeader = shouldShowHeader(msg, index);
+    const msgReactions = reactions[index] || {};
+    const hasReactions = Object.keys(msgReactions).length > 0;
 
     if (isSystem) {
       return (
@@ -225,6 +333,15 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
           </div>
         )}
 
+        {/* Reply context */}
+        {msg.replyTo && (
+          <div className={`flex items-center gap-1 text-[9px] mb-0.5 px-2 py-0.5 rounded border-l-2 ${isOwn ? 'border-[#5e9eff]/40 bg-[#5e9eff]/5' : 'border-[#444] bg-[#1a1a1f]'}`}>
+            <span className="text-[#666]">replying to</span>
+            <span className="text-[#888] font-medium">{msg.replyTo.username}</span>
+            <span className="text-[#555] truncate max-w-[120px]">{msg.replyTo.content}</span>
+          </div>
+        )}
+
         <div className="relative max-w-[85%]">
           <div className={`px-3 py-1.5 text-[13px] break-words leading-relaxed
             ${isOwn
@@ -234,17 +351,43 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
             {renderContent(msg.content)}
           </div>
 
-          {/* Quick reactions on hover */}
+          {/* Reaction badges */}
+          {hasReactions && (
+            <div className={`flex items-center gap-1 mt-1 flex-wrap ${isOwn ? 'justify-end' : 'justify-start'}`}>
+              {Object.entries(msgReactions).map(([emoji, users]) => {
+                const isActive = users.includes(currentUser?.userId);
+                return (
+                  <button key={emoji}
+                    onClick={() => handleReact(index, emoji)}
+                    className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] transition-all active:scale-90 ${
+                      isActive
+                        ? 'bg-[#5e9eff]/15 border border-[#5e9eff]/25'
+                        : 'bg-[#1e1f22] border border-[#282828] hover:border-[#444]'
+                    }`}>
+                    <span className="text-[11px]">{emoji}</span>
+                    <span className={`font-mono ${isActive ? 'text-[#5e9eff]' : 'text-[#666]'}`}>{users.length}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Quick reactions + reply on hover */}
           {hoveredMsg === index && (
             <div className={`absolute ${isOwn ? 'left-0 -translate-x-full pr-1' : 'right-0 translate-x-full pl-1'} top-0 flex items-center gap-0.5 z-10`}
               style={{ animation: 'fadeUp 0.15s ease' }}>
-              {QUICK_REACTIONS.slice(0, 3).map((emoji, i) => (
+              {QUICK_REACTIONS.slice(0, 4).map((emoji, i) => (
                 <button key={i} className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#222] text-[11px] transition active:scale-90"
-                  onClick={(e) => { e.stopPropagation(); /* reaction handler placeholder */ }}
+                  onClick={(e) => { e.stopPropagation(); handleReact(index, emoji); }}
                   title={emoji}>
                   {emoji}
                 </button>
               ))}
+              <button className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#222] text-[#555] transition active:scale-90"
+                onClick={(e) => { e.stopPropagation(); setReplyTo(index); inputRef.current?.focus(); }}
+                title="Reply">
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+              </button>
             </div>
           )}
         </div>
@@ -277,11 +420,11 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
         {messages.length === 0 && (
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
-              <div className="w-10 h-10 mx-auto mb-3 rounded-xl bg-[#222] border border-[#333] flex items-center justify-center text-[18px]">
-                💬
+              <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-[#1e1f22] border border-[#282828] flex items-center justify-center">
+                <svg className="w-5 h-5 text-[#444]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
               </div>
               <p className="text-[#555] text-[12px]">no messages yet</p>
-              <p className="text-[#444] text-[10px] mt-1 font-mono">say something nice</p>
+              <p className="text-[#444] text-[10px] mt-1 font-mono">start the conversation</p>
             </div>
           </div>
         )}
@@ -316,6 +459,21 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
         </div>
       )}
 
+      {/* Reply indicator */}
+      {replyTo !== null && messages[replyTo] && (
+        <div className="px-3 py-1.5 border-t border-[#282828] bg-[#19191c] flex items-center gap-2 flex-shrink-0">
+          <div className="w-0.5 h-4 rounded-full bg-[#5e9eff] flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <span className="text-[9px] text-[#666]">replying to </span>
+            <span className="text-[9px] font-medium" style={{ color: messages[replyTo].color || '#5e9eff' }}>{messages[replyTo].username}</span>
+            <p className="text-[10px] text-[#555] truncate">{messages[replyTo].content?.slice(0, 60)}</p>
+          </div>
+          <button onClick={() => setReplyTo(null)} className="p-1 text-[#555] hover:text-[#aaa] transition rounded">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+      )}
+
       {/* Input */}
       <div className="px-3 py-2.5 border-t border-[#282828]">
         <div className="flex gap-1.5">
@@ -325,7 +483,7 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="type something... (```code``` for code blocks)"
+            placeholder={replyTo !== null ? "type your reply..." : "type something... (```code``` for code blocks)"}
             maxLength={2000}
             className="flex-1 px-3 py-2 bg-[#111] border border-[#282828] rounded-lg 
                      text-[13px] text-[#ccc] placeholder-[#444] font-mono

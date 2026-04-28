@@ -351,7 +351,7 @@ _start:
 `,
 };
 
-const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fontSize, tabSize, minimap, wordWrap }) {
+const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fontSize, tabSize, minimap, wordWrap, cursorStyle, bracketColors, lineNumbers, autoIndent }) {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const bindingRef = useRef(null);
@@ -375,13 +375,16 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
       smoothScrolling: true,
       cursorBlinking: 'smooth',
       cursorSmoothCaretAnimation: 'on',
+      cursorStyle: cursorStyle || 'line',
       renderLineHighlight: 'all',
-      bracketPairColorization: { enabled: true },
+      bracketPairColorization: { enabled: bracketColors !== false },
       autoClosingBrackets: 'always',
       autoClosingQuotes: 'always',
       formatOnPaste: true,
+      autoIndent: autoIndent !== false ? 'full' : 'none',
       wordWrap: wordWrap !== false ? 'on' : 'off',
       tabSize: tabSize || 2,
+      lineNumbers: lineNumbers !== false ? 'on' : 'off',
       padding: { top: 12 },
     });
 
@@ -589,9 +592,13 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
         tabSize: tabSize || 2,
         minimap: { enabled: minimap !== false },
         wordWrap: wordWrap !== false ? 'on' : 'off',
+        cursorStyle: cursorStyle || 'line',
+        bracketPairColorization: { enabled: bracketColors !== false },
+        autoIndent: autoIndent !== false ? 'full' : 'none',
+        lineNumbers: lineNumbers !== false ? 'on' : 'off',
       });
     }
-  }, [fontSize, tabSize, minimap, wordWrap]);
+  }, [fontSize, tabSize, minimap, wordWrap, cursorStyle, bracketColors, lineNumbers, autoIndent]);
 
   // Update language mode live
   useEffect(() => {
@@ -636,8 +643,11 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
           smoothScrolling: true,
           cursorBlinking: 'smooth',
           cursorSmoothCaretAnimation: 'on',
+          cursorStyle: cursorStyle || 'line',
           renderLineHighlight: 'all',
-          bracketPairColorization: { enabled: true },
+          bracketPairColorization: { enabled: bracketColors !== false },
+          autoIndent: autoIndent !== false ? 'full' : 'none',
+          lineNumbers: lineNumbers !== false ? 'on' : 'off',
           wordWrap: wordWrap !== false ? 'on' : 'off',
           tabSize: tabSize || 2,
           padding: { top: 12 },

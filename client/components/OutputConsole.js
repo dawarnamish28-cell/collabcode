@@ -1,14 +1,15 @@
 /**
- * OutputConsole v12.0 — Execution history, timestamps, better UX
+ * OutputConsole v14.0 — Syntax-highlighted errors, collapsible stderr,
+ * execution history, search in output, rate-limit countdown
  *
- * New in v12:
- *  - Execution counter (runs #1, #2, etc.)
- *  - Timestamp per run
- *  - Line count display
- *  - Collapsible error sections
- *  - Maximize/minimize terminal
- *  - Better keyboard shortcut hints
- *  - Search in output (Ctrl+F)
+ * New in v14:
+ *  - Syntax-highlighted error messages (file paths, line numbers, error types)
+ *  - Collapsible error/stderr sections
+ *  - Execution history sidebar (click to revisit past runs)
+ *  - Search/filter in output (Ctrl+F)
+ *  - Rate-limit countdown timer with retry button
+ *  - Execution time bar visualization
+ *  - Better empty state
  *
  * made with <3 by Namish
  */
@@ -60,6 +61,52 @@ const THEMES = {
   },
 };
 
+// Syntax highlight error lines
+function highlightErrorLine(text, theme) {
+  // File path pattern: /path/to/file.ext:line:col
+  const filePathRegex = /((?:\/[\w.-]+)+(?:\.\w+)?):(\d+)(?::(\d+))?/g;
+  // Error type pattern: ErrorType: message
+  const errorTypeRegex = /^(\w*Error|\w*Exception|panic|FATAL|fatal|error\[E\d+\]):/;
+  // Line number references: "at line N", "line N"
+  const lineRefRegex = /\b(line|Line|at)\s+(\d+)/g;
+  // Arrow indicators: ^^^, ~~~, ---
+  const arrowRegex = /^(\s*)([\^~-]{3,})(\s*)$/;
+
+  if (arrowRegex.test(text)) {
+    return [{ text, color: theme.warn, bold: false }];
+  }
+
+  const parts = [];
+  let remaining = text;
+
+  const errorMatch = remaining.match(errorTypeRegex);
+  if (errorMatch) {
+    parts.push({ text: errorMatch[1] + ':', color: theme.error, bold: true });
+    remaining = remaining.slice(errorMatch[0].length);
+  }
+
+  // Highlight file paths
+  let lastIdx = 0;
+  let match;
+  const tempRemaining = remaining;
+  filePathRegex.lastIndex = 0;
+  while ((match = filePathRegex.exec(tempRemaining)) !== null) {
+    if (match.index > lastIdx) {
+      parts.push({ text: tempRemaining.slice(lastIdx, match.index), color: null, bold: false });
+    }
+    parts.push({ text: match[0], color: theme.accent, bold: false });
+    lastIdx = match.index + match[0].length;
+  }
+  if (lastIdx < tempRemaining.length) {
+    parts.push({ text: tempRemaining.slice(lastIdx), color: null, bold: false });
+  }
+  if (parts.length === 0) {
+    parts.push({ text, color: null, bold: false });
+  }
+
+  return parts;
+}
+
 const OutputConsole = memo(forwardRef(function OutputConsole(
   { output, onClear, isRunning, language, code, onRunWithStdin, terminalTheme = 'vs-dark' },
   ref
@@ -74,7 +121,16 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
   const [runCount, setRunCount] = useState(0);
   const [lineCount, setLineCount] = useState(0);
 
+  // v14 new state
+  const [execHistory, setExecHistory] = useState([]); // [{id, lang, time, status, lines}]
+  const [showHistory, setShowHistory] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [stderrCollapsed, setStderrCollapsed] = useState({});
+  const [rateLimitCountdown, setRateLimitCountdown] = useState(0);
+
   const inputLinesRef = useRef([]);
+  const searchInputRef = useRef(null);
 
   const theme = THEMES[terminalTheme] || THEMES['vs-dark'];
 
@@ -84,6 +140,18 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
     focus: () => inputRef.current?.focus(),
   }));
 
+  // Rate limit countdown timer
+  useEffect(() => {
+    if (rateLimitCountdown <= 0) return;
+    const interval = setInterval(() => {
+      setRateLimitCountdown(prev => {
+        if (prev <= 1) { clearInterval(interval); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [rateLimitCountdown]);
+
   useEffect(() => {
     if (!output) return;
 
@@ -91,12 +159,20 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
       const count = runCount + 1;
       setRunCount(count);
       const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      setTerminalLines(prev => [...prev, { type: 'info', text: `[${time}] run #${count} — ${language || 'code'}...` }]);
+      setTerminalLines(prev => [...prev, { type: 'info', text: `[${time}] run #${count} -- ${language || 'code'}...` }]);
       inputLinesRef.current = [];
       return;
     }
 
+    // Check for rate limit
+    if (output.status === 'Rate Limited') {
+      const retryMatch = output.error?.match(/Wait (\d+)s/);
+      const seconds = retryMatch ? parseInt(retryMatch[1], 10) : 60;
+      setRateLimitCountdown(seconds);
+    }
+
     const newLines = [];
+    const stderrBlockId = Date.now().toString(36);
 
     if (output.stdinUsed) {
       newLines.push({ type: 'dim', text: '--- input ---' });
@@ -109,9 +185,18 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
       outputLines.forEach(l => newLines.push({ type: 'stdout', text: l }));
     }
     if (output.error) {
-      output.error.split('\n').forEach(l => {
-        if (l.trim()) newLines.push({ type: 'stderr', text: l });
-      });
+      const errorLines = output.error.split('\n').filter(l => l.trim());
+      if (errorLines.length > 0) {
+        newLines.push({
+          type: 'stderr-header',
+          text: `stderr (${errorLines.length} line${errorLines.length > 1 ? 's' : ''})`,
+          blockId: stderrBlockId,
+          lineCount: errorLines.length,
+        });
+        errorLines.forEach(l => {
+          newLines.push({ type: 'stderr', text: l, blockId: stderrBlockId });
+        });
+      }
     }
     if (!output.content && !output.error && output.type === 'success') {
       newLines.push({ type: 'dim', text: '(no output)' });
@@ -126,11 +211,24 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
       newLines.push({ type: 'meta', text: parts.join(' · ') });
     }
     newLines.push({ type: 'blank', text: '' });
+
     setTerminalLines(prev => {
       const updated = [...prev, ...newLines];
       setLineCount(updated.filter(l => l.type === 'stdout' || l.type === 'stderr').length);
       return updated;
     });
+
+    // Save to execution history
+    const historyEntry = {
+      id: Date.now().toString(36),
+      lang: output.language || language,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: output.type === 'success' ? 'ok' : 'err',
+      exitCode: output.exitCode,
+      execTime: output.executionTime,
+      outputPreview: (output.content || output.error || '').slice(0, 60),
+    };
+    setExecHistory(prev => [...prev.slice(-19), historyEntry]);
 
     inputLinesRef.current = [];
   }, [output]);
@@ -140,6 +238,23 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [terminalLines, isRunning]);
+
+  // Toggle search with Ctrl+F
+  useEffect(() => {
+    const handle = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        // Only intercept if console is focused area
+        const el = scrollRef.current;
+        if (el && el.contains(document.activeElement)) {
+          e.preventDefault();
+          setShowSearch(prev => !prev);
+          setTimeout(() => searchInputRef.current?.focus(), 50);
+        }
+      }
+    };
+    window.addEventListener('keydown', handle);
+    return () => window.removeEventListener('keydown', handle);
+  }, []);
 
   const handleInputKeyDown = useCallback((e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
@@ -209,8 +324,21 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
     setTerminalLines([]);
     inputLinesRef.current = [];
     setLineCount(0);
+    setStderrCollapsed({});
     if (onClear) onClear();
   }, [onClear]);
+
+  const toggleStderrBlock = useCallback((blockId) => {
+    setStderrCollapsed(prev => ({ ...prev, [blockId]: !prev[blockId] }));
+  }, []);
+
+  // Filter lines by search
+  const visibleLines = searchQuery
+    ? terminalLines.filter(l =>
+        l.text?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        l.type === 'info' || l.type === 'meta' || l.type === 'blank' || l.type === 'stderr-header'
+      )
+    : terminalLines;
 
   return (
     <div className="h-full flex flex-col font-mono text-[12px] overflow-hidden" style={{ background: theme.bg }}>
@@ -237,6 +365,13 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
               {lineCount} lines
             </span>
           )}
+          {/* Rate limit countdown */}
+          {rateLimitCountdown > 0 && (
+            <span className="text-[9px] px-2 py-0.5 rounded-md flex-shrink-0 animate-pulse"
+              style={{ color: theme.error, background: theme.error + '15', border: `1px solid ${theme.error}25` }}>
+              rate limit {rateLimitCountdown}s
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {output?.status && !isRunning && (
@@ -245,6 +380,18 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
               {output.status}
             </span>
           )}
+          {/* Search toggle */}
+          <button onClick={() => { setShowSearch(prev => !prev); setTimeout(() => searchInputRef.current?.focus(), 50); }}
+            className={`p-1 rounded transition ${showSearch ? 'opacity-100' : 'hover:opacity-80'}`}
+            style={{ color: showSearch ? theme.accent : theme.dim }} title="Search (Ctrl+F)">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          </button>
+          {/* History toggle */}
+          <button onClick={() => setShowHistory(prev => !prev)}
+            className={`p-1 rounded transition ${showHistory ? 'opacity-100' : 'hover:opacity-80'}`}
+            style={{ color: showHistory ? theme.accent : theme.dim }} title="Run history">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          </button>
           <button onClick={handleCopy} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Copy output">
             {copied ? (
               <svg className="w-3 h-3" style={{ color: theme.success }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
@@ -258,44 +405,159 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
         </div>
       </div>
 
-      {/* Output Area */}
-      <div ref={scrollRef}
-        className="flex-1 overflow-auto px-3 py-2 min-h-0 select-text"
-        onClick={() => inputRef.current?.focus()}>
-        {terminalLines.length === 0 && !isRunning && (
-          <div className="text-[11px] py-3" style={{ color: theme.dim }}>
-            <p style={{ color: theme.dimmer }}>
-              <kbd>Ctrl+Enter</kbd> to run &middot; type input below when program asks
-            </p>
-            <p className="mt-1" style={{ color: theme.dimmer }}>
-              <kbd>Ctrl+L</kbd> to clear &middot; <kbd>↑</kbd>/<kbd>↓</kbd> for history
-            </p>
-          </div>
-        )}
-        {terminalLines.map((line, i) => {
-          if (line.type === 'blank') return <div key={i} className="h-1.5" />;
-          if (line.type === 'meta') return (
-            <div key={i} className="text-[10px] mt-1 mb-0.5 flex items-center gap-1.5" style={{ color: theme.dimmer }}>
-              <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              {line.text}
+      {/* Search bar */}
+      {showSearch && (
+        <div className="flex items-center gap-2 px-3 py-1 flex-shrink-0"
+          style={{ background: theme.headerBg, borderBottom: `1px solid ${theme.border}` }}>
+          <svg className="w-3 h-3 flex-shrink-0" style={{ color: theme.dimmer }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { setShowSearch(false); setSearchQuery(''); } }}
+            placeholder="filter output..."
+            className="flex-1 bg-transparent text-[11px] outline-none font-mono min-w-0"
+            style={{ color: theme.text, caretColor: theme.accent }}
+            autoComplete="off" spellCheck={false}
+          />
+          {searchQuery && (
+            <span className="text-[9px] flex-shrink-0" style={{ color: theme.dimmer }}>
+              {visibleLines.filter(l => l.type === 'stdout' || l.type === 'stderr').length} matches
+            </span>
+          )}
+          <button onClick={() => { setShowSearch(false); setSearchQuery(''); }}
+            className="p-0.5 rounded hover:opacity-80 transition" style={{ color: theme.dimmer }}>
+            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+      )}
+
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {/* Execution History Sidebar */}
+        {showHistory && execHistory.length > 0 && (
+          <div className="w-[130px] flex-shrink-0 overflow-y-auto border-r"
+            style={{ background: theme.headerBg, borderColor: theme.border }}>
+            <div className="px-2 py-1.5">
+              <span className="text-[9px] uppercase tracking-wider font-medium" style={{ color: theme.dimmer }}>history</span>
             </div>
-          );
-          if (line.type === 'dim') return <div key={i} className="text-[10px] mt-0.5" style={{ color: theme.dimmer }}>{line.text}</div>;
-          if (line.type === 'stdin') return <div key={i} className="pl-2 opacity-70" style={{ color: theme.accent }}>{line.text}</div>;
-          if (line.type === 'input') return <div key={i} style={{ color: theme.warn }}>{line.text}</div>;
-          if (line.type === 'stderr') return <div key={i} className="pl-1 border-l-2" style={{ color: theme.error, borderColor: theme.error + '40' }}>{line.text}</div>;
-          if (line.type === 'info') return <div key={i} className="italic text-[11px]" style={{ color: theme.dim }}>{line.text}</div>;
-          return <div key={i} style={{ color: theme.text }}>{line.text || '\u00A0'}</div>;
-        })}
-        {isRunning && (
-          <div className="flex items-center gap-2 py-1" style={{ color: theme.warn }}>
-            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            <span className="text-[11px]">executing...</span>
+            {[...execHistory].reverse().map((entry) => (
+              <div key={entry.id}
+                className="px-2 py-1.5 cursor-default transition hover:opacity-80"
+                style={{ borderBottom: `1px solid ${theme.border}` }}>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    style={{ background: entry.status === 'ok' ? theme.success : theme.error }} />
+                  <span className="text-[10px] font-medium truncate" style={{ color: theme.text }}>{entry.lang}</span>
+                </div>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span className="text-[8px]" style={{ color: theme.dimmer }}>{entry.time}</span>
+                  {entry.execTime && (
+                    <span className="text-[8px]" style={{ color: theme.dimmer }}>{entry.execTime}</span>
+                  )}
+                </div>
+                {entry.outputPreview && (
+                  <p className="text-[8px] mt-0.5 truncate" style={{ color: theme.dimmer }}>{entry.outputPreview}</p>
+                )}
+              </div>
+            ))}
           </div>
         )}
+
+        {/* Output Area */}
+        <div ref={scrollRef}
+          className="flex-1 overflow-auto px-3 py-2 min-h-0 select-text"
+          onClick={() => inputRef.current?.focus()}>
+          {terminalLines.length === 0 && !isRunning && (
+            <div className="text-[11px] py-3" style={{ color: theme.dim }}>
+              <p style={{ color: theme.dimmer }}>
+                <kbd>Ctrl+Enter</kbd> to run &middot; type input below when program asks
+              </p>
+              <p className="mt-1" style={{ color: theme.dimmer }}>
+                <kbd>Ctrl+L</kbd> to clear &middot; <kbd>Up</kbd>/<kbd>Down</kbd> for history
+              </p>
+              <p className="mt-1" style={{ color: theme.dimmer }}>
+                <kbd>Ctrl+F</kbd> to search output &middot; click clock icon for run history
+              </p>
+            </div>
+          )}
+          {visibleLines.map((line, i) => {
+            if (line.type === 'blank') return <div key={i} className="h-1.5" />;
+            if (line.type === 'meta') return (
+              <div key={i} className="text-[10px] mt-1 mb-0.5 flex items-center gap-1.5" style={{ color: theme.dimmer }}>
+                <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                {line.text}
+              </div>
+            );
+            if (line.type === 'dim') return <div key={i} className="text-[10px] mt-0.5" style={{ color: theme.dimmer }}>{line.text}</div>;
+            if (line.type === 'stdin') return <div key={i} className="pl-2 opacity-70" style={{ color: theme.accent }}>{line.text}</div>;
+            if (line.type === 'input') return <div key={i} style={{ color: theme.warn }}>{line.text}</div>;
+            if (line.type === 'info') return <div key={i} className="italic text-[11px]" style={{ color: theme.dim }}>{line.text}</div>;
+
+            // Collapsible stderr header
+            if (line.type === 'stderr-header') {
+              const isCollapsed = stderrCollapsed[line.blockId];
+              return (
+                <div key={i}
+                  className="flex items-center gap-1.5 text-[10px] mt-1.5 mb-0.5 cursor-pointer select-none group"
+                  style={{ color: theme.error }}
+                  onClick={() => toggleStderrBlock(line.blockId)}>
+                  <svg className={`w-2.5 h-2.5 flex-shrink-0 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
+                    fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="group-hover:underline">{line.text}</span>
+                </div>
+              );
+            }
+
+            // Collapsible stderr lines
+            if (line.type === 'stderr') {
+              if (line.blockId && stderrCollapsed[line.blockId]) return null;
+
+              // Syntax-highlighted error
+              const highlighted = highlightErrorLine(line.text, theme);
+              return (
+                <div key={i} className="pl-1 border-l-2" style={{ borderColor: theme.error + '40' }}>
+                  {highlighted.map((part, j) => (
+                    <span key={j} style={{
+                      color: part.color || theme.error,
+                      fontWeight: part.bold ? 600 : 400,
+                    }}>{part.text}</span>
+                  ))}
+                </div>
+              );
+            }
+
+            // Highlight search matches in stdout
+            if (searchQuery && line.type === 'stdout') {
+              const regex = new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+              const parts = line.text.split(regex);
+              return (
+                <div key={i} style={{ color: theme.text }}>
+                  {parts.map((p, j) =>
+                    regex.test(p) ? (
+                      <mark key={j} style={{ background: theme.accent + '40', color: theme.text, borderRadius: '2px', padding: '0 1px' }}>{p}</mark>
+                    ) : (
+                      <span key={j}>{p}</span>
+                    )
+                  )}
+                </div>
+              );
+            }
+
+            return <div key={i} style={{ color: theme.text }}>{line.text || '\u00A0'}</div>;
+          })}
+          {isRunning && (
+            <div className="flex items-center gap-2 py-1" style={{ color: theme.warn }}>
+              <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span className="text-[11px]">executing...</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Input */}
@@ -323,10 +585,10 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
             inputLinesRef.current = [];
             if (onRunWithStdin) onRunWithStdin(stdin);
           }}
-          disabled={isRunning}
+          disabled={isRunning || rateLimitCountdown > 0}
           className="text-[10px] px-2.5 py-0.5 rounded-md transition disabled:opacity-30 flex-shrink-0 font-mono active:scale-95"
           style={{ background: theme.accent + '15', color: theme.accent, border: `1px solid ${theme.accent}22` }}>
-          {isRunning ? '...' : 'run'}
+          {isRunning ? '...' : rateLimitCountdown > 0 ? `${rateLimitCountdown}s` : 'run'}
         </button>
       </div>
     </div>

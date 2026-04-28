@@ -1,13 +1,13 @@
 /**
- * Room Workspace v12.0 — Enhanced in every way
+ * Room Workspace v14.0 — Notification bell, better UX, polished
  * 
- * New in v12:
- *  - Keyboard shortcuts overlay (press ? to open)
- *  - Session timer showing how long you've been in room
- *  - Toast notifications for user join/leave events
- *  - Better loading skeleton
- *  - Auto-save indicator
- *  - Enhanced connection status
+ * New in v14:
+ *  - Notification bell with history (wired to Navbar)
+ *  - Session timer in navbar
+ *  - Improved toast styling with animations
+ *  - Better rate-limit error handling on client
+ *  - Connection quality in status bar
+ *  - Command palette with fuzzy search
  * 
  * made with <3 by Namish
  */
@@ -37,6 +37,13 @@ const EXT_MAP = {
   c: '.c', cpp: '.cpp', go: '.go', rust: '.rs', ruby: '.rb', php: '.php',
   perl: '.pl', r: '.R', bash: '.sh', shell: '.sh', awk: '.awk',
   lua: '.lua', fortran: '.f90', tcl: '.tcl', sqlite: '.sql', nasm: '.asm',
+};
+
+const LANGUAGES_MAP = {
+  javascript: '#f7df1e', typescript: '#3178c6', python: '#3776ab', java: '#ed8b00',
+  c: '#a8b9cc', cpp: '#00599c', go: '#00add8', rust: '#ce412b', ruby: '#cc342d',
+  php: '#777bb4', perl: '#39457e', r: '#276dc3', bash: '#4eaa25', shell: '#89e051',
+  awk: '#c4a000', lua: '#000080', fortran: '#734f96', tcl: '#e4cc98', sqlite: '#003b57', nasm: '#6e4c13',
 };
 
 export default function RoomPage() {
@@ -69,13 +76,22 @@ export default function RoomPage() {
   const [editorTabSize, setEditorTabSize] = useState(2);
   const [editorMinimap, setEditorMinimap] = useState(true);
   const [editorWordWrap, setEditorWordWrap] = useState(true);
+  const [editorCursorStyle, setEditorCursorStyle] = useState('line');
+  const [editorBracketColors, setEditorBracketColors] = useState(true);
+  const [editorLineNumbers, setEditorLineNumbers] = useState(true);
+  const [editorAutoIndent, setEditorAutoIndent] = useState(true);
 
   const [isPublic, setIsPublic] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState(null); // null | 'saving' | 'saved'
+  const [connectionQuality, setConnectionQuality] = useState('good'); // 'good' | 'fair' | 'poor'
   const [sessionStart] = useState(Date.now());
   const [sessionTime, setSessionTime] = useState('0:00');
   const [toasts, setToasts] = useState([]);
+  const [notifications, setNotifications] = useState([]); // v14: notification bell items
+  const [rateLimitUntil, setRateLimitUntil] = useState(0); // v14: rate-limit cooldown timestamp
 
   const queryLang = router.query.lang;
   const queryPublic = router.query.public;
@@ -92,6 +108,10 @@ export default function RoomPage() {
         if (s.tabSize) setEditorTabSize(s.tabSize);
         if (s.minimap !== undefined) setEditorMinimap(s.minimap);
         if (s.wordWrap !== undefined) setEditorWordWrap(s.wordWrap);
+        if (s.cursorStyle) setEditorCursorStyle(s.cursorStyle);
+        if (s.bracketColors !== undefined) setEditorBracketColors(s.bracketColors);
+        if (s.lineNumbers !== undefined) setEditorLineNumbers(s.lineNumbers);
+        if (s.autoIndent !== undefined) setEditorAutoIndent(s.autoIndent);
       }
     } catch (e) {}
   }, []);
@@ -102,9 +122,11 @@ export default function RoomPage() {
         terminalTheme, editorTheme: state.theme,
         fontSize: editorFontSize, tabSize: editorTabSize,
         minimap: editorMinimap, wordWrap: editorWordWrap,
+        cursorStyle: editorCursorStyle, bracketColors: editorBracketColors,
+        lineNumbers: editorLineNumbers, autoIndent: editorAutoIndent,
       }));
     } catch (e) {}
-  }, [terminalTheme, state.theme, editorFontSize, editorTabSize, editorMinimap, editorWordWrap]);
+  }, [terminalTheme, state.theme, editorFontSize, editorTabSize, editorMinimap, editorWordWrap, editorCursorStyle, editorBracketColors, editorLineNumbers, editorAutoIndent]);
 
   useEffect(() => { saveSettings(); }, [saveSettings]);
 
@@ -128,6 +150,49 @@ export default function RoomPage() {
     setToasts(prev => [...prev.slice(-4), { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
   }, []);
+
+  // v14: Notification helper — adds to bell dropdown
+  const addNotification = useCallback((message, type = 'info') => {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setNotifications(prev => [...prev.slice(-29), { message, type, time, read: false }]);
+  }, []);
+
+  const clearNotifications = useCallback(() => {
+    setNotifications([]);
+  }, []);
+
+  // Auto-save indicator — pulse "saved" when CRDT syncs
+  useEffect(() => {
+    if (!ydocRef.current) return;
+    let timer;
+    const ytext = ydocRef.current.getText('monaco');
+    const handler = () => {
+      setAutoSaveStatus('saving');
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        setAutoSaveStatus('saved');
+        setTimeout(() => setAutoSaveStatus(null), 2000);
+      }, 400);
+    };
+    ytext.observe(handler);
+    return () => { ytext.unobserve(handler); clearTimeout(timer); };
+  }, [ready]);
+
+  // Connection quality monitor
+  useEffect(() => {
+    if (!socketRef.current) return;
+    let lastPong = Date.now();
+    const s = socketRef.current;
+    const onPong = () => {
+      const latency = Date.now() - lastPong;
+      setConnectionQuality(latency < 150 ? 'good' : latency < 400 ? 'fair' : 'poor');
+    };
+    const interval = setInterval(() => {
+      if (s.connected) { lastPong = Date.now(); s.volatile.emit('ping'); }
+    }, 15000);
+    s.on('pong', onPong);
+    return () => { clearInterval(interval); s.off('pong', onPong); };
+  }, [ready]);
 
   // ─── Initialize Connection ──────────────────────────────────────
   useEffect(() => {
@@ -159,8 +224,8 @@ export default function RoomPage() {
       setRoom({ roomId });
       setReady(true);
     });
-    socket.on('room:user-joined', (user) => { addUser(user); addToast(`${user.username} joined`, 'join'); });
-    socket.on('room:user-left', (data) => { removeUser(data.userId); addToast(`${data.username || 'Someone'} left`, 'leave'); });
+    socket.on('room:user-joined', (user) => { addUser(user); addToast(`${user.username} joined`, 'join'); addNotification(`${user.username} joined the room`, 'join'); });
+    socket.on('room:user-left', (data) => { removeUser(data.userId); addToast(`${data.username || 'Someone'} left`, 'leave'); addNotification(`${data.username || 'Someone'} left the room`, 'leave'); });
     socket.on('chat:history', (history) => setMessages(history));
     socket.on('chat:message', (msg) => setMessages(prev => [...prev, msg]));
     socket.on('room:language-change', (data) => setLanguage(data.language));
@@ -228,6 +293,15 @@ export default function RoomPage() {
         },
         body: JSON.stringify({ code, language: state.language, stdin }),
       });
+
+      // Graceful rate-limit handling
+      if (res.status === 429) {
+        const retryAfter = res.headers.get('Retry-After') || '60';
+        setOutput({ type: 'error', content: '', error: `Rate limit reached. Wait ${retryAfter}s before running again.`, status: 'Rate Limited' });
+        addToast('Rate limit reached — wait before running again', 'error');
+        return;
+      }
+
       const data = await res.json();
 
       const base = {
@@ -394,6 +468,7 @@ export default function RoomPage() {
         e.preventDefault();
         handleMainRun();
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setShowCommandPalette(prev => !prev); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') { e.preventDefault(); toggleChat(); }
       if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); toggleOutput(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSaveFile(); }
@@ -402,7 +477,7 @@ export default function RoomPage() {
         e.preventDefault();
         setShowShortcuts(prev => !prev);
       }
-      if (e.key === 'Escape') setShowShortcuts(false);
+      if (e.key === 'Escape') { setShowShortcuts(false); setShowCommandPalette(false); }
     };
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
@@ -440,6 +515,9 @@ export default function RoomPage() {
         extensionsOpen={extensionsOpen}
         currentUser={state.user}
         onOpenAccountSettings={() => setShowAccountSettings(true)}
+        sessionTime={sessionTime}
+        notifications={notifications}
+        onClearNotifications={clearNotifications}
       />
 
       <div className="flex-1 flex overflow-hidden min-h-0">
@@ -462,6 +540,10 @@ export default function RoomPage() {
                 tabSize={editorTabSize} onTabSizeChange={setEditorTabSize}
                 minimap={editorMinimap} onMinimapToggle={() => setEditorMinimap(!editorMinimap)}
                 wordWrap={editorWordWrap} onWordWrapToggle={() => setEditorWordWrap(!editorWordWrap)}
+                cursorStyle={editorCursorStyle} onCursorStyleChange={setEditorCursorStyle}
+                bracketColors={editorBracketColors} onBracketColorsToggle={() => setEditorBracketColors(!editorBracketColors)}
+                lineNumbers={editorLineNumbers} onLineNumbersToggle={() => setEditorLineNumbers(!editorLineNumbers)}
+                autoIndent={editorAutoIndent} onAutoIndentToggle={() => setEditorAutoIndent(!editorAutoIndent)}
               />
             )}
           </div>
@@ -469,6 +551,23 @@ export default function RoomPage() {
 
         {/* Main Editor Area */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Breadcrumb Bar */}
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#19191c] border-b border-[#222] text-[10px] font-mono text-[#555] flex-shrink-0 overflow-hidden">
+            <span className="text-[#444] hover:text-[#888] cursor-pointer transition" onClick={() => router.push('/')}>home</span>
+            <span className="text-[#333]">/</span>
+            <span className="text-[#666]">{roomId}</span>
+            <span className="text-[#333]">/</span>
+            <span style={{ color: (LANGUAGES_MAP[state.language] || '#5e9eff') }}>{state.language}</span>
+            {activeFileId && files.find(f => f.id === activeFileId) && (
+              <>
+                <span className="text-[#333]">/</span>
+                <span className="text-[#888]">{files.find(f => f.id === activeFileId)?.name?.split('/').pop()}</span>
+              </>
+            )}
+            <div className="flex-1" />
+            <span className="text-[#444] hidden sm:inline">Ctrl+K command palette</span>
+          </div>
+
           {/* File Tabs */}
           {files.length > 0 && (
             <div className="flex items-center bg-[#19191c] border-b border-[#222] overflow-x-auto flex-shrink-0 scrollbar-none">
@@ -500,7 +599,9 @@ export default function RoomPage() {
                 language={state.language} theme={state.theme}
                 user={state.user} fontSize={editorFontSize}
                 tabSize={editorTabSize} minimap={editorMinimap}
-                wordWrap={editorWordWrap}
+                wordWrap={editorWordWrap} cursorStyle={editorCursorStyle}
+                bracketColors={editorBracketColors} lineNumbers={editorLineNumbers}
+                autoIndent={editorAutoIndent}
               />
             ) : (
               <div className="h-full flex items-center justify-center bg-[#1a1b1e]">
@@ -573,20 +674,48 @@ export default function RoomPage() {
         )}
       </div>
 
-      {/* Session Timer (bottom-left) */}
-      <div className="fixed bottom-2 left-2 z-30 flex items-center gap-1.5 px-2 py-1 bg-[#19191c]/80 backdrop-blur-sm rounded-lg border border-[#282828] text-[9px] font-mono text-[#555]">
-        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-        {sessionTime}
+      {/* Status Bar (bottom-left) */}
+      <div className="fixed bottom-2 left-2 z-30 flex items-center gap-2 px-2.5 py-1.5 bg-[#19191c]/90 backdrop-blur-md rounded-lg border border-[#282828] text-[9px] font-mono text-[#555] shadow-lg">
+        {/* Auto-save indicator */}
+        {autoSaveStatus && (
+          <>
+            <div className="flex items-center gap-1" style={{ color: autoSaveStatus === 'saving' ? '#ffb347' : '#5bd882' }}>
+              {autoSaveStatus === 'saving' ? (
+                <svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+              ) : (
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              )}
+              <span>{autoSaveStatus === 'saving' ? 'syncing' : 'saved'}</span>
+            </div>
+            <div className="w-px h-2.5 bg-[#333]" />
+          </>
+        )}
+        {/* Connection quality */}
+        <div className="flex items-center gap-1" title={`Connection: ${connectionQuality}`}>
+          <div className="flex items-end gap-[1px]">
+            <div className="w-[2px] h-[4px] rounded-sm" style={{ background: connectionQuality !== 'poor' ? '#5bd882' : '#ff6b6b' }} />
+            <div className="w-[2px] h-[6px] rounded-sm" style={{ background: connectionQuality === 'good' ? '#5bd882' : connectionQuality === 'fair' ? '#ffb347' : '#ff6b6b' }} />
+            <div className="w-[2px] h-[8px] rounded-sm" style={{ background: connectionQuality === 'good' ? '#5bd882' : '#333' }} />
+          </div>
+          <span className="hidden sm:inline">{connectionQuality}</span>
+        </div>
+        {/* Language indicator */}
+        <div className="w-px h-2.5 bg-[#333]" />
+        <span style={{ color: LANGUAGES_MAP[state.language] || '#5e9eff' }}>{state.language}</span>
       </div>
 
       {/* Toast Notifications */}
-      <div className="fixed top-12 right-3 z-[9999] flex flex-col gap-1.5">
+      <div className="fixed top-12 right-3 z-[9999] flex flex-col gap-1.5 pointer-events-none">
         {toasts.map(toast => (
           <div key={toast.id}
-            className="flex items-center gap-2 px-3 py-1.5 bg-[#222] border border-[#333] rounded-lg shadow-lg text-[11px] font-mono backdrop-blur-sm"
-            style={{ animation: 'toastSlideUp 0.25s cubic-bezier(0.22, 1, 0.36, 1)', color: toast.type === 'join' ? '#5bd882' : toast.type === 'leave' ? '#ff6b6b' : '#888' }}>
+            className="flex items-center gap-2 px-3 py-2 bg-[#1a1b1e]/95 border rounded-xl shadow-2xl text-[11px] font-mono backdrop-blur-md pointer-events-auto"
+            style={{
+              animation: 'toastSlideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1)',
+              color: toast.type === 'join' ? '#5bd882' : toast.type === 'leave' ? '#ff6b6b' : toast.type === 'error' ? '#ff6b6b' : '#999',
+              borderColor: toast.type === 'join' ? '#5bd88225' : toast.type === 'leave' ? '#ff6b6b25' : toast.type === 'error' ? '#ff6b6b25' : '#333',
+            }}>
             <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-              style={{ background: toast.type === 'join' ? '#5bd882' : toast.type === 'leave' ? '#ff6b6b' : '#5e9eff' }} />
+              style={{ background: toast.type === 'join' ? '#5bd882' : toast.type === 'leave' ? '#ff6b6b' : toast.type === 'error' ? '#ff6b6b' : '#5e9eff' }} />
             {toast.message}
           </div>
         ))}
@@ -606,6 +735,7 @@ export default function RoomPage() {
             </div>
             <div className="space-y-2">
               {[
+                { keys: ['Ctrl', 'K'], desc: 'Command palette' },
                 { keys: ['Ctrl', 'Enter'], desc: 'Run code' },
                 { keys: ['Ctrl', 'B'], desc: 'Toggle chat panel' },
                 { keys: ['Ctrl', '`'], desc: 'Toggle terminal' },
@@ -629,6 +759,53 @@ export default function RoomPage() {
               ))}
             </div>
             <p className="text-[10px] text-[#444] font-mono mt-4 text-center">press <kbd>?</kbd> anywhere to toggle this panel</p>
+          </div>
+        </div>
+      )}
+
+      {/* Command Palette (Ctrl+K) */}
+      {showCommandPalette && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[15vh] z-[9999]"
+          onClick={() => setShowCommandPalette(false)}>
+          <div className="modal-enter bg-[#1a1b1e] border border-[#333] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-[#282828]">
+              <input
+                type="text"
+                autoFocus
+                placeholder="Type a command..."
+                className="w-full bg-transparent text-[14px] text-white placeholder-[#555] focus:outline-none font-mono"
+                onKeyDown={(e) => { if (e.key === 'Escape') setShowCommandPalette(false); }}
+                onChange={(e) => {
+                  const q = e.target.value.toLowerCase();
+                  document.querySelectorAll('[data-cmd]').forEach(el => {
+                    el.style.display = !q || el.dataset.cmd.toLowerCase().includes(q) ? '' : 'none';
+                  });
+                }}
+              />
+            </div>
+            <div className="py-1 max-h-[50vh] overflow-y-auto">
+              {[
+                { label: 'Run Code', hint: 'Ctrl+Enter', action: () => { setShowCommandPalette(false); handleMainRun(); } },
+                { label: 'Toggle Chat', hint: 'Ctrl+B', action: () => { setShowCommandPalette(false); toggleChat(); } },
+                { label: 'Toggle Terminal', hint: 'Ctrl+`', action: () => { setShowCommandPalette(false); toggleOutput(); } },
+                { label: 'Save File', hint: 'Ctrl+S', action: () => { setShowCommandPalette(false); handleSaveFile(); } },
+                { label: 'Open File', hint: 'Ctrl+O', action: () => { setShowCommandPalette(false); handleOpenFile(); } },
+                { label: 'Toggle File Explorer', hint: '', action: () => { setShowCommandPalette(false); setFilesOpen(!filesOpen); setExtensionsOpen(false); } },
+                { label: 'Open Settings', hint: '', action: () => { setShowCommandPalette(false); setExtensionsOpen(!extensionsOpen); setFilesOpen(false); } },
+                { label: 'Toggle Public/Private', hint: '', action: () => { setShowCommandPalette(false); handleTogglePublic(); } },
+                { label: 'Account Settings', hint: '', action: () => { setShowCommandPalette(false); setShowAccountSettings(true); } },
+                { label: 'Keyboard Shortcuts', hint: '?', action: () => { setShowCommandPalette(false); setShowShortcuts(true); } },
+                { label: 'Go Home', hint: '', action: () => { setShowCommandPalette(false); router.push('/'); } },
+              ].map((cmd, i) => (
+                <button key={i} data-cmd={cmd.label}
+                  onClick={cmd.action}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-[13px] text-[#999] hover:text-white hover:bg-[#222] transition">
+                  <span>{cmd.label}</span>
+                  {cmd.hint && <kbd className="text-[10px] text-[#555]">{cmd.hint}</kbd>}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

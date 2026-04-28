@@ -217,6 +217,17 @@ function initRoomHandler(io) {
       socket.to(currentRoomId).emit('chat:typing', { userId: socket.user.userId, username: socket.user.username, isTyping: data.isTyping });
     });
 
+    // Emoji reactions on chat messages
+    socket.on('chat:reaction', (data) => {
+      if (!currentRoomId) return;
+      const { msgIndex, emoji, action } = data;
+      if (typeof msgIndex !== 'number' || !emoji || !['add', 'remove'].includes(action)) return;
+      // Broadcast to all users in room (including sender for confirmation)
+      io.to(currentRoomId).emit('chat:reaction', {
+        msgIndex, emoji, userId: socket.user.userId, action,
+      });
+    });
+
     // Voice chat signaling
     socket.on('voice:join', () => {
       if (!currentRoomId) return;

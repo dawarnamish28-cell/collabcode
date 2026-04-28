@@ -1,16 +1,13 @@
 /**
- * Navbar v11.0 — Polished, accessible, smooth
- * 
- * FIXES & IMPROVEMENTS:
- * - Language dropdown uses React Portal (createPortal to document.body)
- *   100% escape from stacking contexts
- * - File open/save buttons always visible
- * - Bigger touch targets on mobile
- * - Search within language dropdown
- * - Smooth animations
- * - Better connection status indicator
- * - Keyboard accessible (arrow keys in dropdown)
- * 
+ * Navbar v14.0 — Notification bell, session timer, polished
+ *
+ * New in v14:
+ *  - Notification bell with dropdown history
+ *  - Session timer displayed in navbar
+ *  - Better command palette hints
+ *  - Improved mobile touch targets
+ *  - Subtle hover micro-animations
+ *
  * made with <3 by Namish
  */
 
@@ -63,6 +60,8 @@ const Navbar = memo(function Navbar({
   onToggleFiles, filesOpen,
   onToggleExtensions, extensionsOpen,
   currentUser, onOpenAccountSettings,
+  // v14 props
+  sessionTime, notifications, onClearNotifications,
 }) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
@@ -72,11 +71,15 @@ const Navbar = memo(function Navbar({
   const [focusedIdx, setFocusedIdx] = useState(-1);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [userMenuPos, setUserMenuPos] = useState({ top: 0, right: 0 });
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifPos, setNotifPos] = useState({ top: 0, right: 0 });
   const langBtnRef = useRef(null);
   const dropdownRef = useRef(null);
   const searchInputRef = useRef(null);
   const userBtnRef = useRef(null);
   const userMenuRef = useRef(null);
+  const notifBtnRef = useRef(null);
+  const notifRef = useRef(null);
 
   const status = STATUS[connectionStatus] || STATUS.disconnected;
   const currentLang = LANGUAGES.find(l => l.id === language) || LANGUAGES[0];
@@ -84,6 +87,9 @@ const Navbar = memo(function Navbar({
   const filteredLangs = langSearch
     ? LANGUAGES.filter(l => l.name.toLowerCase().includes(langSearch.toLowerCase()) || l.icon.toLowerCase().includes(langSearch.toLowerCase()))
     : LANGUAGES;
+
+  const notifItems = notifications || [];
+  const unreadNotifs = notifItems.filter(n => !n.read).length;
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -125,6 +131,25 @@ const Navbar = memo(function Navbar({
     };
   }, [userMenuOpen]);
 
+  // Close notif dropdown when clicking outside
+  useEffect(() => {
+    if (!notifOpen) return;
+    const close = (e) => {
+      if (notifBtnRef.current && notifBtnRef.current.contains(e.target)) return;
+      if (notifRef.current && notifRef.current.contains(e.target)) return;
+      setNotifOpen(false);
+    };
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', close);
+      document.addEventListener('touchstart', close);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('touchstart', close);
+    };
+  }, [notifOpen]);
+
   // Close on escape & keyboard nav
   useEffect(() => {
     if (!langOpen) return;
@@ -160,6 +185,7 @@ const Navbar = memo(function Navbar({
 
   const toggleUserMenu = useCallback(() => {
     setLangOpen(false);
+    setNotifOpen(false);
     if (!userMenuOpen && userBtnRef.current) {
       const rect = userBtnRef.current.getBoundingClientRect();
       const right = Math.max(4, window.innerWidth - rect.right);
@@ -167,6 +193,17 @@ const Navbar = memo(function Navbar({
     }
     setUserMenuOpen(prev => !prev);
   }, [userMenuOpen]);
+
+  const toggleNotifDropdown = useCallback(() => {
+    setLangOpen(false);
+    setUserMenuOpen(false);
+    if (!notifOpen && notifBtnRef.current) {
+      const rect = notifBtnRef.current.getBoundingClientRect();
+      const right = Math.max(4, window.innerWidth - rect.right);
+      setNotifPos({ top: rect.bottom + 4, right });
+    }
+    setNotifOpen(prev => !prev);
+  }, [notifOpen]);
 
   const toggleLangDropdown = useCallback(() => {
     if (!langOpen && langBtnRef.current) {
@@ -211,8 +248,7 @@ const Navbar = memo(function Navbar({
       <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
         {/* Home */}
         <button onClick={() => router.push('/')} className="flex items-center p-1.5 sm:p-1 rounded-md hover:bg-[#222] transition flex-shrink-0 active:scale-95" title="Home">
-          <div className="w-5 h-5 rounded bg-[#222] border border-[#333] flex items-center justify-center text-[8px] font-mono font-bold text-[#5e9eff]">{'//'}
-          </div>
+          <div className="w-5 h-5 rounded bg-[#222] border border-[#333] flex items-center justify-center text-[8px] font-mono font-bold text-[#5e9eff]">{'//'}</div>
         </button>
 
         {/* File Explorer */}
@@ -275,6 +311,14 @@ const Navbar = memo(function Navbar({
 
       {/* Right side */}
       <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
+        {/* Session timer (compact) */}
+        {sessionTime && (
+          <div className="hidden sm:flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-mono text-[#555]" title="Session duration">
+            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            {sessionTime}
+          </div>
+        )}
+
         {/* Connection status */}
         <div className="flex items-center gap-1.5 px-1.5 py-1" title={status.label}>
           <div className="relative">
@@ -284,6 +328,22 @@ const Navbar = memo(function Navbar({
           </div>
           <span className="text-[9px] text-[#555] font-mono hidden sm:inline">{status.label.toLowerCase()}</span>
         </div>
+
+        {/* Notification bell */}
+        <button
+          ref={notifBtnRef}
+          onClick={toggleNotifDropdown}
+          className={`relative p-2 sm:p-1.5 rounded-md transition active:scale-95 ${notifOpen ? 'bg-[#ffb347]/10 text-[#ffb347]' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}
+          title="Notifications">
+          <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          {unreadNotifs > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-[#ff6b6b] text-white text-[7px] rounded-full flex items-center justify-center font-mono font-bold">
+              {unreadNotifs > 9 ? '9+' : unreadNotifs}
+            </span>
+          )}
+        </button>
 
         {/* Extensions */}
         <button onClick={onToggleExtensions}
@@ -329,6 +389,53 @@ const Navbar = memo(function Navbar({
           </span>
         </button>
       </div>
+
+      {/* Notification Dropdown Portal */}
+      {notifOpen && (
+        <DropdownPortal>
+          <div
+            ref={notifRef}
+            className="fixed"
+            style={{ top: notifPos.top, right: notifPos.right, zIndex: 99999 }}
+          >
+            <div className="w-64 bg-[#1a1b1e] border border-[#333] rounded-xl shadow-2xl overflow-hidden"
+              style={{ animation: 'dropIn 0.15s cubic-bezier(0.22, 1, 0.36, 1)' }}>
+              <div className="px-3 py-2.5 border-b border-[#282828] flex items-center justify-between">
+                <span className="text-[11px] font-mono text-[#888]">notifications</span>
+                {notifItems.length > 0 && (
+                  <button onClick={() => { onClearNotifications?.(); setNotifOpen(false); }}
+                    className="text-[9px] font-mono text-[#555] hover:text-[#aaa] transition px-1.5 py-0.5 rounded hover:bg-[#222]">
+                    clear all
+                  </button>
+                )}
+              </div>
+              <div className="max-h-60 overflow-y-auto">
+                {notifItems.length === 0 ? (
+                  <div className="px-3 py-6 text-center">
+                    <svg className="w-5 h-5 mx-auto mb-2 text-[#333]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                    <p className="text-[10px] text-[#555] font-mono">no notifications</p>
+                  </div>
+                ) : (
+                  [...notifItems].reverse().slice(0, 15).map((notif, i) => (
+                    <div key={i} className={`px-3 py-2 border-b border-[#222] last:border-0 transition ${!notif.read ? 'bg-[#5e9eff]/5' : 'hover:bg-[#222]'}`}>
+                      <div className="flex items-start gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0"
+                          style={{ background: notif.type === 'join' ? '#5bd882' : notif.type === 'leave' ? '#ff6b6b' : notif.type === 'error' ? '#ff6b6b' : '#5e9eff' }} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] text-[#bbb] leading-tight">{notif.message}</p>
+                          <p className="text-[9px] text-[#444] font-mono mt-0.5">{notif.time || ''}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </DropdownPortal>
+      )}
 
       {/* User Menu Portal */}
       {userMenuOpen && (
