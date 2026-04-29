@@ -918,6 +918,7 @@ export default function RoomPage() {
           { label: 'Open File', hint: 'Ctrl+O', icon: '\u2B06', cat: 'file', action: () => { setShowCommandPalette(false); handleOpenFile(); } },
           { label: 'Toggle File Explorer', hint: '', icon: '\uD83D\uDCC1', cat: 'panel', action: () => { setShowCommandPalette(false); setFilesOpen(!filesOpen); setExtensionsOpen(false); } },
           { label: 'Toggle Chat', hint: 'Ctrl+B', icon: '\uD83D\uDCAC', cat: 'panel', action: () => { setShowCommandPalette(false); toggleChat(); } },
+          { label: 'Toggle Video Chat', hint: '', icon: '\uD83C\uDFA5', cat: 'panel', action: () => { setShowCommandPalette(false); if (!state.chatOpen) toggleChat(); setShowVideoChat(prev => !prev); } },
           { label: 'Toggle Terminal', hint: 'Ctrl+`', icon: '>_', cat: 'panel', action: () => { setShowCommandPalette(false); toggleOutput(); } },
           { label: 'Open Settings', hint: '', icon: '\u2699', cat: 'settings', action: () => { setShowCommandPalette(false); setShowSettingsModal(true); } },
           { label: 'Editor Settings (Side Panel)', hint: '', icon: '\uD83C\uDFA8', cat: 'settings', action: () => { setShowCommandPalette(false); setExtensionsOpen(!extensionsOpen); setFilesOpen(false); } },
