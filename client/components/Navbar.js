@@ -1,12 +1,12 @@
 /**
- * Navbar v14.0 — Notification bell, session timer, polished
+ * Navbar v15.0 — Enhanced notifications, settings shortcut, polished
  *
- * New in v14:
- *  - Notification bell with dropdown history
- *  - Session timer displayed in navbar
- *  - Better command palette hints
+ * New in v15:
+ *  - Notification categories with mark-as-read & mark-all-read
+ *  - Sound toggle in notification dropdown
+ *  - Settings shortcut button (opens modal)
+ *  - Better notification badge animations
  *  - Improved mobile touch targets
- *  - Subtle hover micro-animations
  *
  * made with <3 by Namish
  */
@@ -62,6 +62,10 @@ const Navbar = memo(function Navbar({
   currentUser, onOpenAccountSettings,
   // v14 props
   sessionTime, notifications, onClearNotifications,
+  // v15 props
+  onMarkAllRead, onMarkNotificationRead,
+  notifSoundEnabled, onToggleNotifSound,
+  onOpenSettings,
 }) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
@@ -402,12 +406,32 @@ const Navbar = memo(function Navbar({
               style={{ animation: 'dropIn 0.15s cubic-bezier(0.22, 1, 0.36, 1)' }}>
               <div className="px-3 py-2.5 border-b border-[#282828] flex items-center justify-between">
                 <span className="text-[11px] font-mono text-[#888]">notifications</span>
-                {notifItems.length > 0 && (
-                  <button onClick={() => { onClearNotifications?.(); setNotifOpen(false); }}
-                    className="text-[9px] font-mono text-[#555] hover:text-[#aaa] transition px-1.5 py-0.5 rounded hover:bg-[#222]">
-                    clear all
+                <div className="flex items-center gap-1">
+                  {/* v15: Sound toggle */}
+                  <button onClick={() => onToggleNotifSound?.()}
+                    className={`p-1 rounded transition ${notifSoundEnabled ? 'text-[#5bd882]' : 'text-[#555]'} hover:bg-[#222]`}
+                    title={notifSoundEnabled ? 'Sound on' : 'Sound off'}>
+                    {notifSoundEnabled ? (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
+                    )}
                   </button>
-                )}
+                  {/* v15: Mark all read */}
+                  {unreadNotifs > 0 && (
+                    <button onClick={() => onMarkAllRead?.()}
+                      className="text-[9px] font-mono text-[#5e9eff] hover:text-[#7cb8ff] transition px-1.5 py-0.5 rounded hover:bg-[#222]"
+                      title="Mark all as read">
+                      read all
+                    </button>
+                  )}
+                  {notifItems.length > 0 && (
+                    <button onClick={() => { onClearNotifications?.(); setNotifOpen(false); }}
+                      className="text-[9px] font-mono text-[#555] hover:text-[#aaa] transition px-1.5 py-0.5 rounded hover:bg-[#222]">
+                      clear
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="max-h-60 overflow-y-auto">
                 {notifItems.length === 0 ? (
@@ -418,15 +442,25 @@ const Navbar = memo(function Navbar({
                     <p className="text-[10px] text-[#555] font-mono">no notifications</p>
                   </div>
                 ) : (
-                  [...notifItems].reverse().slice(0, 15).map((notif, i) => (
-                    <div key={i} className={`px-3 py-2 border-b border-[#222] last:border-0 transition ${!notif.read ? 'bg-[#5e9eff]/5' : 'hover:bg-[#222]'}`}>
+                  [...notifItems].reverse().slice(0, 20).map((notif, i) => (
+                    <div key={notif.id || i}
+                      className={`px-3 py-2 border-b border-[#222] last:border-0 transition cursor-pointer ${!notif.read ? 'bg-[#5e9eff]/5 hover:bg-[#5e9eff]/8' : 'hover:bg-[#222]'}`}
+                      onClick={() => notif.id && onMarkNotificationRead?.(notif.id)}>
                       <div className="flex items-start gap-2">
                         <div className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0"
                           style={{ background: notif.type === 'join' ? '#5bd882' : notif.type === 'leave' ? '#ff6b6b' : notif.type === 'error' ? '#ff6b6b' : '#5e9eff' }} />
                         <div className="min-w-0 flex-1">
-                          <p className="text-[11px] text-[#bbb] leading-tight">{notif.message}</p>
-                          <p className="text-[9px] text-[#444] font-mono mt-0.5">{notif.time || ''}</p>
+                          <p className={`text-[11px] leading-tight ${!notif.read ? 'text-[#ccc]' : 'text-[#888]'}`}>{notif.message}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-[9px] text-[#444] font-mono">{notif.time || ''}</p>
+                            {notif.category && notif.category !== 'general' && (
+                              <span className="text-[8px] text-[#555] font-mono px-1 py-0 rounded bg-[#222]">{notif.category}</span>
+                            )}
+                          </div>
                         </div>
+                        {!notif.read && (
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#5e9eff] flex-shrink-0 mt-1.5" />
+                        )}
                       </div>
                     </div>
                   ))

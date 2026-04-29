@@ -1,15 +1,16 @@
 /**
- * Chat v14.0 — Wired emoji reactions, better code blocks, improved links
+ * Chat v15.0 — Full emoji picker, enhanced reactions, polished UX
  *
- * New in v14:
- *  - Emoji reactions wired via socket (real-time sync across users)
+ * New in v15:
+ *  - Full emoji picker drawer with categories & search
+ *  - Enhanced reaction bar with animation on add/remove
+ *  - Better hover reaction tray (6 quick + picker button)
  *  - Improved code block styling with language detection hint
  *  - Better URL detection (handles more edge cases)
  *  - Message edit indicator
  *  - Reply-to threading (single-level)
- *  - Reaction count badges
- *  - Improved empty state
- *  - Better scroll-to-bottom behavior
+ *  - Reaction count badges with tooltip
+ *  - Improved empty state & scroll behavior
  *
  * made with <3 by Namish
  */
@@ -17,6 +18,63 @@
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🔥', '👀', '🎉'];
+
+// v15: Full emoji picker categories
+const EMOJI_CATEGORIES = {
+  'Smileys': ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','😊','😇','🥰','😍','🤩','😘','😗','😚','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','😮‍💨','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🥵','🥶','🥴','😵','🤯','🤠','🥳','🥸','😎','🤓','🧐'],
+  'Gestures': ['👍','👎','👊','✊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','👇','☝️','✋','🤚','🖐','🖖','👋','🤏','✍️','💪'],
+  'Hearts': ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟'],
+  'Objects': ['🔥','⭐','🌟','✨','💥','💫','🎉','🎊','🏆','🥇','🏅','🎯','🎪','🎭','🎨','🎬','🎮','🎲','🔮','💡','📌','📎','🔗','💻','⌨️','🖥','📱','📝','📚','🔔'],
+  'Nature': ['🌸','🌺','🌻','🌼','🌷','🌹','🍀','🌿','🌱','🌳','🍃','🍂','🍁','🌾','🌵','🌈','☀️','🌤','⛅','🌥','☁️','🌧','⛈','🌩','❄️','☃️','🌊','💧','💦'],
+};
+
+function EmojiPicker({ onSelect, onClose }) {
+  const [activeTab, setActiveTab] = useState('Smileys');
+  const [search, setSearch] = useState('');
+  const categories = Object.keys(EMOJI_CATEGORIES);
+
+  const filteredEmojis = search
+    ? Object.values(EMOJI_CATEGORIES).flat().filter(e => e.includes(search))
+    : EMOJI_CATEGORIES[activeTab] || [];
+
+  return (
+    <div className="bg-[#1a1b1e] border border-[#333] rounded-xl shadow-2xl overflow-hidden w-[260px]"
+      style={{ animation: 'fadeUp 0.15s ease' }} onClick={(e) => e.stopPropagation()}>
+      {/* Search */}
+      <div className="px-2.5 pt-2.5 pb-1.5">
+        <input
+          type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search emoji..."
+          className="w-full px-2.5 py-1.5 bg-[#111] border border-[#282828] rounded-lg text-[11px] text-white placeholder-[#555] focus:outline-none focus:border-[#5e9eff]/30 font-mono"
+          autoFocus autoComplete="off" spellCheck={false}
+        />
+      </div>
+      {/* Category Tabs */}
+      {!search && (
+        <div className="flex px-2 gap-0.5 border-b border-[#222] pb-1">
+          {categories.map(cat => (
+            <button key={cat} onClick={() => setActiveTab(cat)}
+              className={`flex-1 py-1 text-[9px] font-mono rounded transition truncate ${activeTab === cat ? 'text-[#5e9eff] bg-[#5e9eff]/10' : 'text-[#555] hover:text-[#888] hover:bg-[#222]'}`}>
+              {cat === 'Smileys' ? '😀' : cat === 'Gestures' ? '👍' : cat === 'Hearts' ? '❤️' : cat === 'Objects' ? '🔥' : '🌸'}
+            </button>
+          ))}
+        </div>
+      )}
+      {/* Emoji Grid */}
+      <div className="grid grid-cols-8 gap-0.5 p-2 max-h-[180px] overflow-y-auto">
+        {filteredEmojis.map((emoji, i) => (
+          <button key={i} onClick={() => { onSelect(emoji); onClose(); }}
+            className="w-7 h-7 flex items-center justify-center rounded hover:bg-[#222] text-[16px] transition active:scale-90">
+            {emoji}
+          </button>
+        ))}
+        {filteredEmojis.length === 0 && (
+          <div className="col-span-8 py-4 text-center text-[10px] text-[#555] font-mono">no emoji found</div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function formatRelativeTime(timestamp) {
   if (!timestamp) return '';
@@ -134,6 +192,8 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
   const [unreadCount, setUnreadCount] = useState(0);
   const [reactions, setReactions] = useState({}); // { msgIndex: { emoji: [userId, ...] } }
   const [replyTo, setReplyTo] = useState(null); // index of message being replied to
+  const [emojiPickerFor, setEmojiPickerFor] = useState(null); // v15: which msgIndex has picker open
+  const [inputEmojiPicker, setInputEmojiPicker] = useState(false); // v15: emoji picker for input
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const inputRef = useRef(null);
@@ -372,22 +432,38 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
             </div>
           )}
 
-          {/* Quick reactions + reply on hover */}
+          {/* v15: Enhanced quick reactions + reply + emoji picker on hover */}
           {hoveredMsg === index && (
             <div className={`absolute ${isOwn ? 'left-0 -translate-x-full pr-1' : 'right-0 translate-x-full pl-1'} top-0 flex items-center gap-0.5 z-10`}
               style={{ animation: 'fadeUp 0.15s ease' }}>
-              {QUICK_REACTIONS.slice(0, 4).map((emoji, i) => (
-                <button key={i} className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#222] text-[11px] transition active:scale-90"
+              {QUICK_REACTIONS.map((emoji, i) => (
+                <button key={i} className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#222] text-[11px] transition active:scale-90 hover:scale-125"
                   onClick={(e) => { e.stopPropagation(); handleReact(index, emoji); }}
                   title={emoji}>
                   {emoji}
                 </button>
               ))}
-              <button className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#222] text-[#555] transition active:scale-90"
+              {/* Emoji picker button */}
+              <button className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#222] text-[#555] hover:text-[#aaa] transition active:scale-90"
+                onClick={(e) => { e.stopPropagation(); setEmojiPickerFor(emojiPickerFor === index ? null : index); }}
+                title="More reactions">
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              </button>
+              {/* Reply button */}
+              <button className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#222] text-[#555] hover:text-[#aaa] transition active:scale-90"
                 onClick={(e) => { e.stopPropagation(); setReplyTo(index); inputRef.current?.focus(); }}
                 title="Reply">
                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
               </button>
+            </div>
+          )}
+          {/* v15: Emoji picker popup for this message */}
+          {emojiPickerFor === index && (
+            <div className={`absolute ${isOwn ? 'right-0' : 'left-0'} top-full mt-1 z-20`}>
+              <EmojiPicker
+                onSelect={(emoji) => handleReact(index, emoji)}
+                onClose={() => setEmojiPickerFor(null)}
+              />
             </div>
           )}
         </div>
@@ -418,13 +494,34 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
         className="flex-1 overflow-y-auto px-3 py-3 space-y-2 relative"
         onScroll={handleScroll}>
         {messages.length === 0 && (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-[#1e1f22] border border-[#282828] flex items-center justify-center">
-                <svg className="w-5 h-5 text-[#444]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+          <div className="h-full flex flex-col">
+            {/* v15: Chat loading skeleton — shows briefly before empty state */}
+            <div className="flex-1 flex flex-col justify-end px-1 pb-2 gap-3" style={{ animation: 'fadeUp 0.4s ease' }}>
+              {/* Skeleton message bubbles */}
+              {[
+                { align: 'left', w1: 24, w2: '75%' },
+                { align: 'right', w1: 20, w2: '60%' },
+                { align: 'left', w1: 28, w2: '85%' },
+              ].map((s, i) => (
+                <div key={i} className={`flex items-start gap-2 ${s.align === 'right' ? 'flex-row-reverse' : ''}`}
+                  style={{ opacity: 0.15 - (i * 0.03), animationDelay: `${i * 0.1}s` }}>
+                  <div className="skeleton w-6 h-6 rounded-full flex-shrink-0" />
+                  <div className="space-y-1.5 max-w-[70%]">
+                    <div className="skeleton rounded" style={{ width: `${s.w1}px`, height: '8px' }} />
+                    <div className="skeleton rounded" style={{ width: s.w2, height: '28px', borderRadius: '12px' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Empty state message */}
+            <div className="flex items-center justify-center pb-6 pt-2">
+              <div className="text-center" style={{ animation: 'fadeUp 0.5s ease 0.2s both' }}>
+                <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-[#1e1f22] border border-[#282828] flex items-center justify-center">
+                  <svg className="w-4 h-4 text-[#444]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                </div>
+                <p className="text-[#555] text-[11px]">no messages yet</p>
+                <p className="text-[#444] text-[9px] mt-1 font-mono">start the conversation</p>
               </div>
-              <p className="text-[#555] text-[12px]">no messages yet</p>
-              <p className="text-[#444] text-[10px] mt-1 font-mono">start the conversation</p>
             </div>
           </div>
         )}
@@ -475,8 +572,24 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
       )}
 
       {/* Input */}
-      <div className="px-3 py-2.5 border-t border-[#282828]">
+      <div className="px-3 py-2.5 border-t border-[#282828] relative">
+        {/* v15: Input emoji picker */}
+        {inputEmojiPicker && (
+          <div className="absolute bottom-full left-3 mb-2 z-20">
+            <EmojiPicker
+              onSelect={(emoji) => setInputValue(prev => prev + emoji)}
+              onClose={() => setInputEmojiPicker(false)}
+            />
+          </div>
+        )}
         <div className="flex gap-1.5">
+          {/* v15: Emoji button for input */}
+          <button
+            onClick={() => setInputEmojiPicker(prev => !prev)}
+            className={`px-2 py-2 rounded-lg transition active:scale-95 flex-shrink-0 ${inputEmojiPicker ? 'bg-[#5e9eff]/10 text-[#5e9eff]' : 'text-[#555] hover:text-[#888] hover:bg-[#1e1f22]'} border border-transparent hover:border-[#282828]`}
+            title="Add emoji">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          </button>
           <input
             ref={inputRef}
             type="text"

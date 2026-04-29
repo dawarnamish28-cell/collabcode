@@ -1,13 +1,14 @@
 /**
- * Room Workspace v14.0 — Notification bell, better UX, polished
+ * Room Workspace v16.0 — Full v16 feature set
  * 
- * New in v14:
- *  - Notification bell with history (wired to Navbar)
- *  - Session timer in navbar
- *  - Improved toast styling with animations
- *  - Better rate-limit error handling on client
- *  - Connection quality in status bar
- *  - Command palette with fuzzy search
+ * New in v16:
+ *  - Video collaboration: WebRTC video chat & screen sharing
+ *  - Enhanced mobile responsiveness: touch gestures, mobile video
+ *  - All v15 features: breadcrumb, skeletons, command palette, settings modal
+ *  - Notification categories with mark-as-read & sound toggle
+ *  - Rate-limit countdown with visual progress bar
+ *  - Enhanced status bar with more metrics
+ *  - Better toast system with dismiss & action buttons
  * 
  * made with <3 by Namish
  */
@@ -27,6 +28,8 @@ import VoiceChat from '../../components/VoiceChat';
 import FileExplorer from '../../components/FileExplorer';
 import Extensions from '../../components/Extensions';
 import AccountSettings from '../../components/AccountSettings';
+import SettingsModal from '../../components/SettingsModal';
+import VideoChat from '../../components/VideoChat';
 
 const Editor = dynamic(() => import('../../components/Editor'), { ssr: false });
 
@@ -85,6 +88,8 @@ export default function RoomPage() {
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false); // v15: full settings modal
+  const [showVideoChat, setShowVideoChat] = useState(false); // v16: video collaboration
   const [autoSaveStatus, setAutoSaveStatus] = useState(null); // null | 'saving' | 'saved'
   const [connectionQuality, setConnectionQuality] = useState('good'); // 'good' | 'fair' | 'poor'
   const [sessionStart] = useState(Date.now());
@@ -92,6 +97,9 @@ export default function RoomPage() {
   const [toasts, setToasts] = useState([]);
   const [notifications, setNotifications] = useState([]); // v14: notification bell items
   const [rateLimitUntil, setRateLimitUntil] = useState(0); // v14: rate-limit cooldown timestamp
+  const [cmdPaletteQuery, setCmdPaletteQuery] = useState(''); // v15: command palette search
+  const [cmdPaletteFocusIdx, setCmdPaletteFocusIdx] = useState(0); // v15: keyboard nav index
+  const [notifSoundEnabled, setNotifSoundEnabled] = useState(true); // v15: notification sounds
 
   const queryLang = router.query.lang;
   const queryPublic = router.query.public;
@@ -151,14 +159,39 @@ export default function RoomPage() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
   }, []);
 
-  // v14: Notification helper — adds to bell dropdown
-  const addNotification = useCallback((message, type = 'info') => {
+  // v15: Enhanced notification helper — adds to bell dropdown with categories & sound
+  const addNotification = useCallback((message, type = 'info', category = 'general') => {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setNotifications(prev => [...prev.slice(-29), { message, type, time, read: false }]);
-  }, []);
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 4);
+    setNotifications(prev => [...prev.slice(-49), { id, message, type, category, time, read: false }]);
+    // Play subtle notification sound
+    if (notifSoundEnabled && typeof window !== 'undefined') {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.03, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.15);
+      } catch (e) {}
+    }
+  }, [notifSoundEnabled]);
 
   const clearNotifications = useCallback(() => {
     setNotifications([]);
+  }, []);
+
+  const markNotificationRead = useCallback((notifId) => {
+    setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, read: true } : n));
+  }, []);
+
+  const markAllNotificationsRead = useCallback(() => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   }, []);
 
   // Auto-save indicator — pulse "saved" when CRDT syncs
@@ -294,11 +327,13 @@ export default function RoomPage() {
         body: JSON.stringify({ code, language: state.language, stdin }),
       });
 
-      // Graceful rate-limit handling
+      // v15: Graceful rate-limit handling with countdown & notification
       if (res.status === 429) {
-        const retryAfter = res.headers.get('Retry-After') || '60';
+        const retryAfter = parseInt(res.headers.get('Retry-After') || '60', 10);
+        setRateLimitUntil(Date.now() + retryAfter * 1000);
         setOutput({ type: 'error', content: '', error: `Rate limit reached. Wait ${retryAfter}s before running again.`, status: 'Rate Limited' });
-        addToast('Rate limit reached — wait before running again', 'error');
+        addToast(`Rate limited — retry in ${retryAfter}s`, 'error');
+        addNotification(`Code execution rate limited (${retryAfter}s cooldown)`, 'error', 'system');
         return;
       }
 
@@ -473,11 +508,12 @@ export default function RoomPage() {
       if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); toggleOutput(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSaveFile(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); handleOpenFile(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === ',') { e.preventDefault(); setShowSettingsModal(prev => !prev); }
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
         e.preventDefault();
         setShowShortcuts(prev => !prev);
       }
-      if (e.key === 'Escape') { setShowShortcuts(false); setShowCommandPalette(false); }
+      if (e.key === 'Escape') { setShowShortcuts(false); setShowCommandPalette(false); setShowSettingsModal(false); }
     };
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
@@ -485,14 +521,50 @@ export default function RoomPage() {
 
   if (!state.user || !roomId) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-[#131416]">
-        <div className="text-center fade-up">
-          <div className="w-10 h-10 rounded-xl bg-[#222] border border-[#333] flex items-center justify-center text-[14px] font-mono font-bold text-[#5e9eff] mx-auto mb-4 glow-pulse">
-            {'//'}
+      <div className="h-screen w-screen flex flex-col bg-[#131416]">
+        {/* v15: Full-page loading skeleton */}
+        {/* Fake navbar skeleton */}
+        <div className="h-9 bg-[#19191c] border-b border-[#222] flex items-center px-3 gap-2">
+          <div className="skeleton w-5 h-5 rounded" style={{ opacity: 0.3 }} />
+          <div className="skeleton w-16 h-4 rounded" style={{ opacity: 0.2 }} />
+          <div className="flex-1" />
+          <div className="skeleton w-8 h-4 rounded" style={{ opacity: 0.15 }} />
+          <div className="skeleton w-8 h-4 rounded" style={{ opacity: 0.15 }} />
+          <div className="skeleton w-5 h-5 rounded-full" style={{ opacity: 0.2 }} />
+        </div>
+        {/* Fake breadcrumb skeleton */}
+        <div className="h-6 bg-[#19191c] border-b border-[#222] flex items-center px-3 gap-1.5">
+          <div className="skeleton w-10 h-3 rounded" style={{ opacity: 0.15 }} />
+          <div className="skeleton w-2 h-3 rounded" style={{ opacity: 0.1 }} />
+          <div className="skeleton w-14 h-3 rounded" style={{ opacity: 0.15 }} />
+          <div className="skeleton w-2 h-3 rounded" style={{ opacity: 0.1 }} />
+          <div className="skeleton w-12 h-3 rounded" style={{ opacity: 0.2 }} />
+        </div>
+        {/* Fake editor skeleton */}
+        <div className="flex-1 flex">
+          <div className="flex-1 p-4 flex gap-3">
+            <div className="flex flex-col gap-2.5 items-end pt-0.5">
+              {Array.from({ length: 20 }).map((_, i) => (
+                <div key={i} className="skeleton" style={{ width: '14px', height: '8px', borderRadius: '2px', opacity: 0.2 - (i * 0.007) }} />
+              ))}
+            </div>
+            <div className="flex-1 flex flex-col gap-2.5">
+              {[80, 55, 70, 40, 90, 30, 65, 50, 85, 25, 75, 45, 60, 35, 80, 55, 70, 20, 90, 45].map((w, i) => (
+                <div key={i} className="skeleton" style={{ width: `${w}%`, height: '8px', borderRadius: '2px', opacity: 0.25 - (i * 0.008), animationDelay: `${i * 0.04}s` }} />
+              ))}
+            </div>
           </div>
-          <div className="spinner mx-auto mb-3" />
-          <p className="text-[#666] text-[12px] font-mono">connecting to room...</p>
-          <p className="text-[#444] text-[10px] font-mono mt-1">setting up CRDT sync</p>
+        </div>
+        {/* Center loading message */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="text-center fade-up">
+            <div className="w-12 h-12 rounded-xl bg-[#222] border border-[#333] flex items-center justify-center text-[16px] font-mono font-bold text-[#5e9eff] mx-auto mb-4 glow-pulse">
+              {'//'}
+            </div>
+            <div className="spinner mx-auto mb-3" />
+            <p className="text-[#777] text-[12px] font-mono">connecting to room...</p>
+            <p className="text-[#444] text-[10px] font-mono mt-1">setting up CRDT sync</p>
+          </div>
         </div>
       </div>
     );
@@ -518,6 +590,11 @@ export default function RoomPage() {
         sessionTime={sessionTime}
         notifications={notifications}
         onClearNotifications={clearNotifications}
+        onMarkAllRead={markAllNotificationsRead}
+        onMarkNotificationRead={markNotificationRead}
+        notifSoundEnabled={notifSoundEnabled}
+        onToggleNotifSound={() => setNotifSoundEnabled(prev => !prev)}
+        onOpenSettings={() => setShowSettingsModal(true)}
       />
 
       <div className="flex-1 flex overflow-hidden min-h-0">
@@ -551,21 +628,52 @@ export default function RoomPage() {
 
         {/* Main Editor Area */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* Breadcrumb Bar */}
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#19191c] border-b border-[#222] text-[10px] font-mono text-[#555] flex-shrink-0 overflow-hidden">
-            <span className="text-[#444] hover:text-[#888] cursor-pointer transition" onClick={() => router.push('/')}>home</span>
-            <span className="text-[#333]">/</span>
-            <span className="text-[#666]">{roomId}</span>
-            <span className="text-[#333]">/</span>
-            <span style={{ color: (LANGUAGES_MAP[state.language] || '#5e9eff') }}>{state.language}</span>
+          {/* v15: Enhanced Breadcrumb Bar — interactive segments, copy path, icons */}
+          <div className="flex items-center gap-0.5 px-3 py-1 bg-[#19191c] border-b border-[#222] text-[10px] font-mono text-[#555] flex-shrink-0 overflow-hidden group/breadcrumb">
+            <button className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[#222] text-[#555] hover:text-[#aaa] transition active:scale-95" onClick={() => router.push('/')} title="Back to home">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+              <span className="hidden sm:inline">home</span>
+            </button>
+            <svg className="w-2.5 h-2.5 text-[#333] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            <span className="px-1.5 py-0.5 rounded text-[#777] bg-[#222]/50 cursor-default" title={`Room: ${roomId}`}>{roomId}</span>
+            <svg className="w-2.5 h-2.5 text-[#333] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            <span className="px-1.5 py-0.5 rounded font-medium" style={{ color: (LANGUAGES_MAP[state.language] || '#5e9eff'), background: (LANGUAGES_MAP[state.language] || '#5e9eff') + '10' }}>{state.language}</span>
             {activeFileId && files.find(f => f.id === activeFileId) && (
               <>
-                <span className="text-[#333]">/</span>
-                <span className="text-[#888]">{files.find(f => f.id === activeFileId)?.name?.split('/').pop()}</span>
+                <svg className="w-2.5 h-2.5 text-[#333] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                <span className="px-1.5 py-0.5 rounded text-[#aaa] bg-[#5e9eff]/5 flex items-center gap-1">
+                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                  {files.find(f => f.id === activeFileId)?.name?.split('/').pop()}
+                </span>
               </>
             )}
+            {/* Copy breadcrumb path button */}
+            <button
+              className="ml-1 p-0.5 rounded text-[#444] hover:text-[#888] opacity-0 group-hover/breadcrumb:opacity-100 transition-all hover:bg-[#222] active:scale-90"
+              title="Copy path"
+              onClick={() => {
+                const path = `${roomId}/${state.language}${activeFileId && files.find(f => f.id === activeFileId) ? '/' + files.find(f => f.id === activeFileId)?.name?.split('/').pop() : ''}`;
+                navigator.clipboard.writeText(path).catch(() => {});
+                addToast('Path copied to clipboard', 'info');
+              }}>
+              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+            </button>
             <div className="flex-1" />
-            <span className="text-[#444] hidden sm:inline">Ctrl+K command palette</span>
+            {/* Auto-save status in breadcrumb */}
+            {autoSaveStatus && (
+              <span className="flex items-center gap-1 mr-2" style={{ color: autoSaveStatus === 'saving' ? '#ffb347' : '#5bd882' }}>
+                {autoSaveStatus === 'saving' ? (
+                  <svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                ) : (
+                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                )}
+                <span className="text-[9px]">{autoSaveStatus === 'saving' ? 'syncing...' : 'saved'}</span>
+              </span>
+            )}
+            <button onClick={() => setShowCommandPalette(true)} className="hidden sm:flex items-center gap-1 text-[#444] hover:text-[#888] transition px-1.5 py-0.5 rounded hover:bg-[#222] active:scale-95">
+              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <span>Ctrl+K</span>
+            </button>
           </div>
 
           {/* File Tabs */}
@@ -604,11 +712,29 @@ export default function RoomPage() {
                 autoIndent={editorAutoIndent}
               />
             ) : (
-              <div className="h-full flex items-center justify-center bg-[#1a1b1e]">
-                <div className="text-center fade-up">
-                  <div className="spinner mx-auto mb-3" />
-                  <p className="text-[#666] text-[11px] font-mono">loading editor...</p>
-                  <p className="text-[#444] text-[9px] font-mono mt-1">initializing Monaco &amp; Yjs</p>
+              /* v15: Loading skeleton for editor */
+              <div className="h-full flex flex-col bg-[#1a1b1e] overflow-hidden">
+                {/* Fake line numbers + code lines skeleton */}
+                <div className="flex-1 flex p-4 gap-3">
+                  <div className="flex flex-col gap-2 items-end pt-1">
+                    {Array.from({ length: 18 }).map((_, i) => (
+                      <div key={i} className="skeleton" style={{ width: '16px', height: '10px', borderRadius: '3px', opacity: 0.3 - (i * 0.012) }} />
+                    ))}
+                  </div>
+                  <div className="flex-1 flex flex-col gap-2 pt-1">
+                    {[85, 60, 45, 70, 30, 90, 55, 40, 75, 20, 65, 50, 80, 35, 60, 45, 70, 25].map((w, i) => (
+                      <div key={i} className="skeleton" style={{ width: `${w}%`, height: '10px', borderRadius: '3px', opacity: 0.4 - (i * 0.015), animationDelay: `${i * 0.05}s` }} />
+                    ))}
+                  </div>
+                </div>
+                {/* Loading indicator overlay */}
+                <div className="absolute inset-0 flex items-center justify-center bg-[#1a1b1e]/80 backdrop-blur-[1px]">
+                  <div className="text-center fade-up">
+                    <div className="w-10 h-10 rounded-xl bg-[#222] border border-[#333] flex items-center justify-center text-[12px] font-mono font-bold text-[#5e9eff] mx-auto mb-3 glow-pulse">{'//'}</div>
+                    <div className="spinner mx-auto mb-2" />
+                    <p className="text-[#777] text-[11px] font-mono">loading editor...</p>
+                    <p className="text-[#444] text-[9px] font-mono mt-1">initializing Monaco + Yjs CRDT</p>
+                  </div>
                 </div>
               </div>
             )}
@@ -649,7 +775,19 @@ export default function RoomPage() {
             />
             {/* Desktop sidebar */}
             <div style={{ width: panelWidth }} className="flex-shrink-0 border-l border-[#282828] flex-col hidden sm:flex">
+              {showVideoChat && (
+                <VideoChat socket={socketRef.current} currentUser={state.user} users={state.users} />
+              )}
               <VoiceChat socket={socketRef.current} currentUser={state.user} />
+              {/* Video toggle button */}
+              <button
+                onClick={() => setShowVideoChat(prev => !prev)}
+                className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-[10px] font-mono border-b border-[#282828] transition ${showVideoChat ? 'bg-[#5e9eff]/10 text-[#5e9eff]' : 'bg-[#19191c] text-[#666] hover:text-[#aaa] hover:bg-[#222]'}`}
+                title={showVideoChat ? 'Hide video' : 'Show video'}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                {showVideoChat ? 'hide video' : 'video chat'}
+              </button>
               <div className="flex-1 min-h-0">
                 <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketRef.current} />
               </div>
@@ -661,10 +799,18 @@ export default function RoomPage() {
                   <svg className="w-4 h-4 text-[#5e9eff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                   <span className="text-[12px] font-mono text-[#888]">chat & voice</span>
                 </div>
-                <button onClick={toggleChat} className="p-2 text-[#666] hover:text-white rounded-lg hover:bg-[#222] active:scale-95 transition">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setShowVideoChat(prev => !prev)} className={`p-2 rounded-lg transition active:scale-95 ${showVideoChat ? 'text-[#5e9eff] bg-[#5e9eff]/10' : 'text-[#666] hover:text-white hover:bg-[#222]'}`} title="Toggle video">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                  </button>
+                  <button onClick={toggleChat} className="p-2 text-[#666] hover:text-white rounded-lg hover:bg-[#222] active:scale-95 transition">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
               </div>
+              {showVideoChat && (
+                <VideoChat socket={socketRef.current} currentUser={state.user} users={state.users} />
+              )}
               <VoiceChat socket={socketRef.current} currentUser={state.user} />
               <div className="flex-1 min-h-0">
                 <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketRef.current} />
@@ -741,6 +887,7 @@ export default function RoomPage() {
                 { keys: ['Ctrl', '`'], desc: 'Toggle terminal' },
                 { keys: ['Ctrl', 'S'], desc: 'Save file to disk' },
                 { keys: ['Ctrl', 'O'], desc: 'Open file from disk' },
+                { keys: ['Ctrl', ','], desc: 'Open settings' },
                 { keys: ['Ctrl', 'L'], desc: 'Clear terminal' },
                 { keys: ['?'], desc: 'Show this shortcuts panel' },
                 { keys: ['Esc'], desc: 'Close modals/overlays' },
@@ -763,52 +910,146 @@ export default function RoomPage() {
         </div>
       )}
 
-      {/* Command Palette (Ctrl+K) */}
-      {showCommandPalette && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[15vh] z-[9999]"
-          onClick={() => setShowCommandPalette(false)}>
-          <div className="modal-enter bg-[#1a1b1e] border border-[#333] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}>
-            <div className="px-4 py-3 border-b border-[#282828]">
-              <input
-                type="text"
-                autoFocus
-                placeholder="Type a command..."
-                className="w-full bg-transparent text-[14px] text-white placeholder-[#555] focus:outline-none font-mono"
-                onKeyDown={(e) => { if (e.key === 'Escape') setShowCommandPalette(false); }}
-                onChange={(e) => {
-                  const q = e.target.value.toLowerCase();
-                  document.querySelectorAll('[data-cmd]').forEach(el => {
-                    el.style.display = !q || el.dataset.cmd.toLowerCase().includes(q) ? '' : 'none';
-                  });
-                }}
-              />
-            </div>
-            <div className="py-1 max-h-[50vh] overflow-y-auto">
-              {[
-                { label: 'Run Code', hint: 'Ctrl+Enter', action: () => { setShowCommandPalette(false); handleMainRun(); } },
-                { label: 'Toggle Chat', hint: 'Ctrl+B', action: () => { setShowCommandPalette(false); toggleChat(); } },
-                { label: 'Toggle Terminal', hint: 'Ctrl+`', action: () => { setShowCommandPalette(false); toggleOutput(); } },
-                { label: 'Save File', hint: 'Ctrl+S', action: () => { setShowCommandPalette(false); handleSaveFile(); } },
-                { label: 'Open File', hint: 'Ctrl+O', action: () => { setShowCommandPalette(false); handleOpenFile(); } },
-                { label: 'Toggle File Explorer', hint: '', action: () => { setShowCommandPalette(false); setFilesOpen(!filesOpen); setExtensionsOpen(false); } },
-                { label: 'Open Settings', hint: '', action: () => { setShowCommandPalette(false); setExtensionsOpen(!extensionsOpen); setFilesOpen(false); } },
-                { label: 'Toggle Public/Private', hint: '', action: () => { setShowCommandPalette(false); handleTogglePublic(); } },
-                { label: 'Account Settings', hint: '', action: () => { setShowCommandPalette(false); setShowAccountSettings(true); } },
-                { label: 'Keyboard Shortcuts', hint: '?', action: () => { setShowCommandPalette(false); setShowShortcuts(true); } },
-                { label: 'Go Home', hint: '', action: () => { setShowCommandPalette(false); router.push('/'); } },
-              ].map((cmd, i) => (
-                <button key={i} data-cmd={cmd.label}
-                  onClick={cmd.action}
-                  className="w-full flex items-center justify-between px-4 py-2.5 text-[13px] text-[#999] hover:text-white hover:bg-[#222] transition">
-                  <span>{cmd.label}</span>
-                  {cmd.hint && <kbd className="text-[10px] text-[#555]">{cmd.hint}</kbd>}
-                </button>
-              ))}
+      {/* v15: Enhanced Command Palette (Ctrl+K) — keyboard nav, categories, fuzzy search, icons */}
+      {showCommandPalette && (() => {
+        const ALL_COMMANDS = [
+          { label: 'Run Code', hint: 'Ctrl+Enter', icon: '\u25B6', cat: 'code', action: () => { setShowCommandPalette(false); handleMainRun(); } },
+          { label: 'Save File', hint: 'Ctrl+S', icon: '\u2B07', cat: 'file', action: () => { setShowCommandPalette(false); handleSaveFile(); } },
+          { label: 'Open File', hint: 'Ctrl+O', icon: '\u2B06', cat: 'file', action: () => { setShowCommandPalette(false); handleOpenFile(); } },
+          { label: 'Toggle File Explorer', hint: '', icon: '\uD83D\uDCC1', cat: 'panel', action: () => { setShowCommandPalette(false); setFilesOpen(!filesOpen); setExtensionsOpen(false); } },
+          { label: 'Toggle Chat', hint: 'Ctrl+B', icon: '\uD83D\uDCAC', cat: 'panel', action: () => { setShowCommandPalette(false); toggleChat(); } },
+          { label: 'Toggle Terminal', hint: 'Ctrl+`', icon: '>_', cat: 'panel', action: () => { setShowCommandPalette(false); toggleOutput(); } },
+          { label: 'Open Settings', hint: '', icon: '\u2699', cat: 'settings', action: () => { setShowCommandPalette(false); setShowSettingsModal(true); } },
+          { label: 'Editor Settings (Side Panel)', hint: '', icon: '\uD83C\uDFA8', cat: 'settings', action: () => { setShowCommandPalette(false); setExtensionsOpen(!extensionsOpen); setFilesOpen(false); } },
+          { label: 'Account Settings', hint: '', icon: '\uD83D\uDC64', cat: 'settings', action: () => { setShowCommandPalette(false); setShowAccountSettings(true); } },
+          { label: 'Toggle Public/Private', hint: '', icon: isPublic ? '\uD83C\uDF10' : '\uD83D\uDD12', cat: 'room', action: () => { setShowCommandPalette(false); handleTogglePublic(); } },
+          { label: 'Keyboard Shortcuts', hint: '?', icon: '\u2328', cat: 'help', action: () => { setShowCommandPalette(false); setShowShortcuts(true); } },
+          { label: 'Go Home', hint: '', icon: '\uD83C\uDFE0', cat: 'nav', action: () => { setShowCommandPalette(false); router.push('/'); } },
+          { label: 'Copy Room Code', hint: '', icon: '\uD83D\uDCCB', cat: 'room', action: () => { setShowCommandPalette(false); navigator.clipboard.writeText(roomId).catch(() => {}); addToast('Room code copied', 'info'); } },
+          { label: 'Clear Terminal', hint: 'Ctrl+L', icon: '\uD83D\uDDD1', cat: 'code', action: () => { setShowCommandPalette(false); outputConsoleRef.current?.clear?.(); } },
+          { label: 'Clear Notifications', hint: '', icon: '\uD83D\uDD14', cat: 'settings', action: () => { setShowCommandPalette(false); clearNotifications(); } },
+        ];
+        // Fuzzy filter
+        const q = cmdPaletteQuery.toLowerCase();
+        const filtered = q ? ALL_COMMANDS.filter(c =>
+          c.label.toLowerCase().includes(q) || c.cat.includes(q) || (c.hint && c.hint.toLowerCase().includes(q))
+        ) : ALL_COMMANDS;
+        // Category labels
+        const CAT_LABELS = { code: 'Code', file: 'File', panel: 'Panels', settings: 'Settings', room: 'Room', help: 'Help', nav: 'Navigation' };
+        // Group by category
+        const grouped = {};
+        filtered.forEach(cmd => {
+          if (!grouped[cmd.cat]) grouped[cmd.cat] = [];
+          grouped[cmd.cat].push(cmd);
+        });
+        // Flat list for keyboard nav
+        const flatList = filtered;
+
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[12vh] z-[9999]"
+            onClick={() => { setShowCommandPalette(false); setCmdPaletteQuery(''); setCmdPaletteFocusIdx(0); }}>
+            <div className="modal-enter bg-[#1a1b1e] border border-[#333] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}>
+              <div className="px-4 py-3 border-b border-[#282828] flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#555] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <input
+                  type="text"
+                  autoFocus
+                  value={cmdPaletteQuery}
+                  placeholder="Type a command..."
+                  className="w-full bg-transparent text-[14px] text-white placeholder-[#555] focus:outline-none font-mono"
+                  onChange={(e) => { setCmdPaletteQuery(e.target.value); setCmdPaletteFocusIdx(0); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') { setShowCommandPalette(false); setCmdPaletteQuery(''); setCmdPaletteFocusIdx(0); }
+                    if (e.key === 'ArrowDown') { e.preventDefault(); setCmdPaletteFocusIdx(prev => Math.min(prev + 1, flatList.length - 1)); }
+                    if (e.key === 'ArrowUp') { e.preventDefault(); setCmdPaletteFocusIdx(prev => Math.max(prev - 1, 0)); }
+                    if (e.key === 'Enter' && flatList[cmdPaletteFocusIdx]) { flatList[cmdPaletteFocusIdx].action(); setCmdPaletteQuery(''); setCmdPaletteFocusIdx(0); }
+                  }}
+                />
+                {cmdPaletteQuery && (
+                  <button onClick={() => { setCmdPaletteQuery(''); setCmdPaletteFocusIdx(0); }} className="p-1 text-[#555] hover:text-[#aaa] transition rounded">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                )}
+              </div>
+              <div className="max-h-[50vh] overflow-y-auto py-1">
+                {flatList.length === 0 ? (
+                  <div className="px-4 py-6 text-center">
+                    <p className="text-[12px] text-[#555] font-mono">no matching commands</p>
+                    <p className="text-[10px] text-[#444] font-mono mt-1">try a different search term</p>
+                  </div>
+                ) : (
+                  (() => {
+                    let lastCat = null;
+                    let flatIdx = -1;
+                    return flatList.map((cmd) => {
+                      flatIdx++;
+                      const idx = flatIdx;
+                      const showCatHeader = cmd.cat !== lastCat;
+                      lastCat = cmd.cat;
+                      return (
+                        <div key={cmd.label}>
+                          {showCatHeader && (
+                            <div className="px-4 pt-2 pb-1">
+                              <span className="text-[9px] font-mono text-[#444] uppercase tracking-widest">{CAT_LABELS[cmd.cat] || cmd.cat}</span>
+                            </div>
+                          )}
+                          <button
+                            onClick={() => { cmd.action(); setCmdPaletteQuery(''); setCmdPaletteFocusIdx(0); }}
+                            onMouseEnter={() => setCmdPaletteFocusIdx(idx)}
+                            className={`w-full flex items-center gap-3 px-4 py-2 text-[13px] transition ${
+                              idx === cmdPaletteFocusIdx ? 'bg-[#5e9eff]/10 text-white' : 'text-[#999] hover:text-white hover:bg-[#222]'
+                            }`}>
+                            <span className="w-5 text-center text-[12px] flex-shrink-0 opacity-60">{cmd.icon}</span>
+                            <span className="flex-1 text-left">{cmd.label}</span>
+                            {cmd.hint && <kbd className="text-[10px] text-[#555] flex-shrink-0">{cmd.hint}</kbd>}
+                          </button>
+                        </div>
+                      );
+                    });
+                  })()
+                )}
+              </div>
+              <div className="px-4 py-2 border-t border-[#282828] flex items-center justify-between">
+                <span className="text-[9px] text-[#444] font-mono">{flatList.length} command{flatList.length !== 1 ? 's' : ''}</span>
+                <div className="flex items-center gap-2 text-[9px] text-[#444] font-mono">
+                  <span><kbd className="text-[8px]">\u2191\u2193</kbd> navigate</span>
+                  <span><kbd className="text-[8px]">\u21B5</kbd> select</span>
+                  <span><kbd className="text-[8px]">esc</kbd> close</span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {/* v15: Settings Modal — full-featured tabbed settings panel */}
+      <SettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        editorTheme={state.theme}
+        onEditorThemeChange={(t) => setTheme(t)}
+        terminalTheme={terminalTheme}
+        onTerminalThemeChange={setTerminalTheme}
+        fontSize={editorFontSize}
+        onFontSizeChange={setEditorFontSize}
+        tabSize={editorTabSize}
+        onTabSizeChange={setEditorTabSize}
+        minimap={editorMinimap}
+        onMinimapToggle={() => setEditorMinimap(!editorMinimap)}
+        wordWrap={editorWordWrap}
+        onWordWrapToggle={() => setEditorWordWrap(!editorWordWrap)}
+        cursorStyle={editorCursorStyle}
+        onCursorStyleChange={setEditorCursorStyle}
+        bracketColors={editorBracketColors}
+        onBracketColorsToggle={() => setEditorBracketColors(!editorBracketColors)}
+        lineNumbers={editorLineNumbers}
+        onLineNumbersToggle={() => setEditorLineNumbers(!editorLineNumbers)}
+        autoIndent={editorAutoIndent}
+        onAutoIndentToggle={() => setEditorAutoIndent(!editorAutoIndent)}
+        notifSoundEnabled={notifSoundEnabled}
+        onToggleNotifSound={() => setNotifSoundEnabled(!notifSoundEnabled)}
+      />
 
       {/* Account Settings Modal */}
       <AccountSettings

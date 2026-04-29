@@ -314,7 +314,7 @@ const Extensions = memo(function Extensions({
 
       {/* Footer */}
       <div className="px-3 py-1.5 border-t border-[#222] text-center">
-        <p className="text-[9px] text-[#444] font-mono">collabcode v14</p>
+        <p className="text-[9px] text-[#444] font-mono">collabcode v15</p>
       </div>
     </div>
   );

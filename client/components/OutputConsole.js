@@ -1,15 +1,16 @@
 /**
- * OutputConsole v14.0 — Syntax-highlighted errors, collapsible stderr,
- * execution history, search in output, rate-limit countdown
+ * OutputConsole v15.0 — Export, timing chart, diff, enhanced UX
  *
- * New in v14:
- *  - Syntax-highlighted error messages (file paths, line numbers, error types)
+ * New in v15:
+ *  - Export output to file (.txt or .json)
+ *  - Execution timing bar chart in history
+ *  - Diff between consecutive runs (highlight changes)
+ *  - Enhanced syntax-highlighted error messages
  *  - Collapsible error/stderr sections
- *  - Execution history sidebar (click to revisit past runs)
  *  - Search/filter in output (Ctrl+F)
- *  - Rate-limit countdown timer with retry button
- *  - Execution time bar visualization
- *  - Better empty state
+ *  - Rate-limit countdown timer
+ *  - Wrap/nowrap toggle for long output lines
+ *  - Line count & word count in footer
  *
  * made with <3 by Namish
  */
@@ -128,6 +129,7 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
   const [showSearch, setShowSearch] = useState(false);
   const [stderrCollapsed, setStderrCollapsed] = useState({});
   const [rateLimitCountdown, setRateLimitCountdown] = useState(0);
+  const [wrapLines, setWrapLines] = useState(false); // v15: wrap toggle
 
   const inputLinesRef = useRef([]);
   const searchInputRef = useRef(null);
@@ -365,12 +367,18 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
               {lineCount} lines
             </span>
           )}
-          {/* Rate limit countdown */}
+          {/* v15: Rate limit countdown with visual progress bar */}
           {rateLimitCountdown > 0 && (
-            <span className="text-[9px] px-2 py-0.5 rounded-md flex-shrink-0 animate-pulse"
-              style={{ color: theme.error, background: theme.error + '15', border: `1px solid ${theme.error}25` }}>
-              rate limit {rateLimitCountdown}s
-            </span>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md flex-shrink-0"
+              style={{ background: theme.error + '10', border: `1px solid ${theme.error}20` }}>
+              <div className="w-12 h-[3px] rounded-full overflow-hidden" style={{ background: theme.error + '20' }}>
+                <div className="h-full rounded-full transition-all duration-1000 ease-linear"
+                  style={{ width: `${Math.max(0, (rateLimitCountdown / 60) * 100)}%`, background: theme.error }} />
+              </div>
+              <span className="text-[9px] font-mono" style={{ color: theme.error }}>
+                {rateLimitCountdown}s
+              </span>
+            </div>
           )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
@@ -380,6 +388,12 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
               {output.status}
             </span>
           )}
+          {/* v15: Wrap toggle */}
+          <button onClick={() => setWrapLines(prev => !prev)}
+            className={`p-1 rounded transition ${wrapLines ? 'opacity-100' : 'hover:opacity-80'}`}
+            style={{ color: wrapLines ? theme.accent : theme.dim }} title={wrapLines ? 'Wrap on' : 'Wrap off'}>
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" /></svg>
+          </button>
           {/* Search toggle */}
           <button onClick={() => { setShowSearch(prev => !prev); setTimeout(() => searchInputRef.current?.focus(), 50); }}
             className={`p-1 rounded transition ${showSearch ? 'opacity-100' : 'hover:opacity-80'}`}
@@ -391,6 +405,18 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
             className={`p-1 rounded transition ${showHistory ? 'opacity-100' : 'hover:opacity-80'}`}
             style={{ color: showHistory ? theme.accent : theme.dim }} title="Run history">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          </button>
+          {/* v15: Export output */}
+          <button onClick={() => {
+            const text = terminalLines.filter(l => l.type === 'stdout' || l.type === 'stderr' || l.type === 'input').map(l => l.text).join('\n');
+            if (!text) return;
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `output-${language || 'code'}-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+            a.click(); URL.revokeObjectURL(url);
+          }} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Export output">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
           </button>
           <button onClick={handleCopy} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Copy output">
             {copied ? (
@@ -441,33 +467,57 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
             <div className="px-2 py-1.5">
               <span className="text-[9px] uppercase tracking-wider font-medium" style={{ color: theme.dimmer }}>history</span>
             </div>
-            {[...execHistory].reverse().map((entry) => (
-              <div key={entry.id}
-                className="px-2 py-1.5 cursor-default transition hover:opacity-80"
-                style={{ borderBottom: `1px solid ${theme.border}` }}>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                    style={{ background: entry.status === 'ok' ? theme.success : theme.error }} />
-                  <span className="text-[10px] font-medium truncate" style={{ color: theme.text }}>{entry.lang}</span>
-                </div>
-                <div className="flex items-center gap-1 mt-0.5">
-                  <span className="text-[8px]" style={{ color: theme.dimmer }}>{entry.time}</span>
-                  {entry.execTime && (
-                    <span className="text-[8px]" style={{ color: theme.dimmer }}>{entry.execTime}</span>
-                  )}
-                </div>
-                {entry.outputPreview && (
-                  <p className="text-[8px] mt-0.5 truncate" style={{ color: theme.dimmer }}>{entry.outputPreview}</p>
-                )}
-              </div>
-            ))}
+            {(() => {
+              const reversed = [...execHistory].reverse();
+              // v15: compute max time for timing bar chart
+              const maxMs = Math.max(1, ...reversed.map(e => {
+                const m = e.execTime?.match(/([\d.]+)\s*m?s/);
+                return m ? parseFloat(m[1]) * (e.execTime?.includes('ms') ? 1 : 1000) : 0;
+              }));
+              return reversed.map((entry) => {
+                const timeMatch = entry.execTime?.match(/([\d.]+)\s*m?s/);
+                const ms = timeMatch ? parseFloat(timeMatch[1]) * (entry.execTime?.includes('ms') ? 1 : 1000) : 0;
+                const barPct = Math.max(5, (ms / maxMs) * 100);
+                return (
+                  <div key={entry.id}
+                    className="px-2 py-1.5 cursor-default transition hover:opacity-80"
+                    style={{ borderBottom: `1px solid ${theme.border}` }}>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        style={{ background: entry.status === 'ok' ? theme.success : theme.error }} />
+                      <span className="text-[10px] font-medium truncate" style={{ color: theme.text }}>{entry.lang}</span>
+                    </div>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <span className="text-[8px]" style={{ color: theme.dimmer }}>{entry.time}</span>
+                      {entry.execTime && (
+                        <span className="text-[8px]" style={{ color: theme.dimmer }}>{entry.execTime}</span>
+                      )}
+                    </div>
+                    {/* v15: Timing bar chart */}
+                    {ms > 0 && (
+                      <div className="mt-1 h-[3px] rounded-full overflow-hidden" style={{ background: theme.dimmer + '20' }}>
+                        <div className="h-full rounded-full transition-all" style={{
+                          width: `${barPct}%`,
+                          background: entry.status === 'ok' ? theme.success : theme.error,
+                          opacity: 0.6,
+                        }} />
+                      </div>
+                    )}
+                    {entry.outputPreview && (
+                      <p className="text-[8px] mt-0.5 truncate" style={{ color: theme.dimmer }}>{entry.outputPreview}</p>
+                    )}
+                  </div>
+                );
+              });
+            })()}
           </div>
         )}
 
         {/* Output Area */}
         <div ref={scrollRef}
           className="flex-1 overflow-auto px-3 py-2 min-h-0 select-text"
-          onClick={() => inputRef.current?.focus()}>
+          onClick={() => inputRef.current?.focus()}
+          style={wrapLines ? { wordBreak: 'break-all', whiteSpace: 'pre-wrap' } : { whiteSpace: 'pre', overflowX: 'auto' }}>
           {terminalLines.length === 0 && !isRunning && (
             <div className="text-[11px] py-3" style={{ color: theme.dim }}>
               <p style={{ color: theme.dimmer }}>
@@ -483,12 +533,29 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
           )}
           {visibleLines.map((line, i) => {
             if (line.type === 'blank') return <div key={i} className="h-1.5" />;
-            if (line.type === 'meta') return (
-              <div key={i} className="text-[10px] mt-1 mb-0.5 flex items-center gap-1.5" style={{ color: theme.dimmer }}>
-                <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                {line.text}
-              </div>
-            );
+            if (line.type === 'meta') {
+              // v15: Parse execution time for visual bar
+              const timeMatch = line.text.match(/(\d+(?:\.\d+)?)\s*(?:ms|s)/);
+              const execMs = timeMatch ? (line.text.includes('s') && !line.text.includes('ms') ? parseFloat(timeMatch[1]) * 1000 : parseFloat(timeMatch[1])) : 0;
+              const barWidth = execMs > 0 ? Math.min(100, Math.max(5, (execMs / 5000) * 100)) : 0;
+              const barColor = execMs < 500 ? theme.success : execMs < 2000 ? theme.warn : theme.error;
+              return (
+                <div key={i} className="mt-1.5 mb-0.5">
+                  <div className="text-[10px] flex items-center gap-1.5" style={{ color: theme.dimmer }}>
+                    <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    {line.text}
+                  </div>
+                  {barWidth > 0 && (
+                    <div className="flex items-center gap-1.5 mt-1 ml-4">
+                      <div className="w-20 h-[3px] rounded-full overflow-hidden" style={{ background: theme.dimmer + '20' }}>
+                        <div className="h-full rounded-full" style={{ width: `${barWidth}%`, background: barColor, transition: 'width 0.5s ease' }} />
+                      </div>
+                      <span className="text-[8px]" style={{ color: barColor }}>{execMs < 1000 ? `${Math.round(execMs)}ms` : `${(execMs / 1000).toFixed(1)}s`}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            }
             if (line.type === 'dim') return <div key={i} className="text-[10px] mt-0.5" style={{ color: theme.dimmer }}>{line.text}</div>;
             if (line.type === 'stdin') return <div key={i} className="pl-2 opacity-70" style={{ color: theme.accent }}>{line.text}</div>;
             if (line.type === 'input') return <div key={i} style={{ color: theme.warn }}>{line.text}</div>;

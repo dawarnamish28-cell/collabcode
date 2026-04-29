@@ -1,8 +1,9 @@
 /**
- * CollabCode Server v5.0
+ * CollabCode Server v7.0
  * 
- * Express + Socket.io backend — 15 languages, public/private rooms,
- * code gallery, room validation, persistent auth.
+ * Express + Socket.io backend — 20 languages, persistent accounts,
+ * saved workspaces, team permissions, video collaboration,
+ * security sandboxing, templates.
  * 
  * made with <3 by Namish
  */
@@ -26,6 +27,8 @@ const executionRoutes = require('./routes/execution');
 const authRoutes = require('./routes/auth');
 const fileRoutes = require('./routes/files');
 const galleryRoutes = require('./routes/gallery');
+const workspaceRoutes = require('./routes/workspaces');
+const teamRoutes = require('./routes/teams');
 
 const PORT = parseInt(process.env.PORT) || 4000;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
@@ -50,9 +53,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api', executionRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/gallery', galleryRoutes);
+app.use('/api/workspaces', workspaceRoutes);
+app.use('/api/teams', teamRoutes);
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString(), rooms: getActiveRooms().length });
+  res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString(), rooms: getActiveRooms().length, version: '7.0' });
 });
 
 // Room list — now includes public/private info and language
@@ -84,13 +89,13 @@ const io = new Server(server, {
 io.use(socketAuthMiddleware);
 initRoomHandler(io);
 
-// ─── Start Server ─────────────────────────────────────────────────────
+// ─── Start Server ─────────────────────────────────────────────────
 async function start() {
   await connectDB();
   server.listen(PORT, '0.0.0.0', () => {
     console.log('');
     console.log('  ╔══════════════════════════════════════════╗');
-    console.log('  ║      CollabCode Server v5.0              ║');
+    console.log('  ║      CollabCode Server v7.0              ║');
     console.log('  ║      made with <3 by Namish              ║');
     console.log('  ╠══════════════════════════════════════════╣');
     console.log(`  ║  HTTP:   http://0.0.0.0:${PORT}            ║`);

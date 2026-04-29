@@ -1,12 +1,17 @@
 /**
- * Room Socket Handler v5.0
+ * Room Socket Handler v7.0
  * 
  * - Public/Private room support
  * - Room existence validation
  * - CRDT binary update relay (Yjs)
  * - Awareness (cursors, selections)
- * - Chat with persistence
+ * - Chat with persistence & reactions
  * - Voice chat WebRTC signaling
+ * - Video chat & screen sharing WebRTC signaling (v7 NEW)
+ * - User profile updates
+ * - Ping/pong for connection quality
+ *
+ * made with <3 by Namish
  */
 
 const Y = require('yjs');
@@ -32,6 +37,8 @@ function getRoom(roomId) {
       lastPersist: Date.now(),
       dirty: false,
       voiceUsers: new Set(),
+      videoUsers: new Set(),       // v7: track video users
+      screenShareUser: null,       // v7: track who is screen sharing
       isPublic: false,
       language: 'javascript',
       createdBy: null,
@@ -102,6 +109,7 @@ function initRoomHandler(io) {
     console.log(`[Socket] Connected: ${socket.id} (${socket.user.username})`);
     let currentRoomId = null;
 
+    // ─── Room Join ──────────────────────────────────────────────
     socket.on('room:join', async (data) => {
       const { roomId, language, isPublic } = data;
       if (!roomId || typeof roomId !== 'string') return;
@@ -110,7 +118,6 @@ function initRoomHandler(io) {
       currentRoomId = roomId;
       const room = getRoom(roomId);
       
-      // Set room properties on first join
       if (room.users.size === 0) {
         await loadRoomState(roomId, room.ydoc);
         if (isPublic !== undefined) room.isPublic = !!isPublic;
@@ -158,7 +165,7 @@ function initRoomHandler(io) {
       console.log(`[Room:${roomId}] ${socket.user.username} joined (${room.users.size} users) [${room.isPublic ? 'public' : 'private'}]`);
     });
 
-    // Toggle public/private
+    // ─── Room Visibility ────────────────────────────────────────
     socket.on('room:set-visibility', (data) => {
       if (!currentRoomId) return;
       const room = rooms.get(currentRoomId);
@@ -168,6 +175,7 @@ function initRoomHandler(io) {
       io.to(currentRoomId).emit('room:visibility-changed', { isPublic: room.isPublic });
     });
 
+    // ─── CRDT Sync ──────────────────────────────────────────────
     socket.on('crdt:update', (data) => {
       if (!currentRoomId || !updateRateCheck(socket.id)) return;
       const room = rooms.get(currentRoomId);
@@ -180,6 +188,7 @@ function initRoomHandler(io) {
       } catch (err) {}
     });
 
+    // ─── Awareness ──────────────────────────────────────────────
     socket.on('awareness:update', (state) => {
       if (!currentRoomId || !awarenessRateCheck(socket.id)) return;
       const room = rooms.get(currentRoomId);
@@ -192,6 +201,7 @@ function initRoomHandler(io) {
       });
     });
 
+    // ─── Chat ───────────────────────────────────────────────────
     socket.on('chat:send', async (data) => {
       if (!currentRoomId) return;
       if (!chatRateCheck(socket.id)) { socket.emit('chat:error', { message: 'Slow down!' }); return; }
@@ -217,18 +227,16 @@ function initRoomHandler(io) {
       socket.to(currentRoomId).emit('chat:typing', { userId: socket.user.userId, username: socket.user.username, isTyping: data.isTyping });
     });
 
-    // Emoji reactions on chat messages
     socket.on('chat:reaction', (data) => {
       if (!currentRoomId) return;
       const { msgIndex, emoji, action } = data;
       if (typeof msgIndex !== 'number' || !emoji || !['add', 'remove'].includes(action)) return;
-      // Broadcast to all users in room (including sender for confirmation)
       io.to(currentRoomId).emit('chat:reaction', {
         msgIndex, emoji, userId: socket.user.userId, action,
       });
     });
 
-    // Voice chat signaling
+    // ─── Voice Chat Signaling ───────────────────────────────────
     socket.on('voice:join', () => {
       if (!currentRoomId) return;
       const room = rooms.get(currentRoomId);
@@ -252,11 +260,126 @@ function initRoomHandler(io) {
     socket.on('voice:answer', (data) => { io.to(data.to).emit('voice:answer', { from: socket.id, answer: data.answer }); });
     socket.on('voice:ice-candidate', (data) => { io.to(data.to).emit('voice:ice-candidate', { from: socket.id, candidate: data.candidate }); });
 
+    // ─── Video Chat Signaling (v7 NEW) ──────────────────────────
+    socket.on('video:join', (data) => {
+      if (!currentRoomId) return;
+      const room = rooms.get(currentRoomId);
+      if (!room) return;
+      room.videoUsers.add(socket.user.userId);
+      console.log(`[Video:${currentRoomId}] ${socket.user.username} joined video (${room.videoUsers.size} in video)`);
+      // Notify others in room
+      socket.to(currentRoomId).emit('video:user-joined', {
+        userId: socket.user.userId, username: socket.user.username,
+        socketId: socket.id, color: socket.user.color,
+      });
+      // Send current video participants to the new joiner
+      const videoList = [];
+      room.users.forEach((u) => {
+        if (room.videoUsers.has(u.userId) && u.userId !== socket.user.userId)
+          videoList.push({ userId: u.userId, username: u.username, socketId: u.socketId, color: u.color });
+      });
+      socket.emit('video:peers', videoList);
+      // Notify if someone is screen sharing
+      if (room.screenShareUser) {
+        const sharer = Array.from(room.users.values()).find(u => u.userId === room.screenShareUser);
+        if (sharer) {
+          socket.emit('video:screen-share-started', { userId: sharer.userId, username: sharer.username, socketId: sharer.socketId });
+        }
+      }
+    });
+
+    socket.on('video:leave', () => {
+      if (!currentRoomId) return;
+      const room = rooms.get(currentRoomId);
+      if (!room) return;
+      room.videoUsers.delete(socket.user.userId);
+      // If the user was screen sharing, stop it
+      if (room.screenShareUser === socket.user.userId) {
+        room.screenShareUser = null;
+        io.to(currentRoomId).emit('video:screen-share-stopped', { userId: socket.user.userId });
+      }
+      console.log(`[Video:${currentRoomId}] ${socket.user.username} left video (${room.videoUsers.size} in video)`);
+      socket.to(currentRoomId).emit('video:user-left', { userId: socket.user.userId });
+    });
+
+    // WebRTC signaling for video
+    socket.on('video:offer', (data) => {
+      io.to(data.to).emit('video:offer', {
+        from: socket.id, offer: data.offer,
+        userId: socket.user.userId, username: socket.user.username,
+      });
+    });
+    socket.on('video:answer', (data) => {
+      io.to(data.to).emit('video:answer', { from: socket.id, answer: data.answer });
+    });
+    socket.on('video:ice-candidate', (data) => {
+      io.to(data.to).emit('video:ice-candidate', { from: socket.id, candidate: data.candidate });
+    });
+
+    // Screen sharing signaling
+    socket.on('video:screen-share-start', () => {
+      if (!currentRoomId) return;
+      const room = rooms.get(currentRoomId);
+      if (!room) return;
+      // Only one screen share at a time
+      if (room.screenShareUser && room.screenShareUser !== socket.user.userId) {
+        socket.emit('video:screen-share-error', { message: 'Someone else is already sharing their screen' });
+        return;
+      }
+      room.screenShareUser = socket.user.userId;
+      console.log(`[Video:${currentRoomId}] ${socket.user.username} started screen share`);
+      io.to(currentRoomId).emit('video:screen-share-started', {
+        userId: socket.user.userId, username: socket.user.username, socketId: socket.id,
+      });
+    });
+
+    socket.on('video:screen-share-stop', () => {
+      if (!currentRoomId) return;
+      const room = rooms.get(currentRoomId);
+      if (!room) return;
+      if (room.screenShareUser === socket.user.userId) {
+        room.screenShareUser = null;
+        console.log(`[Video:${currentRoomId}] ${socket.user.username} stopped screen share`);
+        io.to(currentRoomId).emit('video:screen-share-stopped', { userId: socket.user.userId });
+      }
+    });
+
+    // ─── User Profile Updates ───────────────────────────────────
+    socket.on('user:update-profile', (data) => {
+      if (!currentRoomId) return;
+      const room = rooms.get(currentRoomId);
+      if (!room) return;
+      const userInfo = room.users.get(socket.id);
+      if (userInfo) {
+        if (data.username) userInfo.username = data.username;
+        if (data.color) userInfo.color = data.color;
+        room.users.set(socket.id, userInfo);
+        socket.to(currentRoomId).emit('room:user-updated', {
+          userId: socket.user.userId,
+          username: data.username || userInfo.username,
+          color: data.color || userInfo.color,
+        });
+      }
+    });
+
+    // ─── Ping/Pong for connection quality ───────────────────────
+    socket.on('ping', () => {
+      socket.emit('pong');
+    });
+
+    // ─── Disconnect ─────────────────────────────────────────────
     socket.on('disconnect', async (reason) => {
       console.log(`[Socket] Disconnected: ${socket.id} (${reason})`);
       if (currentRoomId) {
         const room = rooms.get(currentRoomId);
-        if (room) room.voiceUsers.delete(socket.user.userId);
+        if (room) {
+          room.voiceUsers.delete(socket.user.userId);
+          room.videoUsers.delete(socket.user.userId);
+          if (room.screenShareUser === socket.user.userId) {
+            room.screenShareUser = null;
+            io.to(currentRoomId).emit('video:screen-share-stopped', { userId: socket.user.userId });
+          }
+        }
         await handleLeave(socket, currentRoomId, io);
         currentRoomId = null;
       }
@@ -271,6 +394,7 @@ function initRoomHandler(io) {
     socket.leave(roomId);
     socket.to(roomId).emit('room:user-left', { userId: socket.user.userId, username: socket.user.username });
     socket.to(roomId).emit('voice:user-left', { userId: socket.user.userId });
+    socket.to(roomId).emit('video:user-left', { userId: socket.user.userId });
     const leaveMsg = { roomId, userId: 'system', username: 'System', content: `${socket.user.username} left`, type: 'system', color: '#6b7280' };
     io.to(roomId).emit('chat:message', leaveMsg);
     if (getConnectionStatus()) Message.create(leaveMsg).catch(() => {});
@@ -289,6 +413,8 @@ function getActiveRooms() {
         users: Array.from(room.users.values()).map(u => u.username),
         isPublic: room.isPublic,
         language: room.language,
+        videoUsers: room.videoUsers.size,
+        screenSharing: !!room.screenShareUser,
       });
     }
   }
