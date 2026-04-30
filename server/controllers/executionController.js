@@ -1,5 +1,5 @@
 /**
- * Execution Controller v7.0 — Fast Compiler Infrastructure + Security Sandboxing
+ * Execution Controller v8.0 — Fast Compiler Infrastructure + Security Sandboxing
  * 
  * ALL 20 LANGUAGES run locally with full stdin/input() support:
  *  - JavaScript (Node.js), TypeScript (tsx), Python 3
@@ -7,7 +7,14 @@
  *  - Perl, R, Bash, Shell (sh), AWK
  *  - Lua, Fortran (gfortran), Tcl, SQLite, x86-64 Assembly (NASM)
  *
- * v7.0 NEW:
+ * v8.0 NEW:
+ *  - Improved JS executor: memory limit, harmony flags, cleaner error stack traces
+ *  - Improved Python executor: UTF-8 encoding, better traceback formatting
+ *  - Improved C/C++ executor: C11/C++17 standards, -O2 optimization, -Wall -Wextra warnings
+ *  - Output post-processing for cleaner error messages across all languages
+ *  - Increased compile timeout (20s) and concurrency (8 workers)
+ *
+ * v7.0:
  *  - LRU compilation cache for compiled languages (Java, C, C++, Go, Rust, Fortran, NASM)
  *  - SHA-256 code hashing for cache keys
  *  - Parallel version detection at startup
@@ -27,8 +34,8 @@ const crypto = require('crypto');
 
 const TIMEOUT_MS = parseInt(process.env.EXEC_TIMEOUT_MS) || 10000;
 const MAX_OUTPUT = parseInt(process.env.EXEC_MAX_OUTPUT) || 65536;
-const COMPILE_TIMEOUT_MS = 15000;
-const MAX_CONCURRENT = parseInt(process.env.EXEC_MAX_CONCURRENT) || 5;
+const COMPILE_TIMEOUT_MS = 20000;
+const MAX_CONCURRENT = parseInt(process.env.EXEC_MAX_CONCURRENT) || 8;
 const CACHE_MAX_SIZE = parseInt(process.env.EXEC_CACHE_SIZE) || 50;
 const MAX_MEMORY_MB = parseInt(process.env.EXEC_MAX_MEMORY_MB) || 256;
 const MAX_FILE_SIZE_MB = parseInt(process.env.EXEC_MAX_FILE_MB) || 10;
@@ -197,7 +204,7 @@ const LANGUAGES = {
   javascript: {
     name: 'JavaScript', ext: '.js', fileName: 'main.js',
     local: true, interpreted: true,
-    runner: 'node', runArgs: (f) => [f],
+    runner: 'node', runArgs: (f) => ['--max-old-space-size=128', '--harmony', '--experimental-vm-modules', f],
     template: `const readline = require('readline');\nconst rl = readline.createInterface({ input: process.stdin, output: process.stdout });\nrl.question('Enter your name: ', (name) => {\n  console.log(\`Hello, \${name}!\`);\n  rl.close();\n});\n`,
   },
   typescript: {
@@ -209,7 +216,7 @@ const LANGUAGES = {
   python: {
     name: 'Python 3', ext: '.py', fileName: 'main.py',
     local: true, interpreted: true,
-    runner: 'python3', runArgs: (f) => ['-u', f],
+    runner: 'python3', runArgs: (f) => ['-u', '-B', f],
     template: `name = input("Enter your name: ")\nage = input("Enter your age: ")\nprint(f"Hello {name}, you are {age} years old!")\n`,
   },
   java: {
@@ -222,14 +229,14 @@ const LANGUAGES = {
   c: {
     name: 'C', ext: '.c', fileName: 'main.c',
     local: true, interpreted: false,
-    compile: { cmd: 'gcc', args: (f) => ['-o', 'main', f, '-lm', '-lpthread'] },
+    compile: { cmd: 'gcc', args: (f) => ['-std=c11', '-O2', '-Wall', '-Wextra', '-o', 'main', f, '-lm', '-lpthread'] },
     runCompiled: './main',
     template: `#include <stdio.h>\nint main() {\n    char name[100];\n    printf("Enter your name: ");\n    fgets(name, sizeof(name), stdin);\n    printf("Hello, %s", name);\n    return 0;\n}\n`,
   },
   cpp: {
     name: 'C++', ext: '.cpp', fileName: 'main.cpp',
     local: true, interpreted: false,
-    compile: { cmd: 'g++', args: (f) => ['-o', 'main', f, '-lm', '-lstdc++', '-lpthread'] },
+    compile: { cmd: 'g++', args: (f) => ['-std=c++17', '-O2', '-Wall', '-Wextra', '-o', 'main', f, '-lm', '-lstdc++', '-lpthread'] },
     runCompiled: './main',
     template: `#include <iostream>\n#include <string>\nusing namespace std;\nint main() {\n    string name;\n    cout << "Enter your name: ";\n    getline(cin, name);\n    cout << "Hello, " << name << "!" << endl;\n    return 0;\n}\n`,
   },
@@ -393,7 +400,7 @@ function runCommand(cmd, args, opts = {}) {
     const env = {
       ...process.env, PATH: process.env.PATH,
       HOME: opts.home || cwd, TMPDIR: cwd,
-      NODE_OPTIONS: '', PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1',
+      NODE_OPTIONS: '--max-old-space-size=128', PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1', PYTHONIOENCODING: 'utf-8', PYTHONHASHSEED: '0',
     };
     if (cmd === 'go') {
       env.GOPATH = path.join(cwd, '.gopath');
@@ -489,6 +496,39 @@ async function compileCached(code, language, sandbox, lang) {
   return { cached: false, binaryPath: path.join(sandbox, binaryName) };
 }
 
+
+// ─── v8: Output Post-Processing for Better Error Messages ─────────
+function postProcessOutput(result, language) {
+  if (!result) return result;
+  
+  // Python: clean up traceback to be more readable
+  if (language === 'python' && result.stderr) {
+    // Remove '/tmp/collabcode-xxx/' paths for cleaner output
+    result.stderr = result.stderr.replace(/File "\/tmp\/collabcode-[^"]*\//g, 'File "');
+  }
+  
+  // JavaScript/Node: clean up stack traces
+  if ((language === 'javascript' || language === 'typescript') && result.stderr) {
+    // Remove internal node module paths for cleaner stack traces
+    const lines = result.stderr.split('\n');
+    const filtered = lines.filter(line => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('at internal/')) return false;
+      if (trimmed.startsWith('at Module._')) return false;
+      if (trimmed.startsWith('at Object.Module.')) return false;
+      if (trimmed.startsWith('at node:internal/')) return false;
+      return true;
+    });
+    result.stderr = filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+  
+  // C/C++: clean up compiler error paths
+  if ((language === 'c' || language === 'cpp') && result.stderr) {
+    result.stderr = result.stderr.replace(/\/tmp\/collabcode-[a-zA-Z0-9]+\//g, '');
+  }
+  
+  return result;
+}
 // ─── Execute Locally with Caching + Security ──────────────────────
 async function executeLocal(code, language, stdin) {
   const lang = LANGUAGES[language];
@@ -563,7 +603,8 @@ async function executeLocal(code, language, stdin) {
     try {
       const result = await runCommand(lang.runner, runArgs, { cwd: sandbox, timeout: TIMEOUT_MS, stdin });
       const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
-      return { success: result.exitCode === 0, stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: result.exitCode === 0 ? 'Success' : `Exit Code: ${result.exitCode}`, phase: 'run' };
+      const processed = postProcessOutput(result, language);
+      return { success: processed.exitCode === 0, stdout: processed.stdout, stderr: processed.stderr, exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: processed.exitCode === 0 ? 'Success' : `Exit Code: ${processed.exitCode}`, phase: 'run' };
     } catch (runErr) {
       const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
       if (runErr.message === 'TIME_LIMIT_EXCEEDED') {

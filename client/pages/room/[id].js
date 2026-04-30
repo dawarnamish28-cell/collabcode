@@ -89,8 +89,7 @@ export default function RoomPage() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false); // v15: full settings modal
-  const [showVideoChat, setShowVideoChat] = useState(false); // v16: video collaboration
-  const [autoSaveStatus, setAutoSaveStatus] = useState(null); // null | 'saving' | 'saved'
+    const [autoSaveStatus, setAutoSaveStatus] = useState(null); // null | 'saving' | 'saved'
   const [connectionQuality, setConnectionQuality] = useState('good'); // 'good' | 'fair' | 'poor'
   const [sessionStart] = useState(Date.now());
   const [sessionTime, setSessionTime] = useState('0:00');
@@ -574,7 +573,7 @@ export default function RoomPage() {
   const leftPanelWidth = 200;
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#1a1b1e]" style={{ userSelect: isResizing ? 'none' : 'auto' }}>
+    <div className="room-workspace h-screen w-screen flex flex-col overflow-hidden bg-[#1a1b1e]" style={{ userSelect: isResizing ? 'none' : 'auto' }}>
       <Navbar
         roomId={roomId} language={state.language} onLanguageChange={handleLanguageChange}
         connectionStatus={state.connectionStatus} users={state.users}
@@ -774,43 +773,27 @@ export default function RoomPage() {
               onTouchStart={handleMouseDown('sidebar')}
             />
             {/* Desktop sidebar */}
-            <div style={{ width: panelWidth }} className="flex-shrink-0 border-l border-[#282828] flex-col hidden sm:flex">
-              {showVideoChat && (
-                <VideoChat socket={socketRef.current} currentUser={state.user} users={state.users} />
-              )}
+            <div style={{ width: panelWidth }} className="room-sidebar flex-shrink-0 border-l border-[#282828] flex-col hidden sm:flex">
+              <VideoChat socket={socketRef.current} currentUser={state.user} users={state.users} />
               <VoiceChat socket={socketRef.current} currentUser={state.user} />
-              {/* Video toggle button */}
-              <button
-                onClick={() => setShowVideoChat(prev => !prev)}
-                className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-[10px] font-mono border-b border-[#282828] transition ${showVideoChat ? 'bg-[#5e9eff]/10 text-[#5e9eff]' : 'bg-[#19191c] text-[#666] hover:text-[#aaa] hover:bg-[#222]'}`}
-                title={showVideoChat ? 'Hide video' : 'Show video'}
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                {showVideoChat ? 'hide video' : 'video chat'}
-              </button>
               <div className="flex-1 min-h-0">
                 <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketRef.current} />
               </div>
             </div>
             {/* Mobile: fullscreen overlay */}
-            <div className="fixed inset-0 z-50 bg-[#1a1b1e] flex flex-col sm:hidden" style={{ animation: 'slideInRight 0.2s cubic-bezier(0.22, 1, 0.36, 1)' }}>
+            <div className="room-mobile-overlay fixed inset-0 bg-[#1a1b1e] flex flex-col sm:hidden" style={{ animation: 'slideInRight 0.2s cubic-bezier(0.22, 1, 0.36, 1)' }}>
               <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#282828] bg-[#19191c] flex-shrink-0">
                 <div className="flex items-center gap-2">
                   <svg className="w-4 h-4 text-[#5e9eff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                   <span className="text-[12px] font-mono text-[#888]">chat & voice</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => setShowVideoChat(prev => !prev)} className={`p-2 rounded-lg transition active:scale-95 ${showVideoChat ? 'text-[#5e9eff] bg-[#5e9eff]/10' : 'text-[#666] hover:text-white hover:bg-[#222]'}`} title="Toggle video">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                  </button>
                   <button onClick={toggleChat} className="p-2 text-[#666] hover:text-white rounded-lg hover:bg-[#222] active:scale-95 transition">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
                 </div>
               </div>
-              {showVideoChat && (
-                <VideoChat socket={socketRef.current} currentUser={state.user} users={state.users} />
-              )}
+              <VideoChat socket={socketRef.current} currentUser={state.user} users={state.users} />
               <VoiceChat socket={socketRef.current} currentUser={state.user} />
               <div className="flex-1 min-h-0">
                 <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketRef.current} />
@@ -820,8 +803,8 @@ export default function RoomPage() {
         )}
       </div>
 
-      {/* Status Bar (bottom-left) */}
-      <div className="fixed bottom-2 left-2 z-30 flex items-center gap-2 px-2.5 py-1.5 bg-[#19191c]/90 backdrop-blur-md rounded-lg border border-[#282828] text-[9px] font-mono text-[#555] shadow-lg">
+      {/* Status Bar */}
+      <div className="room-status-bar flex items-center gap-2 px-3 py-1 bg-[#19191c] border-t border-[#222] text-[9px] font-mono text-[#555]">
         {/* Auto-save indicator */}
         {autoSaveStatus && (
           <>
@@ -851,7 +834,7 @@ export default function RoomPage() {
       </div>
 
       {/* Toast Notifications */}
-      <div className="fixed top-12 right-3 z-[9999] flex flex-col gap-1.5 pointer-events-none">
+      <div className="room-toasts fixed top-12 right-3 flex flex-col gap-1.5">
         {toasts.map(toast => (
           <div key={toast.id}
             className="flex items-center gap-2 px-3 py-2 bg-[#1a1b1e]/95 border rounded-xl shadow-2xl text-[11px] font-mono backdrop-blur-md pointer-events-auto"
@@ -869,7 +852,7 @@ export default function RoomPage() {
 
       {/* Keyboard Shortcuts Overlay */}
       {showShortcuts && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999]"
+        <div className="room-modal-overlay fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center"
           onClick={() => setShowShortcuts(false)}>
           <div className="modal-enter bg-[#1a1b1e] border border-[#333] rounded-2xl p-6 w-full max-w-md shadow-2xl"
             onClick={(e) => e.stopPropagation()}>
@@ -918,7 +901,7 @@ export default function RoomPage() {
           { label: 'Open File', hint: 'Ctrl+O', icon: '\u2B06', cat: 'file', action: () => { setShowCommandPalette(false); handleOpenFile(); } },
           { label: 'Toggle File Explorer', hint: '', icon: '\uD83D\uDCC1', cat: 'panel', action: () => { setShowCommandPalette(false); setFilesOpen(!filesOpen); setExtensionsOpen(false); } },
           { label: 'Toggle Chat', hint: 'Ctrl+B', icon: '\uD83D\uDCAC', cat: 'panel', action: () => { setShowCommandPalette(false); toggleChat(); } },
-          { label: 'Toggle Video Chat', hint: '', icon: '\uD83C\uDFA5', cat: 'panel', action: () => { setShowCommandPalette(false); if (!state.chatOpen) toggleChat(); setShowVideoChat(prev => !prev); } },
+          { label: 'Open Video Chat', hint: '', icon: '\uD83C\uDFA5', cat: 'panel', action: () => { setShowCommandPalette(false); if (!state.chatOpen) toggleChat(); } },
           { label: 'Toggle Terminal', hint: 'Ctrl+`', icon: '>_', cat: 'panel', action: () => { setShowCommandPalette(false); toggleOutput(); } },
           { label: 'Open Settings', hint: '', icon: '\u2699', cat: 'settings', action: () => { setShowCommandPalette(false); setShowSettingsModal(true); } },
           { label: 'Editor Settings (Side Panel)', hint: '', icon: '\uD83C\uDFA8', cat: 'settings', action: () => { setShowCommandPalette(false); setExtensionsOpen(!extensionsOpen); setFilesOpen(false); } },
@@ -947,7 +930,7 @@ export default function RoomPage() {
         const flatList = filtered;
 
         return (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[12vh] z-[9999]"
+          <div className="room-modal-overlay fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[12vh]"
             onClick={() => { setShowCommandPalette(false); setCmdPaletteQuery(''); setCmdPaletteFocusIdx(0); }}>
             <div className="modal-enter bg-[#1a1b1e] border border-[#333] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
               onClick={(e) => e.stopPropagation()}>

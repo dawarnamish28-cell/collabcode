@@ -255,7 +255,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   transition: background 0.15s;
 }
 
-/* Hide default cursor on landing */
+/* Hide default cursor on landing page ONLY */
 .landing-cursor-hide, .landing-cursor-hide * {
   cursor: none !important;
 }
@@ -264,6 +264,25 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
   .landing-cursor-hide, .landing-cursor-hide * {
     cursor: auto !important;
   }
+}
+/* Room page: always show normal cursor (override any leftover cursor:none) */
+.room-workspace, .room-workspace * {
+  cursor: auto;
+}
+.room-workspace .resizer {
+  cursor: col-resize;
+}
+.room-workspace .resizer-horizontal {
+  cursor: row-resize;
+}
+.room-workspace button, .room-workspace a, .room-workspace [role="button"] {
+  cursor: pointer;
+}
+.room-workspace input, .room-workspace textarea, .room-workspace select {
+  cursor: text;
+}
+.room-workspace input[type="checkbox"], .room-workspace input[type="radio"] {
+  cursor: pointer;
 }
 
 /* ─── Navbar Dropdown Drop-In ────────────────────────────────── */
@@ -1747,5 +1766,81 @@ select:focus-visible {
   }
   .conn-quality-bar.poor {
     animation: none !important;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   v16.1 — LAYOUT FIXES
+   Fix overlapping, cursor, video chat, status bar
+═══════════════════════════════════════════════════════════════════ */
+
+/* ─── Room Layout: prevent overlap ─────────────────────────────── */
+.room-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* Status bar always at bottom, never floating */
+.room-status-bar {
+  flex-shrink: 0;
+  z-index: 10;
+  position: relative;
+}
+
+/* Toast container above everything */
+.room-toasts {
+  z-index: 9999;
+  pointer-events: none;
+}
+.room-toasts > * {
+  pointer-events: auto;
+}
+
+/* Modal overlays */
+.room-modal-overlay {
+  z-index: 9999;
+}
+
+/* Sidebar panel layering */
+.room-sidebar {
+  z-index: 20;
+  position: relative;
+}
+
+/* Mobile chat overlay */
+.room-mobile-overlay {
+  z-index: 50;
+}
+
+/* Video grid inside sidebar — prevent overflow */
+.video-grid-container {
+  max-height: 40vh;
+  overflow-y: auto;
+}
+@media (max-height: 700px) {
+  .video-grid-container {
+    max-height: 30vh;
+  }
+}
+
+/* ─── Smooth fadeUp for error messages ─────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Video chat mobile improvements ──────────────────────────── */
+@media (max-width: 640px) {
+  .video-grid-container {
+    max-height: 35vh;
+  }
+  /* Larger touch targets for video controls */
+  .video-controls button {
+    min-width: 44px;
+    min-height: 44px;
   }
 }
