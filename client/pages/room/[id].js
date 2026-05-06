@@ -1,5 +1,5 @@
 /**
- * Room Workspace v16.0 — Full v16 feature set
+ * Room Workspace v17.0 — Hardened for Continuous Heavy Use
  * 
  * New in v16:
  *  - Video collaboration: WebRTC video chat & screen sharing
@@ -10,6 +10,14 @@
  *  - Enhanced status bar with more metrics
  *  - Better toast system with dismiss & action buttons
  * 
+ * 
+ * v17.0 hardening:
+ *  - Reusable AudioContext (prevents resource leak on every notification)
+ *  - AbortController for all fetch requests (cancels on unmount)
+ *  - Mounted guard ref prevents state updates after unmount
+ *  - Toast timeout tracking and cleanup on unmount
+ *  - Connection quality monitor properly guards unmounted state
+ *  - Session timer properly cleaned up
  * made with <3 by Namish
  */
 
@@ -58,6 +66,32 @@ export default function RoomPage() {
   const ydocRef = useRef(null);
   const providerRef = useRef(null);
   const outputConsoleRef = useRef(null);
+  const mountedRef = useRef(true); // v17: mounted guard
+  const audioCtxRef = useRef(null); // v17: reusable AudioContext
+  const abortRef = useRef(null); // v17: AbortController for fetch
+  const toastTimersRef = useRef(new Set()); // v17: track toast timeouts
+
+  // v17: Mounted guard + cleanup AudioContext on unmount
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      // Clean up AudioContext
+      if (audioCtxRef.current) {
+        try { audioCtxRef.current.close(); } catch (e) {}
+        audioCtxRef.current = null;
+      }
+      // Cancel any pending fetch
+      if (abortRef.current) {
+        try { abortRef.current.abort(); } catch (e) {}
+      }
+      // Clear all toast timeouts
+      for (const timer of toastTimersRef.current) {
+        clearTimeout(timer);
+      }
+      toastTimersRef.current.clear();
+    };
+  }, []);
 
   const [messages, setMessages] = useState([]);
   const [output, setOutput] = useState(null);
@@ -151,22 +185,33 @@ export default function RoomPage() {
     return () => clearInterval(interval);
   }, [sessionStart]);
 
-  // Toast helper
+  // v17: Toast helper with timeout tracking (prevents leak on unmount)
   const addToast = useCallback((message, type = 'info') => {
+    if (!mountedRef.current) return;
     const id = Date.now().toString(36);
     setToasts(prev => [...prev.slice(-4), { id, message, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+    const timer = setTimeout(() => {
+      toastTimersRef.current.delete(timer);
+      if (mountedRef.current) setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3000);
+    toastTimersRef.current.add(timer);
   }, []);
 
   // v15: Enhanced notification helper — adds to bell dropdown with categories & sound
   const addNotification = useCallback((message, type = 'info', category = 'general') => {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 4);
+    if (!mountedRef.current) return;
     setNotifications(prev => [...prev.slice(-49), { id, message, type, category, time, read: false }]);
-    // Play subtle notification sound
+    // v17: Play notification sound using reusable AudioContext (prevents resource leak)
     if (notifSoundEnabled && typeof window !== 'undefined') {
       try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+          audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const ctx = audioCtxRef.current;
+        // Resume if suspended (browser autoplay policy)
+        if (ctx.state === 'suspended') ctx.resume();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain);
@@ -210,17 +255,18 @@ export default function RoomPage() {
     return () => { ytext.unobserve(handler); clearTimeout(timer); };
   }, [ready]);
 
-  // Connection quality monitor
+  // v17: Connection quality monitor — guarded against unmounted state updates
   useEffect(() => {
     if (!socketRef.current) return;
     let lastPong = Date.now();
     const s = socketRef.current;
     const onPong = () => {
+      if (!mountedRef.current) return;
       const latency = Date.now() - lastPong;
       setConnectionQuality(latency < 150 ? 'good' : latency < 400 ? 'fair' : 'poor');
     };
     const interval = setInterval(() => {
-      if (s.connected) { lastPong = Date.now(); s.volatile.emit('ping'); }
+      if (s.connected && mountedRef.current) { lastPong = Date.now(); s.volatile.emit('ping'); }
     }, 15000);
     s.on('pong', onPong);
     return () => { clearInterval(interval); s.off('pong', onPong); };
@@ -315,6 +361,10 @@ export default function RoomPage() {
 
     if (!state.outputOpen) toggleOutput();
 
+    // v17: AbortController for cancellable fetch
+    if (abortRef.current) { try { abortRef.current.abort(); } catch (e) {} }
+    abortRef.current = new AbortController();
+
     try {
       const res = await fetch(`${SERVER_URL}/api/execute`, {
         method: 'POST',
@@ -324,6 +374,7 @@ export default function RoomPage() {
           'x-tab-id': state.user?.tabId || '',
         },
         body: JSON.stringify({ code, language: state.language, stdin }),
+        signal: abortRef.current.signal,
       });
 
       // v15: Graceful rate-limit handling with countdown & notification
@@ -356,9 +407,13 @@ export default function RoomPage() {
         setOutput({ type: 'error', content: data.output || '', error: data.error || data.message || 'Failed', status: data.status, ...base });
       }
     } catch (err) {
-      setOutput({ type: 'error', content: '', error: `Network error: ${err.message}`, status: 'Network Error' });
+      // v17: Don't show error for intentional aborts (unmount/new request)
+      if (err.name === 'AbortError') return;
+      if (mountedRef.current) {
+        setOutput({ type: 'error', content: '', error: `Network error: ${err.message}`, status: 'Network Error' });
+      }
     } finally {
-      setIsRunning(false);
+      if (mountedRef.current) setIsRunning(false);
     }
   }, [state.language, state.user, state.outputOpen, toggleOutput]);
 

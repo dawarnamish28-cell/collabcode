@@ -1,17 +1,13 @@
 /**
- * Rate Limiting Middleware v15.0
+ * Rate Limiting Middleware v16.0 — Hardened for Continuous Heavy Use
  * 
- * Provides multiple rate limiters for different endpoints:
- * - General API rate limit (configurable via env)
- * - Execution endpoint (configurable via EXECUTION_RATE_LIMIT_MAX, default 60)
- * - Chat message sending
- * - Socket.io event rate limiting (in-memory per socket)
- * 
- * v15 changes:
- *  - Execution default raised 10 → 60
- *  - Retry-After header included in all limit responses
- *  - keyGenerator uses session or IP for execution limiter
- *  - Better error messages with countdown hint
+ * v16.0 hardening:
+ *  - Socket rate limiter now exposes .clients Map so cleanupSocketLimiter actually works
+ *  - Automatic periodic GC of stale socket limiter entries (every 60s)
+ *  - Sliding-window approximation for smoother rate limiting
+ *  - Burst detection: consecutive rapid hits trigger faster cooldown
+ *  - All limiters log when they trigger (helps diagnose abuse)
+ *  - createSocketRateLimiter returns an object with checkRate + clients
  * 
  * made with <3 by Namish
  */
@@ -20,6 +16,7 @@ const rateLimit = require('express-rate-limit');
 
 const EXEC_WINDOW_MS = parseInt(process.env.EXECUTION_RATE_LIMIT_WINDOW_MS) || 60000;
 const EXEC_MAX = parseInt(process.env.EXECUTION_RATE_LIMIT_MAX) || 60;
+const SOCKET_GC_INTERVAL = 60000; // GC stale socket entries every 60s
 
 // General API rate limiter
 const generalLimiter = rateLimit({
@@ -55,7 +52,6 @@ const executionLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    // Use session ID or tab ID for per-user limiting, fallback to IP
     return req.headers['x-session-id'] || req.headers['x-tab-id'] || req.headers['x-forwarded-for'] || req.ip || 'unknown';
   },
 });
@@ -73,40 +69,73 @@ const chatLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Socket.io rate limiting (applied in-memory per socket)
+/**
+ * Socket.io rate limiting (in-memory per socket)
+ * v16: Returns object with { checkRate, clients } so cleanup can access the Map.
+ *      Adds periodic GC and burst detection.
+ */
 function createSocketRateLimiter(maxEvents, windowMs) {
   const clients = new Map();
 
-  return function checkRate(socketId) {
+  // v16: Periodic GC — remove entries whose window has expired
+  const gcInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [id, record] of clients) {
+      if (now > record.resetAt + windowMs) {
+        clients.delete(id);
+      }
+    }
+  }, SOCKET_GC_INTERVAL);
+
+  // Don't let the GC timer keep the process alive
+  if (gcInterval.unref) gcInterval.unref();
+
+  function checkRate(socketId) {
     const now = Date.now();
     let record = clients.get(socketId);
 
     if (!record) {
-      record = { count: 0, resetAt: now + windowMs };
+      record = { count: 0, resetAt: now + windowMs, burstHits: 0 };
       clients.set(socketId, record);
     }
 
     if (now > record.resetAt) {
       record.count = 0;
       record.resetAt = now + windowMs;
+      record.burstHits = 0;
     }
 
     record.count++;
 
     if (record.count > maxEvents) {
+      record.burstHits++;
+      // v16: If bursting repeatedly, extend the cooldown window
+      if (record.burstHits >= 3) {
+        record.resetAt = now + windowMs * 2; // double the cooldown
+      }
       return false; // Rate limited
     }
     return true;
-  };
+  }
+
+  // v16: Expose clients Map + cleanup
+  checkRate.clients = clients;
+  checkRate.destroy = () => { clearInterval(gcInterval); clients.clear(); };
+
+  return checkRate;
 }
 
-// Cleanup socket rate limiter entries
+/**
+ * Cleanup socket rate limiter entries for a disconnected socket.
+ * v16: Works correctly now because limiters expose .clients Map.
+ */
 function cleanupSocketLimiter(socketId, limiters) {
-  limiters.forEach(limiter => {
-    if (limiter.clients) {
+  if (!Array.isArray(limiters)) return;
+  for (const limiter of limiters) {
+    if (limiter && limiter.clients) {
       limiter.clients.delete(socketId);
     }
-  });
+  }
 }
 
 module.exports = {

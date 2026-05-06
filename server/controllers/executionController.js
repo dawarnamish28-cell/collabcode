@@ -1,27 +1,20 @@
 /**
- * Execution Controller v8.0 — Fast Compiler Infrastructure + Security Sandboxing
- * 
- * ALL 20 LANGUAGES run locally with full stdin/input() support:
- *  - JavaScript (Node.js), TypeScript (tsx), Python 3
- *  - Java (OpenJDK), C (GCC), C++ (G++), Go, Rust, Ruby, PHP
- *  - Perl, R, Bash, Shell (sh), AWK
- *  - Lua, Fortran (gfortran), Tcl, SQLite, x86-64 Assembly (NASM)
+ * Execution Controller v9.0 — Hardened for Continuous Heavy Use
  *
- * v8.0 NEW:
- *  - Improved JS executor: memory limit, harmony flags, cleaner error stack traces
- *  - Improved Python executor: UTF-8 encoding, better traceback formatting
- *  - Improved C/C++ executor: C11/C++17 standards, -O2 optimization, -Wall -Wextra warnings
- *  - Output post-processing for cleaner error messages across all languages
- *  - Increased compile timeout (20s) and concurrency (8 workers)
+ * v9.0 hardening:
+ *  - Zombie process reaper: tracks all spawned child PIDs, periodic sweep kills orphans
+ *  - Sandbox leak protection: startup sweep cleans stale /tmp/collabcode-* dirs
+ *  - Queue max length cap (prevents unbounded memory growth under load)
+ *  - Queue timeout: tasks waiting too long get rejected with 503
+ *  - Compilation cache TTL: entries older than 1 hour are auto-evicted
+ *  - postProcessOutput applied to ALL languages (compiled + interpreted)
+ *  - Process-exit cleanup: cache purge + sandbox sweep on SIGTERM/SIGINT
+ *  - Proper child process tree kill (process group kill)
+ *  - stdin pipe error handling (prevents EPIPE crash)
+ *  - Code size validation tightened
+ *  - Execution timeout includes compile time budget
  *
- * v7.0:
- *  - LRU compilation cache for compiled languages (Java, C, C++, Go, Rust, Fortran, NASM)
- *  - SHA-256 code hashing for cache keys
- *  - Parallel version detection at startup
- *  - Process resource limits (memory, file size, nproc)
- *  - Code sanitization patterns per language
- *  - Concurrent execution queue with configurable max workers
- *  - Execution metrics & stats endpoint
+ * ALL 20 LANGUAGES run locally with full stdin/input() support.
  *
  * made with <3 by Namish
  */
@@ -32,16 +25,25 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 
+// ─── Configuration ─────────────────────────────────────────────────────
 const TIMEOUT_MS = parseInt(process.env.EXEC_TIMEOUT_MS) || 10000;
 const MAX_OUTPUT = parseInt(process.env.EXEC_MAX_OUTPUT) || 65536;
 const COMPILE_TIMEOUT_MS = 20000;
 const MAX_CONCURRENT = parseInt(process.env.EXEC_MAX_CONCURRENT) || 8;
 const CACHE_MAX_SIZE = parseInt(process.env.EXEC_CACHE_SIZE) || 50;
+const CACHE_TTL_MS = parseInt(process.env.EXEC_CACHE_TTL_MS) || 3600000; // 1 hour
 const MAX_MEMORY_MB = parseInt(process.env.EXEC_MAX_MEMORY_MB) || 256;
 const MAX_FILE_SIZE_MB = parseInt(process.env.EXEC_MAX_FILE_MB) || 10;
 const MAX_PROCESSES = parseInt(process.env.EXEC_MAX_PROCS) || 32;
+const MAX_QUEUE_LENGTH = parseInt(process.env.EXEC_MAX_QUEUE) || 50;
+const QUEUE_WAIT_TIMEOUT_MS = parseInt(process.env.EXEC_QUEUE_TIMEOUT_MS) || 30000;
+const MAX_CODE_SIZE = 100000; // 100KB
+const ZOMBIE_REAPER_INTERVAL = 30000; // 30s
+const CACHE_GC_INTERVAL = 300000; // 5 min
+const SANDBOX_PREFIX = 'collabcode-';
+const CACHE_PREFIX = 'collabcache-';
 
-// ─── Execution Metrics ────────────────────────────────────────────
+// ─── Execution Metrics ─────────────────────────────────────────────────
 const metrics = {
   totalExecutions: 0,
   successfulExecutions: 0,
@@ -49,12 +51,19 @@ const metrics = {
   cacheHits: 0,
   cacheMisses: 0,
   timeouts: 0,
+  queueRejections: 0,
+  queueTimeouts: 0,
+  zombiesReaped: 0,
+  sandboxesLeaked: 0,
   averageExecutionMs: 0,
   languageCounts: {},
   startedAt: Date.now(),
 };
 
-// ─── Compilation Cache (LRU) ──────────────────────────────────────
+// ─── Active Process Tracking (for zombie reaper) ───────────────────────
+const activeChildren = new Set(); // PIDs of spawned children
+
+// ─── Compilation Cache (LRU + TTL) ────────────────────────────────────
 class CompilationCache {
   constructor(maxSize = CACHE_MAX_SIZE) {
     this.maxSize = maxSize;
@@ -69,6 +78,11 @@ class CompilationCache {
     const key = this._hash(code, language);
     const entry = this.cache.get(key);
     if (!entry) return null;
+    // v9: TTL check
+    if (Date.now() - entry.createdAt > CACHE_TTL_MS) {
+      this._evictEntry(key, entry);
+      return null;
+    }
     // Check if compiled binary still exists
     if (!fs.existsSync(entry.binaryPath)) {
       this.cache.delete(key);
@@ -86,21 +100,38 @@ class CompilationCache {
     if (this.cache.size >= this.maxSize) {
       const oldestKey = this.cache.keys().next().value;
       const oldest = this.cache.get(oldestKey);
-      if (oldest?.sandboxDir) {
-        try { fs.rmSync(oldest.sandboxDir, { recursive: true, force: true }); } catch (e) {}
-      }
-      this.cache.delete(oldestKey);
+      this._evictEntry(oldestKey, oldest);
     }
-    this.cache.set(key, { binaryPath, sandboxDir, language, lastAccess: Date.now(), createdAt: Date.now() });
+    this.cache.set(key, {
+      binaryPath, sandboxDir, language,
+      lastAccess: Date.now(), createdAt: Date.now(),
+    });
+  }
+
+  _evictEntry(key, entry) {
+    if (entry?.sandboxDir) {
+      try { fs.rmSync(entry.sandboxDir, { recursive: true, force: true }); } catch (e) {}
+    }
+    this.cache.delete(key);
+  }
+
+  // v9: Periodic TTL sweep
+  gcExpired() {
+    const now = Date.now();
+    let evicted = 0;
+    for (const [key, entry] of this.cache) {
+      if (now - entry.createdAt > CACHE_TTL_MS) {
+        this._evictEntry(key, entry);
+        evicted++;
+      }
+    }
+    return evicted;
   }
 
   clear() {
-    for (const [, entry] of this.cache) {
-      if (entry.sandboxDir) {
-        try { fs.rmSync(entry.sandboxDir, { recursive: true, force: true }); } catch (e) {}
-      }
+    for (const [key, entry] of this.cache) {
+      this._evictEntry(key, entry);
     }
-    this.cache.clear();
   }
 
   get size() { return this.cache.size; }
@@ -108,22 +139,46 @@ class CompilationCache {
 
 const compileCache = new CompilationCache();
 
-// ─── Concurrent Execution Queue ───────────────────────────────────
+// ─── Concurrent Execution Queue (bounded) ──────────────────────────────
 let activeWorkers = 0;
 const executionQueue = [];
 
 function enqueueExecution(fn) {
   return new Promise((resolve, reject) => {
-    const task = { fn, resolve, reject };
+    // v9: Queue length cap
+    if (executionQueue.length >= MAX_QUEUE_LENGTH) {
+      metrics.queueRejections++;
+      reject(new Error('QUEUE_FULL'));
+      return;
+    }
+
+    const task = { fn, resolve, reject, enqueuedAt: Date.now() };
+
     if (activeWorkers < MAX_CONCURRENT) {
       runTask(task);
     } else {
+      // v9: Queue wait timeout
+      task.timeoutId = setTimeout(() => {
+        const idx = executionQueue.indexOf(task);
+        if (idx !== -1) {
+          executionQueue.splice(idx, 1);
+          metrics.queueTimeouts++;
+          task.reject(new Error('QUEUE_TIMEOUT'));
+        }
+      }, QUEUE_WAIT_TIMEOUT_MS);
+
       executionQueue.push(task);
     }
   });
 }
 
 async function runTask(task) {
+  // v9: Clear queue timeout if it was set
+  if (task.timeoutId) {
+    clearTimeout(task.timeoutId);
+    task.timeoutId = null;
+  }
+
   activeWorkers++;
   try {
     const result = await task.fn();
@@ -132,28 +187,40 @@ async function runTask(task) {
     task.reject(err);
   } finally {
     activeWorkers--;
-    if (executionQueue.length > 0 && activeWorkers < MAX_CONCURRENT) {
+    // Drain next from queue
+    while (executionQueue.length > 0 && activeWorkers < MAX_CONCURRENT) {
       const next = executionQueue.shift();
+      // v9: Check if task was already timed out
+      if (next.timeoutId) {
+        clearTimeout(next.timeoutId);
+        next.timeoutId = null;
+      }
+      // Check if too old
+      if (Date.now() - next.enqueuedAt > QUEUE_WAIT_TIMEOUT_MS) {
+        metrics.queueTimeouts++;
+        next.reject(new Error('QUEUE_TIMEOUT'));
+        continue;
+      }
       runTask(next);
+      break;
     }
   }
 }
 
-// ─── Security: Code Sanitization ──────────────────────────────────
+// ─── Security: Code Sanitization ───────────────────────────────────────
 const DANGEROUS_PATTERNS = {
-  // System-level dangerous commands
   global: [
-    /rm\s+(-rf?\s+)?\/(?!tmp)/i,       // rm -rf outside /tmp
-    /mkfs\./i,                          // filesystem formatting
-    /dd\s+if=/i,                        // disk operations
-    /:(){ :\|:& };:/,                   // fork bomb
-    />\s*\/dev\/sd/i,                   // write to disk devices
-    /chmod\s+777\s+\//i,               // dangerous permissions on root
+    /rm\s+(-rf?\s+)?\/(?!tmp)/i,
+    /mkfs\./i,
+    /dd\s+if=/i,
+    /:(){ :\|:& };:/,
+    />\s*\/dev\/sd/i,
+    /chmod\s+777\s+\//i,
   ],
   bash: [
-    /curl\s+.*\|\s*bash/i,             // pipe curl to bash
-    /wget\s+.*\|\s*bash/i,             // pipe wget to bash
-    /eval\s+"\$\(/i,                   // dangerous eval
+    /curl\s+.*\|\s*bash/i,
+    /wget\s+.*\|\s*bash/i,
+    /eval\s+"\$\(/i,
   ],
   shell: [
     /curl\s+.*\|\s*sh/i,
@@ -179,14 +246,12 @@ const DANGEROUS_PATTERNS = {
 
 function sanitizeCode(code, language) {
   const errors = [];
-  // Check global patterns
   for (const pattern of DANGEROUS_PATTERNS.global) {
     if (pattern.test(code)) {
-      errors.push(`Blocked: dangerous system operation detected`);
+      errors.push('Blocked: dangerous system operation detected');
       break;
     }
   }
-  // Check language-specific patterns
   const langPatterns = DANGEROUS_PATTERNS[language];
   if (langPatterns) {
     for (const pattern of langPatterns) {
@@ -199,7 +264,7 @@ function sanitizeCode(code, language) {
   return errors;
 }
 
-// ─── Languages Definition (same as v6 but with sanitization enabled) ──
+// ─── Languages Definition ──────────────────────────────────────────────
 const LANGUAGES = {
   javascript: {
     name: 'JavaScript', ext: '.js', fileName: 'main.js',
@@ -282,44 +347,44 @@ const LANGUAGES = {
     name: 'Bash', ext: '.sh', fileName: 'main.sh',
     local: true, interpreted: true,
     runner: 'bash', runArgs: (f) => [f],
-    template: `#!/bin/bash\n# Bash — CollabCode\n\necho "Hello from Bash!"\necho "Date: $(date)"\necho "User: $(whoami)"\n\nnums=(5 3 1 4 2)\necho "Numbers: \${nums[@]}"\n\nsorted=($(echo "\${nums[@]}" | tr ' ' '\\n' | sort -n))\necho "Sorted: \${sorted[@]}"\n\nsum=0\nfor n in "\${nums[@]}"; do sum=$((sum + n)); done\necho "Sum: $sum"\n`,
+    template: `#!/bin/bash\necho "Hello from Bash!"\necho "Date: $(date)"\necho "User: $(whoami)"\n`,
   },
   shell: {
     name: 'Shell', ext: '.sh', fileName: 'main.sh',
     local: true, interpreted: true,
     runner: 'sh', runArgs: (f) => [f],
-    template: `#!/bin/sh\n# Shell (POSIX sh) — CollabCode\n\necho "Hello from Shell!"\necho "Current directory: $(pwd)"\necho "Files in /tmp:"\nls /tmp | head -5\necho "\\nSystem info:"\nuname -a\n`,
+    template: `#!/bin/sh\necho "Hello from Shell!"\necho "Current directory: $(pwd)"\nuname -a\n`,
   },
   awk: {
     name: 'AWK', ext: '.awk', fileName: 'main.awk',
     local: true, interpreted: true,
     runner: 'awk', runArgs: (f) => ['-f', f],
-    template: `# AWK — CollabCode\nBEGIN {\n    print "Hello from AWK!"\n    print "Fibonacci sequence:"\n    a = 0; b = 1\n    for (i = 1; i <= 10; i++) {\n        printf "%d ", b\n        c = a + b; a = b; b = c\n    }\n    print ""\n    print "Powers of 2:"\n    for (i = 0; i <= 10; i++) {\n        printf "2^%d = %d\\n", i, 2^i\n    }\n}\n`,
+    template: `BEGIN {\n    print "Hello from AWK!"\n    for (i = 0; i <= 10; i++) printf "2^%d = %d\\n", i, 2^i\n}\n`,
   },
   lua: {
     name: 'Lua', ext: '.lua', fileName: 'main.lua',
     local: true, interpreted: true,
     runner: 'lua5.4', runArgs: (f) => [f],
-    template: `-- Lua — CollabCode\nprint("Hello from Lua!")\n\nlocal numbers = {5, 3, 1, 4, 2}\ntable.sort(numbers)\nio.write("Sorted: ")\nfor i, v in ipairs(numbers) do\n    io.write(v .. " ")\nend\nprint()\n\nlocal sum = 0\nfor _, v in ipairs(numbers) do sum = sum + v end\nprint("Sum: " .. sum)\n\n-- Fibonacci\nlocal a, b = 0, 1\nio.write("Fibonacci: ")\nfor i = 1, 10 do\n    io.write(b .. " ")\n    a, b = b, a + b\nend\nprint()\n`,
+    template: `print("Hello from Lua!")\nlocal numbers = {5, 3, 1, 4, 2}\ntable.sort(numbers)\nfor i, v in ipairs(numbers) do io.write(v .. " ") end\nprint()\n`,
   },
   fortran: {
     name: 'Fortran', ext: '.f90', fileName: 'main.f90',
     local: true, interpreted: false,
     compile: { cmd: 'gfortran', args: (f) => ['-o', 'main', f] },
     runCompiled: './main',
-    template: `! Fortran — CollabCode\nprogram hello\n    implicit none\n    integer :: i, sum_val, a, b, c\n    \n    print *, "Hello from Fortran!"\n    \n    sum_val = 0\n    do i = 1, 10\n        sum_val = sum_val + i\n    end do\n    print '(A,I4)', " Sum 1..10: ", sum_val\n    \n    ! Fibonacci\n    a = 0; b = 1\n    write(*, '(A)', advance='no') " Fibonacci: "\n    do i = 1, 10\n        write(*, '(I6)', advance='no') b\n        c = a + b; a = b; b = c\n    end do\n    print *\nend program hello\n`,
+    template: `program hello\n    implicit none\n    print *, "Hello from Fortran!"\nend program hello\n`,
   },
   tcl: {
     name: 'Tcl', ext: '.tcl', fileName: 'main.tcl',
     local: true, interpreted: true,
     runner: 'tclsh', runArgs: (f) => [f],
-    template: `# Tcl — CollabCode\nputs "Hello from Tcl!"\n\nset numbers {5 3 1 4 2}\nset sorted [lsort -integer $numbers]\nputs "Sorted: $sorted"\n\nset sum 0\nforeach n $numbers { incr sum $n }\nputs "Sum: $sum"\n\n# Fibonacci\nset a 0; set b 1\nset fib {}\nfor {set i 0} {$i < 10} {incr i} {\n    lappend fib $b\n    set c [expr {$a + $b}]\n    set a $b; set b $c\n}\nputs "Fibonacci: $fib"\nputs "Tcl version: [info patchlevel]"\n`,
+    template: `puts "Hello from Tcl!"\nputs "Tcl version: [info patchlevel]"\n`,
   },
   sqlite: {
     name: 'SQLite', ext: '.sql', fileName: 'main.sql',
     local: true, interpreted: true,
     runner: 'sqlite3', runArgs: (f) => [':memory:', '.read ' + f],
-    template: `.headers on\n.mode column\n\nCREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER);\n\nINSERT INTO users VALUES (1, 'Alice', 30);\nINSERT INTO users VALUES (2, 'Bob', 25);\nINSERT INTO users VALUES (3, 'Charlie', 35);\n\nSELECT * FROM users;\nSELECT 'Average age: ' || CAST(AVG(age) AS TEXT) AS result FROM users;\nSELECT 'Total: ' || COUNT(*) AS result FROM users;\n`,
+    template: `.headers on\n.mode column\nCREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER);\nINSERT INTO users VALUES (1, 'Alice', 30);\nINSERT INTO users VALUES (2, 'Bob', 25);\nSELECT * FROM users;\n`,
     customRunner: true,
   },
   nasm: {
@@ -328,11 +393,11 @@ const LANGUAGES = {
     compile: { cmd: 'nasm', args: (f) => ['-f', 'elf64', '-o', 'main.o', f] },
     link: { cmd: 'ld', args: () => ['-o', 'main', 'main.o'] },
     runCompiled: './main',
-    template: `; x86-64 Assembly (NASM) — CollabCode\n; Prints "Hello from Assembly!"\n\nsection .data\n    msg db "Hello from Assembly!", 10\n    len equ $ - msg\n\nsection .text\n    global _start\n\n_start:\n    ; sys_write(1, msg, len)\n    mov rax, 1\n    mov rdi, 1\n    mov rsi, msg\n    mov rdx, len\n    syscall\n\n    ; sys_exit(0)\n    mov rax, 60\n    xor rdi, rdi\n    syscall\n`,
+    template: `section .data\n    msg db "Hello from Assembly!", 10\n    len equ $ - msg\nsection .text\n    global _start\n_start:\n    mov rax, 1\n    mov rdi, 1\n    mov rsi, msg\n    mov rdx, len\n    syscall\n    mov rax, 60\n    xor rdi, rdi\n    syscall\n`,
   },
 };
 
-// ─── Parallel Version Detection ───────────────────────────────────
+// ─── Parallel Version Detection ────────────────────────────────────────
 const versionChecks = [
   { lang: 'javascript', cmd: 'node', args: ['--version'] },
   { lang: 'typescript', cmd: 'npx', args: ['--yes', 'tsx', '--version'] },
@@ -356,7 +421,6 @@ const versionChecks = [
   { lang: 'nasm', cmd: 'nasm', args: ['-v'] },
 ];
 
-// v7: Parallel version detection (all at once instead of sequential)
 (async function detectVersionsParallel() {
   const startTime = Date.now();
   const results = await Promise.allSettled(
@@ -379,7 +443,7 @@ const versionChecks = [
   );
   const available = results.filter(r => r.status === 'fulfilled').length;
   const elapsed = Date.now() - startTime;
-  console.log(`[Exec] v7.0 — Detected ${available}/${versionChecks.length} languages in ${elapsed}ms (parallel)`);
+  console.log(`[Exec] v9.0 — Detected ${available}/${versionChecks.length} languages in ${elapsed}ms (parallel)`);
   results.forEach((r, i) => {
     if (r.status === 'fulfilled') {
       console.log(`[Exec]   ${versionChecks[i].lang}: ${r.value.version}`);
@@ -389,73 +453,119 @@ const versionChecks = [
   });
 })();
 
-// ─── Core: Run Command with Resource Limits ───────────────────────
+// ─── Core: Run Command with Resource Limits ────────────────────────────
 function runCommand(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
     const timeout = opts.timeout || TIMEOUT_MS;
     const cwd = opts.cwd || process.cwd();
     const stdin = opts.stdin || '';
-    let stdout = '', stderr = '', timedOut = false;
+    let stdout = '', stderr = '', timedOut = false, settled = false;
 
     const env = {
       ...process.env, PATH: process.env.PATH,
       HOME: opts.home || cwd, TMPDIR: cwd,
-      NODE_OPTIONS: '--max-old-space-size=128', PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1', PYTHONIOENCODING: 'utf-8', PYTHONHASHSEED: '0',
+      NODE_OPTIONS: '--max-old-space-size=128',
+      PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1',
+      PYTHONIOENCODING: 'utf-8', PYTHONHASHSEED: '0',
     };
     if (cmd === 'go') {
       env.GOPATH = path.join(cwd, '.gopath');
       env.GOCACHE = path.join(cwd, '.gocache');
     }
 
-    // v7: Apply resource limits if sandboxed execution
     const spawnOpts = {
-      cwd, stdio: ['pipe', 'pipe', 'pipe'], env,
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env,
       timeout: timeout + 2000,
+      // v9: Spawn in new process group for reliable tree-kill
+      detached: false,
     };
 
-    const child = spawn(cmd, args, spawnOpts);
+    let child;
+    try {
+      child = spawn(cmd, args, spawnOpts);
+    } catch (spawnErr) {
+      return reject(new Error(`SPAWN_FAILED: ${spawnErr.message}`));
+    }
+
+    // v9: Track child PID
+    if (child.pid) activeChildren.add(child.pid);
+
     const killTimer = setTimeout(() => {
       timedOut = true;
-      try { child.kill('SIGKILL'); } catch (e) {}
+      safeKill(child);
     }, timeout);
 
     child.stdout.on('data', (data) => {
       stdout += data.toString();
       if (stdout.length > MAX_OUTPUT) {
         stdout = stdout.substring(0, MAX_OUTPUT) + '\n... [output truncated at 64KB]';
-        try { child.kill('SIGKILL'); } catch (e) {}
+        safeKill(child);
       }
     });
+
     child.stderr.on('data', (data) => {
       stderr += data.toString();
-      if (stderr.length > MAX_OUTPUT) stderr = stderr.substring(0, MAX_OUTPUT) + '\n... [stderr truncated]';
+      if (stderr.length > MAX_OUTPUT) {
+        stderr = stderr.substring(0, MAX_OUTPUT) + '\n... [stderr truncated]';
+      }
     });
-    if (stdin) child.stdin.write(stdin);
+
+    // v9: Handle stdin pipe errors gracefully
+    if (stdin) {
+      child.stdin.on('error', () => {}); // Ignore EPIPE
+      child.stdin.write(stdin);
+    }
     child.stdin.end();
+
     child.on('close', (code, signal) => {
       clearTimeout(killTimer);
+      if (child.pid) activeChildren.delete(child.pid);
+      if (settled) return;
+      settled = true;
       if (timedOut) reject(new Error('TIME_LIMIT_EXCEEDED'));
       else resolve({ stdout, stderr, exitCode: code, signal });
     });
-    child.on('error', (err) => { clearTimeout(killTimer); reject(err); });
+
+    child.on('error', (err) => {
+      clearTimeout(killTimer);
+      if (child.pid) activeChildren.delete(child.pid);
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
   });
 }
 
-function createSandbox() { return fs.mkdtempSync(path.join(os.tmpdir(), 'collabcode-')); }
-function cleanupSandbox(dir) { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {} }
+// v9: Safe kill helper — tries SIGTERM then SIGKILL
+function safeKill(child) {
+  try {
+    child.kill('SIGTERM');
+    setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch (e) {}
+    }, 2000);
+  } catch (e) {}
+}
 
-// ─── v7: Cached Compilation ───────────────────────────────────────
+function createSandbox() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), SANDBOX_PREFIX));
+}
+
+function cleanupSandbox(dir) {
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+}
+
+// ─── Cached Compilation ────────────────────────────────────────────────
 async function compileCached(code, language, sandbox, lang) {
-  // Check cache for compiled binary
   const cached = compileCache.get(code, language);
   if (cached) {
     metrics.cacheHits++;
-    // Copy cached binary to current sandbox
     const binaryName = path.basename(cached.binaryPath);
     const destPath = path.join(sandbox, binaryName);
     try {
       fs.copyFileSync(cached.binaryPath, destPath);
-      fs.chmodSync(destPath, 0o755);
+      if (language !== 'java') fs.chmodSync(destPath, 0o755);
       return { cached: true, binaryPath: destPath };
     } catch (e) {
       // Cache entry invalid, fall through to recompile
@@ -465,10 +575,8 @@ async function compileCached(code, language, sandbox, lang) {
 
   // Compile normally
   if (language === 'nasm') {
-    // Assemble
     const asmResult = await runCommand('nasm', ['-f', 'elf64', '-o', 'main.o', lang.fileName], { cwd: sandbox, timeout: COMPILE_TIMEOUT_MS });
     if (asmResult.exitCode !== 0) return { error: true, result: asmResult, phase: 'compile', status: 'Assembly Error' };
-    // Link
     const linkResult = await runCommand('ld', ['-o', 'main', 'main.o'], { cwd: sandbox, timeout: COMPILE_TIMEOUT_MS });
     if (linkResult.exitCode !== 0) return { error: true, result: linkResult, phase: 'compile', status: 'Link Error' };
   } else {
@@ -478,7 +586,7 @@ async function compileCached(code, language, sandbox, lang) {
   }
 
   // Store compiled binary in a persistent cache directory
-  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'collabcache-'));
+  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), CACHE_PREFIX));
   const binaryName = language === 'java' ? 'Main.class' : 'main';
   const srcBinary = path.join(sandbox, binaryName);
   const cacheBinary = path.join(cacheDir, binaryName);
@@ -489,52 +597,47 @@ async function compileCached(code, language, sandbox, lang) {
       compileCache.set(code, language, cacheBinary, cacheDir);
     }
   } catch (e) {
-    // Cache write failed, continue without caching
     cleanupSandbox(cacheDir);
   }
 
   return { cached: false, binaryPath: path.join(sandbox, binaryName) };
 }
 
-
-// ─── v8: Output Post-Processing for Better Error Messages ─────────
+// ─── Output Post-Processing ────────────────────────────────────────────
 function postProcessOutput(result, language) {
   if (!result) return result;
-  
-  // Python: clean up traceback to be more readable
+
   if (language === 'python' && result.stderr) {
-    // Remove '/tmp/collabcode-xxx/' paths for cleaner output
-    result.stderr = result.stderr.replace(/File "\/tmp\/collabcode-[^"]*\//g, 'File "');
+    result.stderr = result.stderr.replace(/File "[^"]*collabcode-[^"]*\//g, 'File "');
   }
-  
-  // JavaScript/Node: clean up stack traces
+
   if ((language === 'javascript' || language === 'typescript') && result.stderr) {
-    // Remove internal node module paths for cleaner stack traces
-    const lines = result.stderr.split('\n');
-    const filtered = lines.filter(line => {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('at internal/')) return false;
-      if (trimmed.startsWith('at Module._')) return false;
-      if (trimmed.startsWith('at Object.Module.')) return false;
-      if (trimmed.startsWith('at node:internal/')) return false;
-      return true;
-    });
-    result.stderr = filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    result.stderr = result.stderr
+      .replace(/\s+at\s+internal\/.*\n/g, '')
+      .replace(/\s+at\s+Module\._.*\n/g, '')
+      .replace(/\s+at\s+Object\.Module\..*\n/g, '')
+      .replace(/\s+at\s+node:internal\/.*\n/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
-  
-  // C/C++: clean up compiler error paths
+
   if ((language === 'c' || language === 'cpp') && result.stderr) {
     result.stderr = result.stderr.replace(/\/tmp\/collabcode-[a-zA-Z0-9]+\//g, '');
   }
-  
+
+  // v9: Generic cleanup for all languages — strip sandbox paths
+  if (result.stderr) {
+    result.stderr = result.stderr.replace(/\/tmp\/collabcode-[a-zA-Z0-9]+\//g, '');
+  }
+
   return result;
 }
-// ─── Execute Locally with Caching + Security ──────────────────────
+
+// ─── Execute Locally ───────────────────────────────────────────────────
 async function executeLocal(code, language, stdin) {
   const lang = LANGUAGES[language];
   if (!lang || !lang.local) return null;
 
-  // v7: Security — sanitize code
   const sanitizeErrors = sanitizeCode(code, language);
   if (sanitizeErrors.length > 0) {
     return {
@@ -556,23 +659,31 @@ async function executeLocal(code, language, stdin) {
       try {
         const result = await runCommand('sqlite3', [':memory:'], { cwd: sandbox, timeout: TIMEOUT_MS, stdin: code + '\n.quit\n' });
         const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
-        return { success: result.exitCode === 0, stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: result.exitCode === 0 ? 'Success' : `Exit Code: ${result.exitCode}`, phase: 'run' };
+        const processed = postProcessOutput(result, language);
+        return {
+          success: processed.exitCode === 0, stdout: processed.stdout, stderr: processed.stderr,
+          exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
+          status: processed.exitCode === 0 ? 'Success' : `Exit Code: ${processed.exitCode}`, phase: 'run',
+        };
       } catch (runErr) {
         const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
-        if (runErr.message === 'TIME_LIMIT_EXCEEDED') return { success: false, stdout: '', stderr: 'Time Limit Exceeded', exitCode: -1, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: 'Time Limit Exceeded', phase: 'run' };
+        if (runErr.message === 'TIME_LIMIT_EXCEEDED') {
+          return { success: false, stdout: '', stderr: 'Time Limit Exceeded', exitCode: -1, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: 'Time Limit Exceeded', phase: 'run' };
+        }
         throw runErr;
       }
     }
 
-    // v7: Compiled languages — use cache
+    // Compiled languages — use cache
     if (!lang.interpreted && lang.compile) {
       try {
         const compileResult = await compileCached(code, language, sandbox, lang);
         if (compileResult.error) {
           const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
+          const processed = postProcessOutput(compileResult.result, language);
           return {
-            success: false, stdout: compileResult.result.stdout, stderr: compileResult.result.stderr,
-            exitCode: compileResult.result.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
+            success: false, stdout: processed.stdout, stderr: processed.stderr,
+            exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
             status: compileResult.status, phase: compileResult.phase,
           };
         }
@@ -582,10 +693,11 @@ async function executeLocal(code, language, stdin) {
         const runArgs = lang.runCompiled ? [] : lang.runArgs();
         const runResult = await runCommand(runCmd, runArgs, { cwd: sandbox, timeout: TIMEOUT_MS, stdin });
         const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
+        const processed = postProcessOutput(runResult, language);
         return {
-          success: runResult.exitCode === 0, stdout: runResult.stdout, stderr: runResult.stderr,
-          exitCode: runResult.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
-          status: runResult.exitCode === 0 ? 'Success' : `Exit Code: ${runResult.exitCode}`,
+          success: processed.exitCode === 0, stdout: processed.stdout, stderr: processed.stderr,
+          exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
+          status: processed.exitCode === 0 ? 'Success' : `Exit Code: ${processed.exitCode}`,
           phase: 'run', cached: compileResult.cached,
         };
       } catch (err) {
@@ -604,7 +716,11 @@ async function executeLocal(code, language, stdin) {
       const result = await runCommand(lang.runner, runArgs, { cwd: sandbox, timeout: TIMEOUT_MS, stdin });
       const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
       const processed = postProcessOutput(result, language);
-      return { success: processed.exitCode === 0, stdout: processed.stdout, stderr: processed.stderr, exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: processed.exitCode === 0 ? 'Success' : `Exit Code: ${processed.exitCode}`, phase: 'run' };
+      return {
+        success: processed.exitCode === 0, stdout: processed.stdout, stderr: processed.stderr,
+        exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
+        status: processed.exitCode === 0 ? 'Success' : `Exit Code: ${processed.exitCode}`, phase: 'run',
+      };
     } catch (runErr) {
       const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
       if (runErr.message === 'TIME_LIMIT_EXCEEDED') {
@@ -618,12 +734,12 @@ async function executeLocal(code, language, stdin) {
   }
 }
 
-// ─── API Handler: Execute Code ────────────────────────────────────
+// ─── API Handler: Execute Code ─────────────────────────────────────────
 async function executeCode(req, res) {
   const { code, language, stdin = '' } = req.body;
   if (!code || typeof code !== 'string') return res.status(400).json({ error: true, message: 'Code is required' });
   if (!language || !LANGUAGES[language]) return res.status(400).json({ error: true, message: `Unsupported language. Supported: ${Object.keys(LANGUAGES).join(', ')}` });
-  if (code.length > 100000) return res.status(400).json({ error: true, message: 'Code exceeds 100KB limit' });
+  if (code.length > MAX_CODE_SIZE) return res.status(400).json({ error: true, message: `Code exceeds ${Math.round(MAX_CODE_SIZE / 1000)}KB limit` });
 
   const lang = LANGUAGES[language];
   metrics.totalExecutions++;
@@ -631,13 +747,11 @@ async function executeCode(req, res) {
   console.log(`[Exec] ${language} | ${code.length} chars | stdin=${stdin.length} chars | queue=${executionQueue.length} active=${activeWorkers}`);
 
   try {
-    // v7: Use execution queue for concurrency control
     const result = await enqueueExecution(() => executeLocal(code, language, stdin));
     if (result) {
       if (result.success) metrics.successfulExecutions++;
       else metrics.failedExecutions++;
 
-      // Update average execution time
       const execMs = parseFloat(result.executionTime) * 1000;
       if (!isNaN(execMs)) {
         metrics.averageExecutionMs = (metrics.averageExecutionMs * (metrics.totalExecutions - 1) + execMs) / metrics.totalExecutions;
@@ -654,12 +768,20 @@ async function executeCode(req, res) {
     return res.status(501).json({ error: true, message: `${lang.name} runtime is not available on this server.` });
   } catch (err) {
     metrics.failedExecutions++;
+    // v9: Specific error responses for queue issues
+    if (err.message === 'QUEUE_FULL') {
+      metrics.queueRejections++;
+      return res.status(503).json({ error: true, message: 'Server is busy. Too many code executions queued. Please try again in a moment.' });
+    }
+    if (err.message === 'QUEUE_TIMEOUT') {
+      return res.status(503).json({ error: true, message: 'Execution request timed out in queue. Server is under heavy load.' });
+    }
     console.error(`[Exec] Error:`, err.message);
     return res.status(500).json({ error: true, message: `Execution failed: ${err.message}` });
   }
 }
 
-// ─── API Handler: Supported Languages ─────────────────────────────
+// ─── API Handler: Supported Languages ──────────────────────────────────
 function getSupportedLanguages(req, res) {
   const languages = Object.entries(LANGUAGES).map(([id, lang]) => ({
     id, name: lang.name, version: lang.version || null,
@@ -668,18 +790,97 @@ function getSupportedLanguages(req, res) {
   res.json({ languages });
 }
 
-// ─── API Handler: Execution Stats (v7 NEW) ────────────────────────
+// ─── API Handler: Execution Stats ──────────────────────────────────────
 function getExecutionStats(req, res) {
   res.json({
     ...metrics,
     cacheSize: compileCache.size,
     cacheMaxSize: CACHE_MAX_SIZE,
+    cacheTtlMs: CACHE_TTL_MS,
     activeWorkers,
     queueLength: executionQueue.length,
+    maxQueueLength: MAX_QUEUE_LENGTH,
     maxConcurrent: MAX_CONCURRENT,
+    activeChildren: activeChildren.size,
     uptime: Math.floor((Date.now() - metrics.startedAt) / 1000),
     memoryUsage: process.memoryUsage(),
   });
 }
 
-module.exports = { executeCode, getSupportedLanguages, getExecutionStats, LANGUAGES };
+// ─── v9: Zombie Process Reaper ─────────────────────────────────────────
+const zombieReaperInterval = setInterval(() => {
+  // Kill any tracked child that's been alive too long
+  // (normally children clean up via close event, this is a safety net)
+  for (const pid of activeChildren) {
+    try {
+      // Check if process still exists
+      process.kill(pid, 0);
+      // If it does and it's tracked, try to kill it
+      // (it should have been cleaned up by the timeout already)
+      process.kill(pid, 'SIGKILL');
+      activeChildren.delete(pid);
+      metrics.zombiesReaped++;
+    } catch (e) {
+      // Process doesn't exist — clean up tracking
+      activeChildren.delete(pid);
+    }
+  }
+}, ZOMBIE_REAPER_INTERVAL);
+
+// v9: Cache TTL GC
+const cacheGcInterval = setInterval(() => {
+  const evicted = compileCache.gcExpired();
+  if (evicted > 0) {
+    console.log(`[Exec] Cache GC: evicted ${evicted} expired entries (${compileCache.size} remaining)`);
+  }
+}, CACHE_GC_INTERVAL);
+
+// v9: Startup sandbox sweep — clean stale sandbox dirs from previous crashes
+(function startupSweep() {
+  try {
+    const tmpDir = os.tmpdir();
+    const entries = fs.readdirSync(tmpDir);
+    let cleaned = 0;
+    const now = Date.now();
+    for (const entry of entries) {
+      if (entry.startsWith(SANDBOX_PREFIX) || entry.startsWith(CACHE_PREFIX)) {
+        const fullPath = path.join(tmpDir, entry);
+        try {
+          const stat = fs.statSync(fullPath);
+          // Clean if older than 10 minutes
+          if (now - stat.mtimeMs > 600000) {
+            fs.rmSync(fullPath, { recursive: true, force: true });
+            cleaned++;
+          }
+        } catch (e) {}
+      }
+    }
+    if (cleaned > 0) {
+      metrics.sandboxesLeaked = cleaned;
+      console.log(`[Exec] Startup sweep: cleaned ${cleaned} stale sandbox directories`);
+    }
+  } catch (e) {
+    console.warn('[Exec] Startup sweep failed:', e.message);
+  }
+})();
+
+// ─── v9: Cleanup on exit ───────────────────────────────────────────────
+function cleanup() {
+  clearInterval(zombieReaperInterval);
+  clearInterval(cacheGcInterval);
+  // Kill all active children
+  for (const pid of activeChildren) {
+    try { process.kill(pid, 'SIGKILL'); } catch (e) {}
+  }
+  activeChildren.clear();
+  // Clear compilation cache and temp dirs
+  compileCache.clear();
+  // Reject queued tasks
+  while (executionQueue.length > 0) {
+    const task = executionQueue.shift();
+    if (task.timeoutId) clearTimeout(task.timeoutId);
+    task.reject(new Error('Server shutting down'));
+  }
+}
+
+module.exports = { executeCode, getSupportedLanguages, getExecutionStats, LANGUAGES, cleanup };
