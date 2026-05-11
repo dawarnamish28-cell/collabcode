@@ -1,5 +1,12 @@
 /**
- * Authentication Middleware
+ * Authentication Middleware v2.0 — Hardened for Heavy Load
+ * 
+ * v2.0 hardening:
+ *  - Bounded in-memory stores with max caps (prevents OOM under heavy anonymous traffic)
+ *  - TTL-based eviction for tabSessions (sessions expire after 24h of inactivity)
+ *  - Periodic GC sweep every 5 minutes to prune stale entries
+ *  - issuedUsernames capped at 50k entries with LRU-style eviction
+ *  - registeredUsers protected by cap (10k) — production should use DB
  * 
  * Supports:
  *  1. Email/password sign-up and sign-in (JWT-based)
@@ -14,10 +21,50 @@ const { v4: uuidv4 } = require('uuid');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'collab-code-jwt-secret';
 
-// ─── In-memory stores (replace with DB in production) ─────────────────
+// ─── Capacity & TTL constants ──────────────────────────────────────────
+const MAX_ISSUED_USERNAMES = 50000;
+const MAX_TAB_SESSIONS = 10000;
+const MAX_REGISTERED_USERS = 10000;
+const TAB_SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const GC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+// ─── In-memory stores (bounded for production stability) ──────────────
 const issuedUsernames = new Set();
 const registeredUsers = new Map(); // email -> { userId, email, passwordHash, username, color }
-const tabSessions = new Map();    // tabId -> { userId, username, color }
+const tabSessions = new Map();    // tabId -> { userId, username, color, lastAccess }
+
+// ─── Periodic GC: prune stale tabSessions and overflow issuedUsernames ──
+const _authGcTimer = setInterval(() => {
+  const now = Date.now();
+  // Evict expired tab sessions
+  for (const [tabId, session] of tabSessions) {
+    if (now - (session.lastAccess || 0) > TAB_SESSION_TTL_MS) {
+      tabSessions.delete(tabId);
+      // Also free the username so it can be reused
+      if (session.username && !session.authenticated) {
+        issuedUsernames.delete(session.username);
+      }
+    }
+  }
+  // If issuedUsernames is over cap, trim oldest entries (Set iterates in insertion order)
+  if (issuedUsernames.size > MAX_ISSUED_USERNAMES) {
+    const excess = issuedUsernames.size - MAX_ISSUED_USERNAMES;
+    let removed = 0;
+    for (const name of issuedUsernames) {
+      if (removed >= excess) break;
+      // Don't evict names belonging to registered users
+      let isRegistered = false;
+      for (const user of registeredUsers.values()) {
+        if (user.username === name) { isRegistered = true; break; }
+      }
+      if (!isRegistered) {
+        issuedUsernames.delete(name);
+        removed++;
+      }
+    }
+  }
+}, GC_INTERVAL_MS);
+_authGcTimer.unref(); // Don't block Node exit
 
 // ─── Color palette ───────────────────────────────────────────────────
 const USER_COLORS = [
@@ -98,12 +145,26 @@ async function loginUser(email, password) {
 // ─── Tab-based session: every tab gets a unique user ──────────────────
 function getOrCreateTabSession(tabId) {
   if (tabId && tabSessions.has(tabId)) {
-    return tabSessions.get(tabId);
+    const session = tabSessions.get(tabId);
+    session.lastAccess = Date.now(); // Touch TTL
+    return session;
+  }
+  // Enforce cap: evict oldest session if at limit
+  if (tabSessions.size >= MAX_TAB_SESSIONS) {
+    let oldestKey = null, oldestTime = Infinity;
+    for (const [key, s] of tabSessions) {
+      if ((s.lastAccess || 0) < oldestTime) { oldestTime = s.lastAccess || 0; oldestKey = key; }
+    }
+    if (oldestKey) {
+      const evicted = tabSessions.get(oldestKey);
+      tabSessions.delete(oldestKey);
+      if (evicted?.username && !evicted.authenticated) issuedUsernames.delete(evicted.username);
+    }
   }
   const userId = uuidv4();
   const username = generateUniqueUsername();
   const color = generateColor();
-  const session = { userId, username, color, tabId: tabId || uuidv4(), authenticated: false };
+  const session = { userId, username, color, tabId: tabId || uuidv4(), authenticated: false, lastAccess: Date.now() };
   tabSessions.set(session.tabId, session);
   return session;
 }

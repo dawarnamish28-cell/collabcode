@@ -1,5 +1,11 @@
 /**
- * OutputConsole v15.0 — Export, timing chart, diff, enhanced UX
+ * OutputConsole v16.0 — Hardened for Heavy Load
+ *
+ * v16.0 hardening:
+ *  - terminalLines state capped at 5000 lines (oldest pruned on overflow)
+ *  - Prevents unbounded memory growth during extended coding sessions
+ *
+ * Previous: v15.0 — Export, timing chart, diff, enhanced UX
  *
  * New in v15:
  *  - Export output to file (.txt or .json)
@@ -214,10 +220,13 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
     }
     newLines.push({ type: 'blank', text: '' });
 
+    // v16: Cap at 5000 lines to prevent unbounded memory growth
+    const MAX_TERMINAL_LINES = 5000;
     setTerminalLines(prev => {
       const updated = [...prev, ...newLines];
-      setLineCount(updated.filter(l => l.type === 'stdout' || l.type === 'stderr').length);
-      return updated;
+      const capped = updated.length > MAX_TERMINAL_LINES ? updated.slice(-MAX_TERMINAL_LINES) : updated;
+      setLineCount(capped.filter(l => l.type === 'stdout' || l.type === 'stderr').length);
+      return capped;
     });
 
     // Save to execution history

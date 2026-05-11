@@ -1,5 +1,5 @@
 /**
- * Room Workspace v17.0 — Hardened for Continuous Heavy Use
+ * Room Workspace v18.0 — Hardened for Continuous Heavy Use
  * 
  * New in v16:
  *  - Video collaboration: WebRTC video chat & screen sharing
@@ -304,8 +304,13 @@ export default function RoomPage() {
     });
     socket.on('room:user-joined', (user) => { addUser(user); addToast(`${user.username} joined`, 'join'); addNotification(`${user.username} joined the room`, 'join'); });
     socket.on('room:user-left', (data) => { removeUser(data.userId); addToast(`${data.username || 'Someone'} left`, 'leave'); addNotification(`${data.username || 'Someone'} left the room`, 'leave'); });
-    socket.on('chat:history', (history) => setMessages(history));
-    socket.on('chat:message', (msg) => setMessages(prev => [...prev, msg]));
+    // v18: Cap messages at 500 to prevent unbounded memory growth under heavy chat load
+    const MAX_CHAT_MESSAGES = 500;
+    socket.on('chat:history', (history) => setMessages(Array.isArray(history) ? history.slice(-MAX_CHAT_MESSAGES) : []));
+    socket.on('chat:message', (msg) => setMessages(prev => {
+      const updated = [...prev, msg];
+      return updated.length > MAX_CHAT_MESSAGES ? updated.slice(-MAX_CHAT_MESSAGES) : updated;
+    }));
     socket.on('room:language-change', (data) => setLanguage(data.language));
     socket.on('room:visibility-changed', (data) => setIsPublic(data.isPublic));
     provider.on('awareness-change', (states) => setAwarenessStates(new Map(states)));

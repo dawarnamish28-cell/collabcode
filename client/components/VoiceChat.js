@@ -1,13 +1,19 @@
 /**
- * VoiceChat v11.0 — Deafen, audio bars, connection quality
+ * VoiceChat v12.0 — Hardened for Heavy Load
  * 
- * - Works on ALL screen sizes (mobile + desktop)
- * - Visual audio level bars (3 bar equalizer)
- * - Deafen button to mute incoming audio
- * - Connection quality indicator (latency-based)
- * - Better error handling with retry
- * - Animated microphone icon with pulse
- * - Speaking user highlight
+ * v12.0 hardening:
+ *  - Reusable AudioContext via ref (prevents resource leak on every join)
+ *  - Mounted guard ref prevents state updates after unmount
+ *  - Stable leaveVoice via useCallback with ref-based socket access
+ *  - DOM audio element tracking via ref map (prevents orphan <audio> elements)
+ *  - ICE restart on peer connection failure with exponential backoff
+ *  - Peer dedup guard (prevents duplicate connections to same socket)
+ *  - Connection timeout (15s) for peers that never connect
+ *  - Max peers cap (8) to prevent resource exhaustion
+ *  - Proper cleanup of all listeners using named handler refs
+ *  - getUserMedia timeout wrapper (10s)
+ * 
+ * Features: deafen, audio bars, connection quality, speaking highlight
  * 
  * made with <3 by Namish
  */
@@ -19,6 +25,11 @@ const ICE_SERVERS = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
 
+const MAX_PEERS = 8;
+const PEER_CONNECT_TIMEOUT_MS = 15000;
+const ICE_RESTART_MAX_ATTEMPTS = 3;
+const ICE_RESTART_BASE_DELAY = 2000;
+
 const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
   const [isInVoice, setIsInVoice] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -28,117 +39,305 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
   const [connecting, setConnecting] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [audioBars, setAudioBars] = useState([0, 0, 0]);
+
   const peersRef = useRef(new Map());
   const localStreamRef = useRef(null);
+  const audioCtxRef = useRef(null); // v12: reusable AudioContext
   const analyserRef = useRef(null);
   const animFrameRef = useRef(null);
-  const remoteAudiosRef = useRef([]);
+  const remoteAudioMapRef = useRef(new Map()); // v12: tracked audio elements
+  const mountedRef = useRef(true); // v12: mounted guard
+  const socketRef = useRef(socket); // v12: stable ref for socket
+  const peerTimeoutsRef = useRef(new Map()); // v12: connection timeouts
+  const iceRestartCountsRef = useRef(new Map()); // v12: ICE restart tracking
 
+  // Keep socketRef current
+  useEffect(() => { socketRef.current = socket; }, [socket]);
+
+  // v12: Mounted guard
   useEffect(() => {
-    return () => { leaveVoice(); };
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      // Cleanup everything on unmount
+      cleanupAll();
+    };
   }, []);
 
+  // Safe state setter — only updates if still mounted
+  const safeSetState = useCallback((setter) => {
+    if (mountedRef.current) setter();
+  }, []);
+
+  function cleanupAll() {
+    stopAudioMonitor();
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(t => t.stop());
+      localStreamRef.current = null;
+    }
+    peersRef.current.forEach(({ pc }) => { try { pc.close(); } catch (e) {} });
+    peersRef.current.clear();
+    // Remove tracked audio elements
+    for (const [id, audio] of remoteAudioMapRef.current) {
+      try { audio.srcObject = null; audio.remove(); } catch (e) {}
+    }
+    remoteAudioMapRef.current.clear();
+    // Clear peer connection timeouts
+    for (const timer of peerTimeoutsRef.current.values()) {
+      clearTimeout(timer);
+    }
+    peerTimeoutsRef.current.clear();
+    iceRestartCountsRef.current.clear();
+    // Close reusable AudioContext
+    if (audioCtxRef.current) {
+      try { audioCtxRef.current.close(); } catch (e) {}
+      audioCtxRef.current = null;
+    }
+    if (socketRef.current) {
+      socketRef.current.emit('voice:leave');
+    }
+  }
+
+  // Socket event handlers
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('voice:peers', (peers) => {
-      setVoiceUsers(peers.map(p => ({ userId: p.userId, username: p.username })));
-      peers.forEach(peer => createOffer(peer.socketId, peer.username));
-    });
+    const handlePeers = (peers) => {
+      safeSetState(() => setVoiceUsers(peers.map(p => ({ userId: p.userId, username: p.username }))));
+      peers.forEach(peer => createOffer(peer.socketId, peer.username, peer.userId));
+    };
 
-    socket.on('voice:user-joined', (data) => {
-      setVoiceUsers(prev => {
+    const handleUserJoined = (data) => {
+      safeSetState(() => setVoiceUsers(prev => {
         if (prev.find(u => u.userId === data.userId)) return prev;
         return [...prev, { userId: data.userId, username: data.username }];
-      });
-    });
+      }));
+    };
 
-    socket.on('voice:user-left', (data) => {
-      setVoiceUsers(prev => prev.filter(u => u.userId !== data.userId));
+    const handleUserLeft = (data) => {
+      safeSetState(() => setVoiceUsers(prev => prev.filter(u => u.userId !== data.userId)));
+      // Clean up peer connections for this user
       for (const [sid, peer] of peersRef.current) {
         if (peer.userId === data.userId) {
-          peer.pc.close();
-          peersRef.current.delete(sid);
+          destroyPeer(sid);
         }
       }
-    });
+    };
 
-    socket.on('voice:offer', async (data) => {
+    const handleOffer = async (data) => {
       if (!localStreamRef.current) return;
+      // v12: Peer dedup — if we already have a connection to this socket, skip
+      if (peersRef.current.has(data.from)) {
+        console.warn('[Voice] Duplicate offer from', data.from, '— ignoring');
+        return;
+      }
+      // v12: Max peers cap
+      if (peersRef.current.size >= MAX_PEERS) {
+        console.warn('[Voice] Max peers reached, rejecting offer');
+        return;
+      }
       try {
-        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        const pc = createPeerConnection(data.from, data.userId, data.username);
         localStreamRef.current.getTracks().forEach(t => pc.addTrack(t, localStreamRef.current));
-        pc.onicecandidate = (e) => { if (e.candidate) socket.emit('voice:ice-candidate', { to: data.from, candidate: e.candidate }); };
-        pc.ontrack = (e) => { playRemoteAudio(e.streams[0], data.from); };
         await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        socket.emit('voice:answer', { to: data.from, answer });
-        peersRef.current.set(data.from, { pc, userId: data.userId, username: data.username });
-      } catch (err) { console.error('[Voice] Offer handling error:', err); }
-    });
+        socketRef.current?.emit('voice:answer', { to: data.from, answer });
+      } catch (err) {
+        console.error('[Voice] Offer handling error:', err);
+        destroyPeer(data.from);
+      }
+    };
 
-    socket.on('voice:answer', async (data) => {
+    const handleAnswer = async (data) => {
       const peer = peersRef.current.get(data.from);
-      if (peer) { try { await peer.pc.setRemoteDescription(new RTCSessionDescription(data.answer)); } catch (e) {} }
-    });
+      if (peer) {
+        try { await peer.pc.setRemoteDescription(new RTCSessionDescription(data.answer)); }
+        catch (e) { console.warn('[Voice] Answer error:', e.message); }
+      }
+    };
 
-    socket.on('voice:ice-candidate', async (data) => {
+    const handleIceCandidate = async (data) => {
       const peer = peersRef.current.get(data.from);
-      if (peer) { try { await peer.pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (e) {} }
-    });
+      if (peer) {
+        try { await peer.pc.addIceCandidate(new RTCIceCandidate(data.candidate)); }
+        catch (e) { /* ICE candidate errors are common and non-fatal */ }
+      }
+    };
+
+    socket.on('voice:peers', handlePeers);
+    socket.on('voice:user-joined', handleUserJoined);
+    socket.on('voice:user-left', handleUserLeft);
+    socket.on('voice:offer', handleOffer);
+    socket.on('voice:answer', handleAnswer);
+    socket.on('voice:ice-candidate', handleIceCandidate);
 
     return () => {
-      ['voice:peers', 'voice:user-joined', 'voice:user-left', 'voice:offer', 'voice:answer', 'voice:ice-candidate'].forEach(e => socket.off(e));
+      socket.off('voice:peers', handlePeers);
+      socket.off('voice:user-joined', handleUserJoined);
+      socket.off('voice:user-left', handleUserLeft);
+      socket.off('voice:offer', handleOffer);
+      socket.off('voice:answer', handleAnswer);
+      socket.off('voice:ice-candidate', handleIceCandidate);
     };
   }, [socket]);
 
-  async function createOffer(targetSocketId, username) {
-    if (!localStreamRef.current || !socket) return;
-    try {
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-      localStreamRef.current.getTracks().forEach(t => pc.addTrack(t, localStreamRef.current));
-      pc.onicecandidate = (e) => { if (e.candidate) socket.emit('voice:ice-candidate', { to: targetSocketId, candidate: e.candidate }); };
-      pc.ontrack = (e) => { playRemoteAudio(e.streams[0], targetSocketId); };
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit('voice:offer', { to: targetSocketId, offer });
-      peersRef.current.set(targetSocketId, { pc, username });
-    } catch (err) { console.error('[Voice] Create offer error:', err); }
+  // v12: Create a peer connection with ICE restart, connection timeout, and state monitoring
+  function createPeerConnection(targetSocketId, userId, username) {
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate) socketRef.current?.emit('voice:ice-candidate', { to: targetSocketId, candidate: e.candidate });
+    };
+
+    pc.ontrack = (e) => {
+      playRemoteAudio(e.streams[0], targetSocketId);
+    };
+
+    // v12: ICE restart on failure
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      if (state === 'connected') {
+        // Clear connection timeout on success
+        const timer = peerTimeoutsRef.current.get(targetSocketId);
+        if (timer) { clearTimeout(timer); peerTimeoutsRef.current.delete(targetSocketId); }
+        iceRestartCountsRef.current.delete(targetSocketId);
+      } else if (state === 'failed') {
+        handlePeerFailure(targetSocketId, pc);
+      } else if (state === 'disconnected') {
+        // Give it a moment to recover before treating as failure
+        setTimeout(() => {
+          if (pc.connectionState === 'disconnected') {
+            handlePeerFailure(targetSocketId, pc);
+          }
+        }, 5000);
+      }
+    };
+
+    // v12: Connection timeout — destroy peer if it never connects
+    const timeout = setTimeout(() => {
+      const peer = peersRef.current.get(targetSocketId);
+      if (peer && peer.pc.connectionState !== 'connected') {
+        console.warn('[Voice] Peer connection timeout:', targetSocketId);
+        destroyPeer(targetSocketId);
+      }
+      peerTimeoutsRef.current.delete(targetSocketId);
+    }, PEER_CONNECT_TIMEOUT_MS);
+    peerTimeoutsRef.current.set(targetSocketId, timeout);
+
+    peersRef.current.set(targetSocketId, { pc, userId, username });
+    return pc;
   }
 
+  // v12: ICE restart with exponential backoff
+  function handlePeerFailure(targetSocketId, pc) {
+    const attempts = iceRestartCountsRef.current.get(targetSocketId) || 0;
+    if (attempts >= ICE_RESTART_MAX_ATTEMPTS) {
+      console.warn('[Voice] Max ICE restart attempts for', targetSocketId);
+      destroyPeer(targetSocketId);
+      return;
+    }
+    iceRestartCountsRef.current.set(targetSocketId, attempts + 1);
+    const delay = ICE_RESTART_BASE_DELAY * Math.pow(2, attempts);
+    setTimeout(() => {
+      if (!mountedRef.current) return;
+      const peer = peersRef.current.get(targetSocketId);
+      if (!peer) return;
+      try {
+        pc.restartIce();
+        pc.createOffer({ iceRestart: true }).then(offer => {
+          pc.setLocalDescription(offer);
+          socketRef.current?.emit('voice:offer', { to: targetSocketId, offer });
+        }).catch(() => destroyPeer(targetSocketId));
+      } catch (e) {
+        destroyPeer(targetSocketId);
+      }
+    }, delay);
+  }
+
+  // v12: Clean destroy a single peer
+  function destroyPeer(socketId) {
+    const peer = peersRef.current.get(socketId);
+    if (peer) {
+      try { peer.pc.close(); } catch (e) {}
+      peersRef.current.delete(socketId);
+    }
+    // Remove associated audio element
+    const audio = remoteAudioMapRef.current.get(socketId);
+    if (audio) {
+      try { audio.srcObject = null; audio.remove(); } catch (e) {}
+      remoteAudioMapRef.current.delete(socketId);
+    }
+    // Clear connection timeout
+    const timer = peerTimeoutsRef.current.get(socketId);
+    if (timer) { clearTimeout(timer); peerTimeoutsRef.current.delete(socketId); }
+    iceRestartCountsRef.current.delete(socketId);
+  }
+
+  async function createOffer(targetSocketId, username, userId) {
+    if (!localStreamRef.current || !socketRef.current) return;
+    // v12: Peer dedup
+    if (peersRef.current.has(targetSocketId)) return;
+    // v12: Max peers cap
+    if (peersRef.current.size >= MAX_PEERS) return;
+    try {
+      const pc = createPeerConnection(targetSocketId, userId, username);
+      localStreamRef.current.getTracks().forEach(t => pc.addTrack(t, localStreamRef.current));
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socketRef.current.emit('voice:offer', { to: targetSocketId, offer });
+    } catch (err) {
+      console.error('[Voice] Create offer error:', err);
+      destroyPeer(targetSocketId);
+    }
+  }
+
+  // v12: Audio element management via tracked Map instead of raw DOM queries
   function playRemoteAudio(stream, id) {
-    let audio = document.getElementById(`voice-audio-${id}`);
+    let audio = remoteAudioMapRef.current.get(id);
     if (!audio) {
       audio = document.createElement('audio');
       audio.id = `voice-audio-${id}`;
       audio.autoplay = true;
       document.body.appendChild(audio);
-      remoteAudiosRef.current.push(audio);
+      remoteAudioMapRef.current.set(id, audio);
     }
     audio.srcObject = stream;
     audio.muted = isDeafened;
   }
 
-  // Audio level monitoring with multi-bar output
+  // v12: Reusable AudioContext — create once, reuse across join/leave cycles
+  function getOrCreateAudioContext() {
+    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+      // Resume if suspended
+      if (audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+      return audioCtxRef.current;
+    }
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtxRef.current = ctx;
+    return ctx;
+  }
+
   function startAudioMonitor(stream) {
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = getOrCreateAudioContext();
       const src = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.5;
       src.connect(analyser);
-      analyserRef.current = { analyser, ctx };
+      analyserRef.current = { analyser, src };
 
       const data = new Uint8Array(analyser.frequencyBinCount);
       const tick = () => {
+        if (!mountedRef.current) return; // v12: mounted guard in animation loop
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((a, b) => a + b, 0) / data.length;
         const level = Math.min(1, avg / 80);
         setAudioLevel(level);
-        
-        // 3-bar equalizer: low, mid, high frequencies
+
         const third = Math.floor(data.length / 3);
         const low = data.slice(0, third).reduce((a, b) => a + b, 0) / third / 128;
         const mid = data.slice(third, third * 2).reduce((a, b) => a + b, 0) / third / 128;
@@ -149,81 +348,114 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
       };
       tick();
     } catch (e) {
-      // AudioContext not available
+      console.warn('[Voice] AudioContext not available:', e.message);
     }
   }
 
   function stopAudioMonitor() {
-    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-    if (analyserRef.current?.ctx) {
-      try { analyserRef.current.ctx.close(); } catch (e) {}
+    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; }
+    if (analyserRef.current?.src) {
+      try { analyserRef.current.src.disconnect(); } catch (e) {}
     }
     analyserRef.current = null;
-    setAudioLevel(0);
-    setAudioBars([0, 0, 0]);
+    // Don't close AudioContext — reuse it. Just suspend to save resources.
+    if (audioCtxRef.current && audioCtxRef.current.state === 'running') {
+      audioCtxRef.current.suspend().catch(() => {});
+    }
+    safeSetState(() => { setAudioLevel(0); setAudioBars([0, 0, 0]); });
   }
 
-  async function joinVoice() {
-    setError('');
-    setConnecting(true);
+  // v12: getUserMedia with timeout wrapper
+  async function getMediaStream() {
+    return Promise.race([
+      navigator.mediaDevices.getUserMedia({ audio: true, video: false }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Microphone request timed out')), 10000)),
+    ]);
+  }
+
+  const joinVoice = useCallback(async () => {
+    if (!mountedRef.current) return;
+    safeSetState(() => { setError(''); setConnecting(true); });
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const stream = await getMediaStream();
+      if (!mountedRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
       localStreamRef.current = stream;
-      setIsInVoice(true);
-      setConnecting(false);
+      safeSetState(() => { setIsInVoice(true); setConnecting(false); });
       startAudioMonitor(stream);
-      socket.emit('voice:join');
+      socketRef.current?.emit('voice:join');
     } catch (err) {
-      setConnecting(false);
+      if (!mountedRef.current) return;
+      safeSetState(() => setConnecting(false));
       if (err.name === 'NotAllowedError') {
-        setError('Microphone access denied. Check browser permissions.');
+        safeSetState(() => setError('Microphone access denied. Check browser permissions.'));
       } else if (err.name === 'NotFoundError') {
-        setError('No microphone found.');
+        safeSetState(() => setError('No microphone found.'));
+      } else if (err.message === 'Microphone request timed out') {
+        safeSetState(() => setError('Microphone request timed out.'));
       } else {
-        setError('Could not access microphone.');
+        safeSetState(() => setError('Could not access microphone.'));
       }
     }
-  }
+  }, []);
 
-  function leaveVoice() {
+  // v12: Stable leaveVoice via useCallback — uses refs to avoid stale closures
+  const leaveVoice = useCallback(() => {
     stopAudioMonitor();
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
     }
-    peersRef.current.forEach(({ pc }) => pc.close());
+    peersRef.current.forEach(({ pc }) => { try { pc.close(); } catch (e) {} });
     peersRef.current.clear();
-    document.querySelectorAll('[id^="voice-audio-"]').forEach(el => el.remove());
-    remoteAudiosRef.current = [];
-    setIsInVoice(false);
-    setIsMuted(false);
-    setIsDeafened(false);
-    setVoiceUsers([]);
-    setAudioLevel(0);
-    setAudioBars([0, 0, 0]);
-    if (socket) socket.emit('voice:leave');
-  }
+    // v12: Remove tracked audio elements via map
+    for (const [id, audio] of remoteAudioMapRef.current) {
+      try { audio.srcObject = null; audio.remove(); } catch (e) {}
+    }
+    remoteAudioMapRef.current.clear();
+    // Clear timeouts
+    for (const timer of peerTimeoutsRef.current.values()) clearTimeout(timer);
+    peerTimeoutsRef.current.clear();
+    iceRestartCountsRef.current.clear();
 
-  function toggleMute() {
+    safeSetState(() => {
+      setIsInVoice(false);
+      setIsMuted(false);
+      setIsDeafened(false);
+      setVoiceUsers([]);
+      setAudioLevel(0);
+      setAudioBars([0, 0, 0]);
+    });
+    socketRef.current?.emit('voice:leave');
+  }, []);
+
+  const toggleMute = useCallback(() => {
     if (localStreamRef.current) {
       const newMuted = !isMuted;
       localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = !newMuted; });
       setIsMuted(newMuted);
     }
-  }
+  }, [isMuted]);
 
-  function toggleDeafen() {
+  const toggleDeafen = useCallback(() => {
     const newDeafened = !isDeafened;
     setIsDeafened(newDeafened);
-    // Mute/unmute all remote audio elements
-    document.querySelectorAll('[id^="voice-audio-"]').forEach(el => { el.muted = newDeafened; });
+    // Mute/unmute all tracked remote audio elements
+    for (const audio of remoteAudioMapRef.current.values()) {
+      audio.muted = newDeafened;
+    }
     // Auto-mute when deafening
     if (newDeafened && !isMuted) {
-      toggleMute();
+      if (localStreamRef.current) {
+        localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = false; });
+        setIsMuted(true);
+      }
     } else if (!newDeafened && isMuted) {
-      toggleMute();
+      if (localStreamRef.current) {
+        localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = true; });
+        setIsMuted(false);
+      }
     }
-  }
+  }, [isDeafened, isMuted]);
 
   const totalInCall = voiceUsers.length + (isInVoice ? 1 : 0);
 
@@ -235,7 +467,6 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
           {/* Mic icon with audio bars */}
           <div className="relative flex-shrink-0">
             {isInVoice && !isMuted && audioLevel > 0.05 ? (
-              // Audio bars equalizer
               <div className="w-6 h-6 rounded-full flex items-center justify-center gap-[2px]"
                 style={{
                   background: `rgba(91, 216, 130, ${0.08 + audioLevel * 0.12})`,

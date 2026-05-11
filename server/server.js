@@ -1,5 +1,5 @@
 /**
- * CollabCode Server v9.0 — Hardened for Continuous Heavy Use
+ * CollabCode Server v10.0 — Hardened for Continuous Heavy Use
  * 
  * v9.0 hardening:
  *  - Graceful shutdown with connection draining (waits for active requests)
@@ -61,13 +61,21 @@ server.keepAliveTimeout = 65000; // slightly > typical LB timeout (60s)
 server.headersTimeout = 70000;
 
 // v9: Track active requests for graceful shutdown
+// v10 fix: 'finish' and 'close' both fire on every response — use a flag to decrement only once
 app.use((req, res, next) => {
   if (isShuttingDown) {
     return res.status(503).json({ error: true, message: 'Server is shutting down' });
   }
   activeRequests++;
-  res.on('finish', () => { activeRequests--; });
-  res.on('close', () => { activeRequests--; });
+  let decremented = false;
+  const onDone = () => {
+    if (!decremented) {
+      decremented = true;
+      activeRequests--;
+    }
+  };
+  res.on('finish', onDone);
+  res.on('close', onDone);
   next();
 });
 

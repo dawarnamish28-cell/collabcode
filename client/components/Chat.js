@@ -1,5 +1,13 @@
 /**
- * Chat v15.0 — Full emoji picker, enhanced reactions, polished UX
+ * Chat v16.0 — Hardened for Heavy Load
+ *
+ * v16.0 hardening:
+ *  - Typing indicator timers tracked per-user and properly cleaned up on unmount
+ *  - Reactions state capped at 500 messages max (oldest pruned)
+ *  - typingTimeoutRef properly cleaned on unmount
+ *  - Max 50 typing users tracked (prevents Map explosion from malicious clients)
+ *
+ * Previous: v15.0 — Full emoji picker, enhanced reactions, polished UX
  *
  * New in v15:
  *  - Full emoji picker drawer with categories & search
@@ -198,7 +206,17 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
   const scrollContainerRef = useRef(null);
   const inputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const typingTimersRef = useRef(new Map()); // v16: per-user typing cleanup timers
   const isNearBottom = useRef(true);
+
+  // v16: Cleanup typing timers on unmount
+  useEffect(() => {
+    return () => {
+      for (const timer of typingTimersRef.current.values()) clearTimeout(timer);
+      typingTimersRef.current.clear();
+      clearTimeout(typingTimeoutRef.current);
+    };
+  }, []);
 
   const scrollToBottom = useCallback((smooth = true) => {
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
@@ -230,16 +248,25 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
       setTypingUsers(prev => {
         const next = new Map(prev);
         if (data.isTyping) {
+          // v16: Cap typing users at 50 to prevent Map explosion
+          if (next.size >= 50 && !next.has(data.userId)) return next;
           next.set(data.userId, data.username);
-          setTimeout(() => {
+          // v16: Track per-user timer and clear previous one
+          const prevTimer = typingTimersRef.current.get(data.userId);
+          if (prevTimer) clearTimeout(prevTimer);
+          const timer = setTimeout(() => {
+            typingTimersRef.current.delete(data.userId);
             setTypingUsers(p => {
               const n = new Map(p);
               n.delete(data.userId);
               return n;
             });
           }, 3000);
+          typingTimersRef.current.set(data.userId, timer);
         } else {
           next.delete(data.userId);
+          const prevTimer = typingTimersRef.current.get(data.userId);
+          if (prevTimer) { clearTimeout(prevTimer); typingTimersRef.current.delete(data.userId); }
         }
         return next;
       });
@@ -266,6 +293,13 @@ const Chat = memo(function Chat({ messages, onSendMessage, currentUser, socket }
           next[data.msgIndex] = msgReactions;
         } else {
           delete next[data.msgIndex];
+        }
+        // v16: Cap reactions state at 500 message indices — prune oldest
+        const keys = Object.keys(next);
+        if (keys.length > 500) {
+          const sortedKeys = keys.map(Number).sort((a, b) => a - b);
+          const excess = sortedKeys.length - 500;
+          for (let i = 0; i < excess; i++) delete next[sortedKeys[i]];
         }
         return next;
       });
