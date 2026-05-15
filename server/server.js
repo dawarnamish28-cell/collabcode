@@ -31,7 +31,7 @@ const { connectDB, disconnectDB, getConnectionStatus } = require('./config/db');
 const { socketAuthMiddleware } = require('./middleware/auth');
 const { generalLimiter } = require('./middleware/rateLimiter');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
-const { initRoomHandler, getActiveRooms, roomExists, gracefulShutdown: shutdownRooms, getHealthStats } = require('./sockets/roomHandler');
+const { initRoomHandler, getActiveRooms, roomExists, gracefulShutdown: shutdownRooms, getHealthStats, renameRoom } = require('./sockets/roomHandler');
 const { cleanup: cleanupExecution } = require('./controllers/executionController');
 
 const executionRoutes = require('./routes/execution');
@@ -40,6 +40,9 @@ const fileRoutes = require('./routes/files');
 const galleryRoutes = require('./routes/gallery');
 const workspaceRoutes = require('./routes/workspaces');
 const teamRoutes = require('./routes/teams');
+const { router: adminRoutes, competitionState, addViolation } = require('./routes/admin');
+const cookieParser = require('cookie-parser');
+const path = require('path');
 
 const PORT = parseInt(process.env.PORT) || 4000;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
@@ -91,8 +94,15 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 app.use(morgan('dev'));
 app.use('/api/', generalLimiter);
+
+// ─── Admin Dashboard (served from /admin) ───────────────────────────────
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+app.use('/admin/api', adminRoutes);
 
 // ─── REST Routes ──────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -110,7 +120,7 @@ app.get('/api/health', (req, res) => {
     status: isReady ? 'ok' : 'starting',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-    version: '9.0',
+    version: '11.0',
     database: getConnectionStatus() ? 'connected' : 'disconnected',
     rooms: roomStats.rooms,
     totalUsers: roomStats.totalUsers,
@@ -184,7 +194,14 @@ io.use((socket, next) => {
 });
 
 io.use(socketAuthMiddleware);
-initRoomHandler(io);
+
+// ─── Store io and room functions on app for admin routes ─────────────
+app.set('io', io);
+app.set('getActiveRooms', getActiveRooms);
+app.set('getHealthStats', getHealthStats);
+app.set('renameRoom', renameRoom);
+
+initRoomHandler(io, { competitionState, addViolation });
 
 // ─── v9: Memory Monitoring ────────────────────────────────────────────
 const memoryMonitorInterval = setInterval(() => {
@@ -209,8 +226,8 @@ async function start() {
     isReady = true;
     console.log('');
     console.log('  ╔══════════════════════════════════════════╗');
-    console.log('  ║      CollabCode Server v9.0              ║');
-    console.log('  ║      Hardened for Heavy Use              ║');
+    console.log('  ║      CollabCode Server v11.0             ║');
+    console.log('  ║      Competition Mode + Admin Panel      ║');
     console.log('  ║      made with <3 by Namish              ║');
     console.log('  ╠══════════════════════════════════════════╣');
     console.log(`  ║  HTTP:   http://0.0.0.0:${PORT}            ║`);

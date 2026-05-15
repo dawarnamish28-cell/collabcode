@@ -1,5 +1,5 @@
 /**
- * Room Workspace v18.0 — Hardened for Continuous Heavy Use
+ * Room Workspace v19.0 — Competition Mode + Custom Room Names
  * 
  * New in v16:
  *  - Video collaboration: WebRTC video chat & screen sharing
@@ -18,6 +18,13 @@
  *  - Toast timeout tracking and cleanup on unmount
  *  - Connection quality monitor properly guards unmounted state
  *  - Session timer properly cleaned up
+ *
+ * v19.0 features:
+ *  - Competition mode: global lock/unlock disables/enables editor
+ *  - Forced fullscreen in competition mode
+ *  - Fullscreen violation detection + server reporting
+ *  - Custom room name display in breadcrumb + navbar
+ *  - Competition overlay banners (locked/competition states)
  * made with <3 by Namish
  */
 
@@ -134,8 +141,29 @@ export default function RoomPage() {
   const [cmdPaletteFocusIdx, setCmdPaletteFocusIdx] = useState(0); // v15: keyboard nav index
   const [notifSoundEnabled, setNotifSoundEnabled] = useState(true); // v15: notification sounds
 
+  // v19: Competition mode state
+  const [competitionMode, setCompetitionMode] = useState('normal'); // 'normal' | 'competition'
+  const [roomsLocked, setRoomsLocked] = useState(false);
+  const [roomName, setRoomName] = useState(null); // custom room name
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const fullscreenViolationSentRef = useRef(false); // prevent spam
+
   const queryLang = router.query.lang;
   const queryPublic = router.query.public;
+  const queryRoomName = router.query.roomName;
+
+  // v19: Enter fullscreen helper (defined early, no deps)
+  const enterFullscreen = useCallback(() => {
+    if (typeof document === 'undefined') return;
+    try {
+      const el = document.documentElement;
+      if (el.requestFullscreen) el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      else if (el.msRequestFullscreen) el.msRequestFullscreen();
+    } catch (e) {
+      console.warn('[Fullscreen] Failed to enter fullscreen:', e.message);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -226,6 +254,36 @@ export default function RoomPage() {
     }
   }, [notifSoundEnabled]);
 
+  // v19: Fullscreen change listener — detect violations in competition mode
+  // (Must be after addNotification/addToast definitions to avoid TDZ in minified build)
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handleFullscreenChange = () => {
+      if (!mountedRef.current) return;
+      const isFull = !!document.fullscreenElement;
+      setIsFullscreen(isFull);
+      if (!isFull && competitionMode === 'competition' && socketRef.current?.connected) {
+        if (!fullscreenViolationSentRef.current) {
+          fullscreenViolationSentRef.current = true;
+          socketRef.current.emit('competition:fullscreen-violation');
+          addNotification('You exited fullscreen during competition mode!', 'error', 'competition');
+          addToast('Fullscreen violation reported!', 'error');
+          setTimeout(() => { fullscreenViolationSentRef.current = false; }, 5000);
+        }
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [competitionMode, addNotification, addToast]);
+
+  // v19: Auto-enter fullscreen when competition mode activates
+  useEffect(() => {
+    if (competitionMode === 'competition' && typeof document !== 'undefined' && !document.fullscreenElement) {
+      const timer = setTimeout(() => enterFullscreen(), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [competitionMode, enterFullscreen]);
+
   const clearNotifications = useCallback(() => {
     setNotifications([]);
   }, []);
@@ -292,13 +350,19 @@ export default function RoomPage() {
 
     const isPublicRoom = queryPublic === 'true';
 
-    socket.on('connect', () => { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang, isPublic: isPublicRoom }); });
+    socket.on('connect', () => { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang, isPublic: isPublicRoom, roomName: queryRoomName || undefined }); });
     socket.on('disconnect', () => setConnectionStatus('disconnected'));
     socket.on('reconnect', () => { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang }); });
     socket.on('room:state', (data) => {
       if (data.users) setUsers(data.users);
       if (data.isPublic !== undefined) setIsPublic(data.isPublic);
       if (data.language) setLanguage(data.language);
+      // v19: Competition state from server
+      if (data.competition) {
+        setCompetitionMode(data.competition.mode || 'normal');
+        setRoomsLocked(!!data.competition.roomsLocked);
+      }
+      if (data.roomName) setRoomName(data.roomName);
       setRoom({ roomId });
       setReady(true);
     });
@@ -313,14 +377,39 @@ export default function RoomPage() {
     }));
     socket.on('room:language-change', (data) => setLanguage(data.language));
     socket.on('room:visibility-changed', (data) => setIsPublic(data.isPublic));
+
+    // v19: Competition events from admin
+    socket.on('competition:lock-change', (data) => {
+      setRoomsLocked(!!data.locked);
+      if (data.locked) {
+        addToast('Coding has been LOCKED by admin', 'error');
+        addNotification('Coding locked by administrator', 'error', 'competition');
+      } else {
+        addToast('Coding has been UNLOCKED — go!', 'join');
+        addNotification('Coding unlocked — start coding!', 'join', 'competition');
+      }
+    });
+
+    socket.on('competition:mode-change', (data) => {
+      setCompetitionMode(data.mode);
+      if (data.mode === 'competition') {
+        addToast('Competition mode activated!', 'info');
+        addNotification('Competition mode: fullscreen required', 'info', 'competition');
+        // Fullscreen is handled by the competitionMode effect
+      } else {
+        addToast('Normal mode restored', 'info');
+        addNotification('Normal mode: fullscreen no longer required', 'info', 'competition');
+      }
+    });
+
     provider.on('awareness-change', (states) => setAwarenessStates(new Map(states)));
 
-    if (socket.connected) { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang, isPublic: isPublicRoom }); }
+    if (socket.connected) { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang, isPublic: isPublicRoom, roomName: queryRoomName || undefined }); }
     else setConnectionStatus('connecting');
 
     return () => {
       provider.destroy();
-      ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change','room:visibility-changed'].forEach(e => socket.off(e));
+      ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change','room:visibility-changed','competition:lock-change','competition:mode-change'].forEach(e => socket.off(e));
       disconnectSocket();
       ydoc.destroy();
     };
@@ -694,7 +783,7 @@ export default function RoomPage() {
               <span className="hidden sm:inline">home</span>
             </button>
             <svg className="w-2.5 h-2.5 text-[#333] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-            <span className="px-1.5 py-0.5 rounded text-[#777] bg-[#222]/50 cursor-default" title={`Room: ${roomId}`}>{roomId}</span>
+            <span className="px-1.5 py-0.5 rounded text-[#777] bg-[#222]/50 cursor-default" title={`Room: ${roomId}`}>{roomName || roomId}</span>
             <svg className="w-2.5 h-2.5 text-[#333] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             <span className="px-1.5 py-0.5 rounded font-medium" style={{ color: (LANGUAGES_MAP[state.language] || '#5e9eff'), background: (LANGUAGES_MAP[state.language] || '#5e9eff') + '10' }}>{state.language}</span>
             {activeFileId && files.find(f => f.id === activeFileId) && (
@@ -761,15 +850,28 @@ export default function RoomPage() {
 
           <div className="flex-1 min-h-0 relative">
             {ready && ydocRef.current ? (
-              <Editor
-                ydoc={ydocRef.current} provider={providerRef.current}
-                language={state.language} theme={state.theme}
-                user={state.user} fontSize={editorFontSize}
-                tabSize={editorTabSize} minimap={editorMinimap}
-                wordWrap={editorWordWrap} cursorStyle={editorCursorStyle}
-                bracketColors={editorBracketColors} lineNumbers={editorLineNumbers}
-                autoIndent={editorAutoIndent}
-              />
+              <div className="relative w-full h-full">
+                <Editor
+                  ydoc={ydocRef.current} provider={providerRef.current}
+                  language={state.language} theme={state.theme}
+                  user={state.user} fontSize={editorFontSize}
+                  tabSize={editorTabSize} minimap={editorMinimap}
+                  wordWrap={editorWordWrap} cursorStyle={editorCursorStyle}
+                  bracketColors={editorBracketColors} lineNumbers={editorLineNumbers}
+                  autoIndent={editorAutoIndent}
+                  readOnly={roomsLocked}
+                />
+                {/* v19: Lock overlay when rooms are locked */}
+                {roomsLocked && (
+                  <div className="absolute inset-0 bg-[#0a0a0a]/60 backdrop-blur-[2px] flex items-center justify-center z-20 pointer-events-none">
+                    <div className="text-center">
+                      <svg className="w-12 h-12 text-[#ff6b6b] mx-auto mb-3 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                      <p className="text-[#ff6b6b] text-sm font-semibold">Coding is Locked</p>
+                      <p className="text-[#666] text-xs mt-1 font-mono">Waiting for admin to start...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
               /* v15: Loading skeleton for editor */
               <div className="h-full flex flex-col bg-[#1a1b1e] overflow-hidden">
@@ -863,6 +965,20 @@ export default function RoomPage() {
         )}
       </div>
 
+      {/* v19: Competition Mode Banner */}
+      {competitionMode === 'competition' && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-[#c4b5fd]/10 border-t border-[#c4b5fd]/20 text-[10px] font-mono flex-shrink-0">
+          <svg className="w-3 h-3 text-[#c4b5fd]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+          <span className="text-[#c4b5fd]">Competition Mode Active</span>
+          {!isFullscreen && (
+            <button onClick={enterFullscreen} className="ml-2 px-2 py-0.5 bg-[#c4b5fd] text-[#0a0a0a] rounded text-[9px] font-semibold hover:bg-[#d4c7ff] transition">
+              Enter Fullscreen
+            </button>
+          )}
+          {isFullscreen && <span className="text-[#5bd882] ml-2">✓ Fullscreen</span>}
+        </div>
+      )}
+
       {/* Status Bar */}
       <div className="room-status-bar flex items-center gap-2 px-3 py-1 bg-[#19191c] border-t border-[#222] text-[9px] font-mono text-[#555]">
         {/* Auto-save indicator */}
@@ -891,6 +1007,28 @@ export default function RoomPage() {
         {/* Language indicator */}
         <div className="w-px h-2.5 bg-[#333]" />
         <span style={{ color: LANGUAGES_MAP[state.language] || '#5e9eff' }}>{state.language}</span>
+        {/* v19: Competition indicators */}
+        {roomsLocked && (
+          <>
+            <div className="w-px h-2.5 bg-[#333]" />
+            <span className="text-[#ff6b6b] flex items-center gap-1">
+              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+              locked
+            </span>
+          </>
+        )}
+        {competitionMode === 'competition' && (
+          <>
+            <div className="w-px h-2.5 bg-[#333]" />
+            <span className="text-[#c4b5fd]">competition</span>
+          </>
+        )}
+        {roomName && (
+          <>
+            <div className="w-px h-2.5 bg-[#333]" />
+            <span className="text-[#888]" title="Room name">{roomName}</span>
+          </>
+        )}
       </div>
 
       {/* Toast Notifications */}

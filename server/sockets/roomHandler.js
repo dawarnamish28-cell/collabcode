@@ -1,5 +1,5 @@
 /**
- * Room Socket Handler v9.0 — Hardened for Continuous Heavy Use
+ * Room Socket Handler v11.0 — Competition Mode + Custom Room Names
  * 
  * v9.0 hardening:
  *  - Race-safe room cleanup with mutex-like guard (cleanupInProgress flag)
@@ -13,6 +13,12 @@
  *  - Awareness state size cap to prevent memory bloat
  *  - Health stats with memory usage reporting
  *  - All interval/timeout references tracked for clean teardown
+ *
+ * v11.0 features:
+ *  - Competition mode: global room lock/unlock via admin
+ *  - Fullscreen violation detection relay (client → server → admin)
+ *  - Custom room naming support
+ *  - Competition state injected from admin routes
  *
  * v8.0 features retained:
  *  - Throttled awareness updates per room (batched, 50ms debounce)
@@ -237,8 +243,24 @@ function scheduleCleanup(roomId) {
   pendingCleanupTimers.set(roomId, timerId);
 }
 
+// ─── Competition State (injected from admin routes) ──────────────────
+let competitionCtx = null; // { competitionState, addViolation }
+
+// ─── Custom Room Names ───────────────────────────────────────────────
+const roomNames = new Map(); // roomId -> custom name
+
+function renameRoom(roomId, name) {
+  const room = rooms.get(roomId);
+  if (!room) return false;
+  room.roomName = name;
+  roomNames.set(roomId, name);
+  roomStatsCache = null;
+  return true;
+}
+
 // ─── Main Handler ──────────────────────────────────────────────────────
-function initRoomHandler(io) {
+function initRoomHandler(io, ctx) {
+  if (ctx) competitionCtx = ctx;
   io.on('connection', (socket) => {
     // v9: Reject connections during shutdown
     if (isShuttingDown) {
@@ -291,6 +313,12 @@ function initRoomHandler(io) {
       }
       if (language) room.language = language;
 
+      // v11: Custom room name support
+      if (data.roomName && typeof data.roomName === 'string' && room.users.size === 0) {
+        room.roomName = data.roomName.slice(0, 50);
+        roomNames.set(roomId, room.roomName);
+      }
+
       const userInfo = {
         userId: socket.user.userId,
         username: socket.user.username,
@@ -319,12 +347,19 @@ function initRoomHandler(io) {
       }
 
       const stateUpdate = Y.encodeStateAsUpdate(room.ydoc);
+      // v11: Include competition state and room name in room:state
+      const compState = competitionCtx ? competitionCtx.competitionState : null;
       socket.emit('room:state', {
         update: Array.from(stateUpdate),
         users: Array.from(room.users.values()),
         awareness: Object.fromEntries(room.awarenessStates),
         isPublic: room.isPublic,
         language: room.language,
+        roomName: room.roomName || null,
+        competition: compState ? {
+          mode: compState.mode,
+          roomsLocked: compState.roomsLocked,
+        } : null,
       });
 
       if (getConnectionStatus()) {
@@ -605,6 +640,20 @@ function initRoomHandler(io) {
       }
     });
 
+    // ─── v11: Fullscreen Violation Report ────────────────────────
+    socket.on('competition:fullscreen-violation', () => {
+      if (!competitionCtx) return;
+      const room = currentRoomId ? rooms.get(currentRoomId) : null;
+      const violation = {
+        userId: socket.user.userId,
+        username: socket.user.username,
+        roomId: currentRoomId || 'unknown',
+        roomName: room?.roomName || currentRoomId || 'unknown',
+      };
+      competitionCtx.addViolation(violation);
+      console.log(`[Competition] Fullscreen violation: ${socket.user.username} in room ${currentRoomId}`);
+    });
+
     // ─── Ping/Pong ──────────────────────────────────────────────
     socket.on('ping', () => {
       socket.emit('pong');
@@ -713,6 +762,7 @@ function getActiveRooms() {
     if (room.users.size > 0) {
       info.push({
         roomId,
+        roomName: room.roomName || null,
         userCount: room.users.size,
         users: Array.from(room.users.values()).map(u => u.username),
         isPublic: room.isPublic,
@@ -802,4 +852,4 @@ function getHealthStats() {
   };
 }
 
-module.exports = { initRoomHandler, getActiveRooms, roomExists, gracefulShutdown, getHealthStats };
+module.exports = { initRoomHandler, getActiveRooms, roomExists, gracefulShutdown, getHealthStats, renameRoom };

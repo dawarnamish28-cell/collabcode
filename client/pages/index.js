@@ -1,13 +1,11 @@
 /**
- * Landing Page v13.0 — Professional service edition
+ * Landing Page v14.0 — Custom Room Names
  * 
- * Changes in v13:
- *  - Removed fake testimonials/reviews
- *  - Removed GitHub button & open-source references
- *  - Removed unnecessary emojis from toasts
- *  - Positioned as a professional collaborative coding service
- *  - Enhanced trust indicators with real feature highlights
- *  - Cleaner, more professional footer
+ * Changes in v14:
+ *  - Custom room naming input in create room section
+ *  - Room name passed as query param and sent to server
+ *  - Room names shown in public room listing
+ *  - All v13 features retained
  * 
  * made with <3 by Namish
  */
@@ -459,6 +457,7 @@ export default function Home() {
   const [joinCode, setJoinCode] = useState('');
   const [selectedLang, setSelectedLang] = useState('python');
   const [isPublicRoom, setIsPublicRoom] = useState(false);
+  const [customRoomName, setCustomRoomName] = useState('');
   const [publicRooms, setPublicRooms] = useState([]);
   const [error, setError] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
@@ -509,9 +508,14 @@ export default function Home() {
   }
 
   function handleCreateRoom() {
-    const code = generateRoomCode();
+    const code = customRoomName.trim() || generateRoomCode();
+    // If custom name: use it as roomId (sanitized), else random code
+    const roomId = customRoomName.trim()
+      ? customRoomName.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 30) || generateRoomCode()
+      : code;
+    const nameParam = customRoomName.trim() ? `&roomName=${encodeURIComponent(customRoomName.trim())}` : '';
     showToast('Creating room...', { color: '#5e9eff' });
-    router.push(`/room/${code}?lang=${selectedLang}&public=${isPublicRoom}`);
+    router.push(`/room/${roomId}?lang=${selectedLang}&public=${isPublicRoom}${nameParam}`);
   }
 
   async function handleJoinRoom(e) {
@@ -763,6 +767,21 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* v14: Custom room name input */}
+              <div className="mb-4">
+                <input
+                  type="text"
+                  value={customRoomName}
+                  onChange={(e) => setCustomRoomName(e.target.value)}
+                  placeholder="custom room name (optional)"
+                  maxLength={30}
+                  className="w-full px-3.5 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 focus:shadow-[0_0_0_3px_rgba(94,158,255,0.08)] text-[12px] font-mono transition-all"
+                />
+                <p className="text-[9px] text-[#444] font-mono mt-1 pl-1">
+                  {customRoomName.trim() ? `Room ID: ${customRoomName.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 30) || 'auto-generated'}` : 'leave empty for random 6-char code'}
+                </p>
+              </div>
+
               <label className="flex items-center gap-2.5 mb-6 cursor-pointer group">
                 <button onClick={() => setIsPublicRoom(!isPublicRoom)}
                   className={`w-8 h-[17px] rounded-full transition-all relative ${isPublicRoom ? 'bg-[#5bd882]' : 'bg-[#444]'}`}>
@@ -940,7 +959,8 @@ export default function Home() {
                               <div className="w-2 h-2 rounded-full bg-[#5bd882]" />
                               <div className="absolute inset-0 w-2 h-2 rounded-full bg-[#5bd882] animate-ping opacity-30" />
                             </div>
-                            <span className="text-[13px] font-mono text-[#aaa] tracking-wider">{room.roomId}</span>
+                            <span className="text-[13px] font-mono text-[#aaa] tracking-wider">{room.roomName || room.roomId}</span>
+                            {room.roomName && <span className="text-[10px] font-mono text-[#444]">{room.roomId}</span>}
                             <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded" style={{ color: langInfo.color, background: langInfo.color + '12' }}>
                               {langInfo.icon}
                             </span>
@@ -1217,7 +1237,7 @@ export default function Home() {
               <span className="text-[10px] text-[#444] font-mono">built by namish</span>
               <div className="w-px h-3 bg-[#282828]" />
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-[#333] font-mono">v13</span>
+                <span className="text-[10px] text-[#333] font-mono">v14</span>
                 <div className="w-1 h-1 rounded-full bg-[#5bd882] breathe" />
               </div>
             </div>

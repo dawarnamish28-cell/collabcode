@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CollabCode Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: #0f1012; color: #e0e0e0; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .fade-in { animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 0.8; } 100% { transform: scale(2); opacity: 0; } }
+    .pulse-ring { animation: pulse-ring 1.5s ease-out infinite; }
+    .glow-green { box-shadow: 0 0 20px rgba(91, 216, 130, 0.15); }
+    .glow-red { box-shadow: 0 0 20px rgba(255, 107, 107, 0.15); }
+    .glow-blue { box-shadow: 0 0 20px rgba(94, 158, 255, 0.15); }
+    .glow-orange { box-shadow: 0 0 20px rgba(255, 179, 71, 0.15); }
+    .btn { transition: all 0.15s; cursor: pointer; }
+    .btn:active { transform: scale(0.97); }
+    .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+    .violation-flash { animation: violationFlash 0.5s ease; }
+    @keyframes violationFlash { 0%, 100% { background: transparent; } 50% { background: rgba(255, 107, 107, 0.1); } }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <!-- ── LOGIN PAGE ─────────────────────────────────────────── -->
+  <div id="login-page" class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-sm fade-in">
+      <div class="text-center mb-8">
+        <div class="w-14 h-14 rounded-2xl bg-[#1a1b1e] border border-[#282828] flex items-center justify-center text-xl font-bold text-[#5e9eff] mono mx-auto mb-4">//</div>
+        <h1 class="text-2xl font-bold text-white">CollabCode</h1>
+        <p class="text-sm text-[#666] mt-1 mono">admin dashboard</p>
+      </div>
+      <form id="login-form" class="space-y-4">
+        <div>
+          <label class="block text-xs text-[#666] mb-1.5 mono uppercase tracking-wider">Username</label>
+          <input id="login-username" type="text" placeholder="admin" autocomplete="username"
+            class="w-full px-4 py-3 bg-[#1a1b1e] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/50 mono text-sm transition" />
+        </div>
+        <div>
+          <label class="block text-xs text-[#666] mb-1.5 mono uppercase tracking-wider">Password</label>
+          <input id="login-password" type="password" placeholder="••••••••••" autocomplete="current-password"
+            class="w-full px-4 py-3 bg-[#1a1b1e] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/50 mono text-sm transition" />
+        </div>
+        <div id="login-error" class="hidden text-sm text-[#ff6b6b] bg-[#ff6b6b]/10 rounded-lg px-3 py-2 mono"></div>
+        <button type="submit" class="btn w-full py-3 bg-[#5e9eff] hover:bg-[#7ab3ff] text-[#0a0a0a] font-semibold rounded-xl text-sm">
+          Sign In
+        </button>
+      </form>
+      <p class="text-center text-xs text-[#444] mt-6 mono">secured admin panel</p>
+    </div>
+  </div>
+
+  <!-- ── DASHBOARD PAGE ────────────────────────────────────── -->
+  <div id="dashboard-page" class="hidden min-h-screen">
+    <!-- Header -->
+    <header class="border-b border-[#1e1e1e] bg-[#0f1012]/80 backdrop-blur-md sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-[#1a1b1e] border border-[#282828] flex items-center justify-center text-xs font-bold text-[#5e9eff] mono">//</div>
+          <div>
+            <h1 class="text-sm font-semibold text-white">CollabCode Admin</h1>
+            <p class="text-[10px] text-[#555] mono">competition control panel</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div id="connection-status" class="flex items-center gap-1.5">
+            <div class="w-2 h-2 rounded-full bg-[#5bd882]"></div>
+            <span class="text-xs text-[#666] mono">connected</span>
+          </div>
+          <button id="logout-btn" class="btn px-3 py-1.5 text-xs text-[#888] hover:text-white bg-[#1a1b1e] border border-[#282828] hover:border-[#444] rounded-lg transition mono">
+            logout
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-6 py-6">
+      <!-- ── Competition Controls ────────────────────────────── -->
+      <div class="grid md:grid-cols-2 gap-4 mb-6 fade-in">
+        <!-- Lock/Unlock Card -->
+        <div id="lock-card" class="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 transition-all">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h2 class="text-sm font-semibold text-white flex items-center gap-2">
+                <svg class="w-4 h-4 text-[#ffb347]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                Room Lock Control
+              </h2>
+              <p class="text-xs text-[#555] mt-0.5 mono">Start/stop coding across all rooms</p>
+            </div>
+            <div id="lock-status-badge" class="px-3 py-1 rounded-full text-xs font-medium mono">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+          <div class="flex gap-3">
+            <button id="lock-btn" onclick="toggleLock(true)" 
+              class="btn flex-1 py-3 bg-[#ff6b6b] hover:bg-[#ff8a8a] text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+              Lock All Rooms
+            </button>
+            <button id="unlock-btn" onclick="toggleLock(false)"
+              class="btn flex-1 py-3 bg-[#5bd882] hover:bg-[#7ae69e] text-[#0a0a0a] font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
+              Unlock All Rooms
+            </button>
+          </div>
+          <p id="lock-timestamp" class="text-[10px] text-[#444] mono mt-3 text-center"></p>
+        </div>
+
+        <!-- Competition Mode Card -->
+        <div id="mode-card" class="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 transition-all">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h2 class="text-sm font-semibold text-white flex items-center gap-2">
+                <svg class="w-4 h-4 text-[#c4b5fd]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                Competition Mode
+              </h2>
+              <p class="text-xs text-[#555] mt-0.5 mono">Force fullscreen on all participants</p>
+            </div>
+            <div id="mode-status-badge" class="px-3 py-1 rounded-full text-xs font-medium mono">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+          <div class="flex gap-3">
+            <button id="competition-btn" onclick="setMode('competition')"
+              class="btn flex-1 py-3 bg-[#c4b5fd] hover:bg-[#d4c7ff] text-[#0a0a0a] font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+              Competition Mode
+            </button>
+            <button id="normal-btn" onclick="setMode('normal')"
+              class="btn flex-1 py-3 bg-[#333] hover:bg-[#444] text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+              Normal Mode
+            </button>
+          </div>
+          <p id="mode-timestamp" class="text-[10px] text-[#444] mono mt-3 text-center"></p>
+        </div>
+      </div>
+
+      <!-- ── Stats Row ───────────────────────────────────────── -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 fade-in" style="animation-delay: 100ms">
+        <div class="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 text-center">
+          <div id="stat-rooms" class="text-2xl font-bold text-[#5e9eff] mono">0</div>
+          <div class="text-xs text-[#555] mono mt-1">Active Rooms</div>
+        </div>
+        <div class="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 text-center">
+          <div id="stat-users" class="text-2xl font-bold text-[#5bd882] mono">0</div>
+          <div class="text-xs text-[#555] mono mt-1">Total Users</div>
+        </div>
+        <div class="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 text-center">
+          <div id="stat-memory" class="text-2xl font-bold text-[#ffb347] mono">0</div>
+          <div class="text-xs text-[#555] mono mt-1">Memory (MB)</div>
+        </div>
+        <div class="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 text-center">
+          <div id="stat-uptime" class="text-2xl font-bold text-[#c4b5fd] mono">0m</div>
+          <div class="text-xs text-[#555] mono mt-1">Uptime</div>
+        </div>
+      </div>
+
+      <!-- ── Violations & Rooms ──────────────────────────────── -->
+      <div class="grid md:grid-cols-[1fr_1.2fr] gap-4 fade-in" style="animation-delay: 200ms">
+        <!-- Fullscreen Violations -->
+        <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
+          <div class="px-5 py-3 border-b border-[#222] flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#ff6b6b]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+              <h3 class="text-sm font-semibold text-white">Fullscreen Violations</h3>
+              <span id="violation-count" class="text-xs px-1.5 py-0.5 rounded-full bg-[#ff6b6b]/10 text-[#ff6b6b] mono">0</span>
+            </div>
+            <button onclick="clearViolations()" class="btn text-xs text-[#555] hover:text-[#aaa] mono transition">clear</button>
+          </div>
+          <div id="violations-list" class="max-h-[400px] overflow-y-auto scrollbar-thin">
+            <div class="px-5 py-10 text-center">
+              <p class="text-sm text-[#444] mono">no violations yet</p>
+              <p class="text-xs text-[#333] mono mt-1">violations appear here in real-time</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Rooms -->
+        <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
+          <div class="px-5 py-3 border-b border-[#222] flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#5e9eff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+              <h3 class="text-sm font-semibold text-white">Active Rooms</h3>
+              <span id="rooms-count" class="text-xs px-1.5 py-0.5 rounded-full bg-[#5e9eff]/10 text-[#5e9eff] mono">0</span>
+            </div>
+            <button onclick="refreshRooms()" class="btn text-xs text-[#555] hover:text-[#aaa] mono transition">refresh</button>
+          </div>
+          <div id="rooms-list" class="max-h-[400px] overflow-y-auto scrollbar-thin">
+            <div class="px-5 py-10 text-center">
+              <p class="text-sm text-[#444] mono">no active rooms</p>
+              <p class="text-xs text-[#333] mono mt-1">rooms appear when users create them</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ─── State ────────────────────────────────────────────────────
+    let adminToken = null;
+    let pollInterval = null;
+    const API_BASE = window.location.origin;
+
+    // ─── API Helper ────────────────────────────────────────────────
+    async function api(path, opts = {}) {
+      const headers = { 'Content-Type': 'application/json' };
+      if (adminToken) headers['x-admin-token'] = adminToken;
+      const res = await fetch(`${API_BASE}/admin/api${path}`, { ...opts, headers, credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'API error');
+      return data;
+    }
+
+    // ─── Login ─────────────────────────────────────────────────────
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById('login-error');
+      errEl.classList.add('hidden');
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+      try {
+        const data = await api('/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+        adminToken = data.token;
+        localStorage.setItem('admin_token', data.token);
+        showDashboard();
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+      }
+    });
+
+    // ─── Logout ────────────────────────────────────────────────────
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      try { await api('/logout', { method: 'POST' }); } catch (e) {}
+      adminToken = null;
+      localStorage.removeItem('admin_token');
+      clearInterval(pollInterval);
+      document.getElementById('dashboard-page').classList.add('hidden');
+      document.getElementById('login-page').classList.remove('hidden');
+    });
+
+    // ─── Show Dashboard ────────────────────────────────────────────
+    async function showDashboard() {
+      document.getElementById('login-page').classList.add('hidden');
+      document.getElementById('dashboard-page').classList.remove('hidden');
+      await refreshAll();
+      pollInterval = setInterval(refreshAll, 3000);
+    }
+
+    // ─── Refresh All Data ──────────────────────────────────────────
+    async function refreshAll() {
+      try {
+        const [health, competition, roomsData] = await Promise.all([
+          api('/health'),
+          api('/competition'),
+          api('/rooms'),
+        ]);
+        updateStats(health);
+        updateCompetitionUI(competition);
+        updateRooms(roomsData.rooms);
+        updateViolations(competition.fullscreenViolations);
+      } catch (err) {
+        if (err.message.includes('401') || err.message.includes('authentication')) {
+          // Token expired
+          adminToken = null;
+          localStorage.removeItem('admin_token');
+          clearInterval(pollInterval);
+          document.getElementById('dashboard-page').classList.add('hidden');
+          document.getElementById('login-page').classList.remove('hidden');
+        }
+      }
+    }
+
+    // ─── Update Stats ──────────────────────────────────────────────
+    function updateStats(health) {
+      document.getElementById('stat-rooms').textContent = health.rooms || 0;
+      document.getElementById('stat-users').textContent = health.totalUsers || 0;
+      document.getElementById('stat-memory').textContent = health.memory?.heapUsed || 0;
+      const uptimeSec = Math.floor(health.uptime || 0);
+      const h = Math.floor(uptimeSec / 3600);
+      const m = Math.floor((uptimeSec % 3600) / 60);
+      document.getElementById('stat-uptime').textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    }
+
+    // ─── Update Competition UI ─────────────────────────────────────
+    function updateCompetitionUI(state) {
+      // Lock status
+      const lockBadge = document.getElementById('lock-status-badge');
+      const lockCard = document.getElementById('lock-card');
+      if (state.roomsLocked) {
+        lockBadge.textContent = 'LOCKED';
+        lockBadge.className = 'px-3 py-1 rounded-full text-xs font-medium mono bg-[#ff6b6b]/15 text-[#ff6b6b]';
+        lockCard.className = 'bg-[#1a1b1e] border border-[#ff6b6b]/30 rounded-2xl p-6 transition-all glow-red';
+      } else {
+        lockBadge.textContent = 'UNLOCKED';
+        lockBadge.className = 'px-3 py-1 rounded-full text-xs font-medium mono bg-[#5bd882]/15 text-[#5bd882]';
+        lockCard.className = 'bg-[#1a1b1e] border border-[#5bd882]/30 rounded-2xl p-6 transition-all glow-green';
+      }
+      // Lock timestamp
+      const lockTs = document.getElementById('lock-timestamp');
+      if (state.roomsLocked && state.lockedAt) {
+        lockTs.textContent = `Locked at ${new Date(state.lockedAt).toLocaleTimeString()}`;
+      } else if (!state.roomsLocked && state.unlockedAt) {
+        lockTs.textContent = `Unlocked at ${new Date(state.unlockedAt).toLocaleTimeString()}`;
+      } else {
+        lockTs.textContent = '';
+      }
+
+      // Mode status
+      const modeBadge = document.getElementById('mode-status-badge');
+      const modeCard = document.getElementById('mode-card');
+      if (state.mode === 'competition') {
+        modeBadge.textContent = 'COMPETITION';
+        modeBadge.className = 'px-3 py-1 rounded-full text-xs font-medium mono bg-[#c4b5fd]/15 text-[#c4b5fd]';
+        modeCard.className = 'bg-[#1a1b1e] border border-[#c4b5fd]/30 rounded-2xl p-6 transition-all glow-blue';
+      } else {
+        modeBadge.textContent = 'NORMAL';
+        modeBadge.className = 'px-3 py-1 rounded-full text-xs font-medium mono bg-[#555]/15 text-[#888]';
+        modeCard.className = 'bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 transition-all';
+      }
+      // Mode timestamp
+      const modeTs = document.getElementById('mode-timestamp');
+      if (state.modeChangedAt) {
+        modeTs.textContent = `Changed at ${new Date(state.modeChangedAt).toLocaleTimeString()}`;
+      } else {
+        modeTs.textContent = '';
+      }
+    }
+
+    // ─── Update Rooms List ─────────────────────────────────────────
+    function updateRooms(rooms) {
+      document.getElementById('rooms-count').textContent = rooms.length;
+      const container = document.getElementById('rooms-list');
+      if (!rooms.length) {
+        container.innerHTML = `<div class="px-5 py-10 text-center">
+          <p class="text-sm text-[#444] mono">no active rooms</p>
+          <p class="text-xs text-[#333] mono mt-1">rooms appear when users create them</p>
+        </div>`;
+        return;
+      }
+      container.innerHTML = rooms.map(room => `
+        <div class="px-5 py-3 border-b border-[#222]/60 hover:bg-[#222]/30 transition flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="relative flex-shrink-0">
+              <div class="w-2 h-2 rounded-full bg-[#5bd882]"></div>
+              <div class="absolute inset-0 w-2 h-2 rounded-full bg-[#5bd882] pulse-ring"></div>
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-sm mono text-[#ccc] font-medium">${room.roomName || room.roomId}</span>
+                ${room.roomName ? `<span class="text-[10px] text-[#444] mono">${room.roomId}</span>` : ''}
+              </div>
+              <div class="text-[10px] text-[#555] mono mt-0.5 truncate">${room.users?.join(', ') || 'no users'}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 flex-shrink-0">
+            <span class="text-xs mono px-2 py-0.5 rounded bg-[#5e9eff]/10 text-[#5e9eff]">${room.language || 'js'}</span>
+            <span class="text-xs mono text-[#888]">${room.userCount} user${room.userCount !== 1 ? 's' : ''}</span>
+            ${room.isPublic ? '<span class="text-[10px] mono text-[#5bd882]">public</span>' : '<span class="text-[10px] mono text-[#666]">private</span>'}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ─── Update Violations ─────────────────────────────────────────
+    function updateViolations(violations) {
+      document.getElementById('violation-count').textContent = violations.length;
+      const container = document.getElementById('violations-list');
+      if (!violations.length) {
+        container.innerHTML = `<div class="px-5 py-10 text-center">
+          <p class="text-sm text-[#444] mono">no violations yet</p>
+          <p class="text-xs text-[#333] mono mt-1">violations appear here in real-time</p>
+        </div>`;
+        return;
+      }
+      // Show newest first
+      container.innerHTML = [...violations].reverse().map(v => `
+        <div class="violation-flash px-5 py-3 border-b border-[#222]/60 flex items-start gap-3">
+          <div class="w-6 h-6 rounded-full bg-[#ff6b6b]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <svg class="w-3 h-3 text-[#ff6b6b]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01"/></svg>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-[#ff6b6b] font-medium">${v.username || 'Unknown'}</span>
+              <span class="text-[10px] text-[#555] mono">exited fullscreen</span>
+            </div>
+            <div class="text-xs text-[#666] mono mt-0.5">Room: ${v.roomName || v.roomId || 'unknown'}</div>
+            <div class="text-[10px] text-[#444] mono mt-0.5">${v.timestamp ? new Date(v.timestamp).toLocaleTimeString() : ''}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ─── Actions ───────────────────────────────────────────────────
+    async function toggleLock(locked) {
+      try {
+        await api('/competition/lock', { method: 'POST', body: JSON.stringify({ locked }) });
+        await refreshAll();
+      } catch (err) { alert('Failed: ' + err.message); }
+    }
+
+    async function setMode(mode) {
+      try {
+        await api('/competition/mode', { method: 'POST', body: JSON.stringify({ mode }) });
+        await refreshAll();
+      } catch (err) { alert('Failed: ' + err.message); }
+    }
+
+    async function clearViolations() {
+      try {
+        await api('/competition/clear-violations', { method: 'POST' });
+        await refreshAll();
+      } catch (err) { alert('Failed: ' + err.message); }
+    }
+
+    async function refreshRooms() {
+      try {
+        const data = await api('/rooms');
+        updateRooms(data.rooms);
+      } catch (err) {}
+    }
+
+    // ─── Auto-login from stored token ──────────────────────────────
+    (async function init() {
+      const stored = localStorage.getItem('admin_token');
+      if (stored) {
+        adminToken = stored;
+        try {
+          await api('/verify');
+          showDashboard();
+        } catch (e) {
+          adminToken = null;
+          localStorage.removeItem('admin_token');
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

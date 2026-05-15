@@ -351,7 +351,7 @@ _start:
 `,
 };
 
-const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fontSize, tabSize, minimap, wordWrap, cursorStyle, bracketColors, lineNumbers, autoIndent }) {
+const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fontSize, tabSize, minimap, wordWrap, cursorStyle, bracketColors, lineNumbers, autoIndent, readOnly }) {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const bindingRef = useRef(null);
@@ -385,6 +385,7 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
       wordWrap: wordWrap !== false ? 'on' : 'off',
       tabSize: tabSize || 2,
       lineNumbers: lineNumbers !== false ? 'on' : 'off',
+      readOnly: !!readOnly,
       padding: { top: 12 },
     });
 
@@ -596,9 +597,10 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
         bracketPairColorization: { enabled: bracketColors !== false },
         autoIndent: autoIndent !== false ? 'full' : 'none',
         lineNumbers: lineNumbers !== false ? 'on' : 'off',
+        readOnly: !!readOnly,
       });
     }
-  }, [fontSize, tabSize, minimap, wordWrap, cursorStyle, bracketColors, lineNumbers, autoIndent]);
+  }, [fontSize, tabSize, minimap, wordWrap, cursorStyle, bracketColors, lineNumbers, autoIndent, readOnly]);
 
   // Update language mode live
   useEffect(() => {
