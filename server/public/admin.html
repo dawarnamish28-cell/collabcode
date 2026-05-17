@@ -336,7 +336,7 @@
       }
     }
 
-    // ─── Update Rooms List ─────────────────────────────────────────
+    // ─── Update Rooms List (v2: per-user kick buttons) ──────────────
     function updateRooms(rooms) {
       document.getElementById('rooms-count').textContent = rooms.length;
       const container = document.getElementById('rooms-list');
@@ -348,24 +348,42 @@
         return;
       }
       container.innerHTML = rooms.map(room => `
-        <div class="px-5 py-3 border-b border-[#222]/60 hover:bg-[#222]/30 transition flex items-center justify-between gap-3">
-          <div class="flex items-center gap-3 min-w-0">
-            <div class="relative flex-shrink-0">
-              <div class="w-2 h-2 rounded-full bg-[#5bd882]"></div>
-              <div class="absolute inset-0 w-2 h-2 rounded-full bg-[#5bd882] pulse-ring"></div>
-            </div>
-            <div class="min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="text-sm mono text-[#ccc] font-medium">${room.roomName || room.roomId}</span>
-                ${room.roomName ? `<span class="text-[10px] text-[#444] mono">${room.roomId}</span>` : ''}
+        <div class="border-b border-[#222]/60">
+          <div class="px-5 py-3 hover:bg-[#222]/30 transition flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="relative flex-shrink-0">
+                <div class="w-2 h-2 rounded-full bg-[#5bd882]"></div>
+                <div class="absolute inset-0 w-2 h-2 rounded-full bg-[#5bd882] pulse-ring"></div>
               </div>
-              <div class="text-[10px] text-[#555] mono mt-0.5 truncate">${room.users?.join(', ') || 'no users'}</div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm mono text-[#ccc] font-medium">${room.roomName || room.roomId}</span>
+                  ${room.roomName ? `<span class="text-[10px] text-[#444] mono">${room.roomId}</span>` : ''}
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 flex-shrink-0">
+              <span class="text-xs mono px-2 py-0.5 rounded bg-[#5e9eff]/10 text-[#5e9eff]">${room.language || 'js'}</span>
+              <span class="text-xs mono text-[#888]">${room.userCount} user${room.userCount !== 1 ? 's' : ''}</span>
+              ${room.isPublic ? '<span class="text-[10px] mono text-[#5bd882]">public</span>' : '<span class="text-[10px] mono text-[#666]">private</span>'}
             </div>
           </div>
-          <div class="flex items-center gap-3 flex-shrink-0">
-            <span class="text-xs mono px-2 py-0.5 rounded bg-[#5e9eff]/10 text-[#5e9eff]">${room.language || 'js'}</span>
-            <span class="text-xs mono text-[#888]">${room.userCount} user${room.userCount !== 1 ? 's' : ''}</span>
-            ${room.isPublic ? '<span class="text-[10px] mono text-[#5bd882]">public</span>' : '<span class="text-[10px] mono text-[#666]">private</span>'}
+          <!-- Per-user list with kick buttons -->
+          <div class="px-5 pb-2">
+            ${(room.userDetails || []).map(u => `
+              <div class="flex items-center justify-between py-1.5 px-3 ml-5 rounded-lg hover:bg-[#222]/40 transition group">
+                <div class="flex items-center gap-2 min-w-0">
+                  <div class="w-1.5 h-1.5 rounded-full bg-[#5bd882] flex-shrink-0"></div>
+                  <span class="text-xs mono text-[#999] truncate">${u.username}</span>
+                  <span class="text-[9px] text-[#444] mono hidden group-hover:inline">${u.socketId.slice(0, 8)}...</span>
+                </div>
+                <button onclick="kickUser('${room.roomId}', '${u.socketId}', '${u.username.replace(/'/g, "\\'")}')"
+                  class="btn text-[10px] px-2 py-0.5 rounded-md bg-[#ff6b6b]/10 text-[#ff6b6b] hover:bg-[#ff6b6b]/20 transition opacity-0 group-hover:opacity-100 mono flex items-center gap-1">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                  kick
+                </button>
+              </div>
+            `).join('')}
           </div>
         </div>
       `).join('');
@@ -427,6 +445,17 @@
         const data = await api('/rooms');
         updateRooms(data.rooms);
       } catch (err) {}
+    }
+
+    async function kickUser(roomId, socketId, username) {
+      if (!confirm(`Kick "${username}" from room ${roomId}?`)) return;
+      try {
+        await api(`/rooms/${roomId}/kick/${socketId}`, { method: 'POST' });
+        // Refresh immediately
+        await refreshAll();
+      } catch (err) {
+        alert('Failed to kick user: ' + err.message);
+      }
     }
 
     // ─── Auto-login from stored token ──────────────────────────────

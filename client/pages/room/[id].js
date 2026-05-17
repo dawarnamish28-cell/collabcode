@@ -1,5 +1,5 @@
 /**
- * Room Workspace v19.0 — Competition Mode + Custom Room Names
+ * Room Workspace v20.0 — Phase 3: Kick Users, Error Formatting
  * 
  * New in v16:
  *  - Video collaboration: WebRTC video chat & screen sharing
@@ -402,6 +402,12 @@ export default function RoomPage() {
       }
     });
 
+    // v20: Handle admin kick
+    socket.on('competition:kicked', (data) => {
+      alert(data.message || 'You have been removed from this room by the admin.');
+      router.push('/');
+    });
+
     provider.on('awareness-change', (states) => setAwarenessStates(new Map(states)));
 
     if (socket.connected) { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang, isPublic: isPublicRoom, roomName: queryRoomName || undefined }); }
@@ -409,7 +415,7 @@ export default function RoomPage() {
 
     return () => {
       provider.destroy();
-      ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change','room:visibility-changed','competition:lock-change','competition:mode-change'].forEach(e => socket.off(e));
+      ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change','room:visibility-changed','competition:lock-change','competition:mode-change','competition:kicked'].forEach(e => socket.off(e));
       disconnectSocket();
       ydoc.destroy();
     };

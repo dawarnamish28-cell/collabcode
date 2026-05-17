@@ -1,5 +1,5 @@
 /**
- * Room Socket Handler v11.0 — Competition Mode + Custom Room Names
+ * Room Socket Handler v12.0 — Phase 3 Fixes + Kick Users
  * 
  * v9.0 hardening:
  *  - Race-safe room cleanup with mutex-like guard (cleanupInProgress flag)
@@ -48,7 +48,7 @@ const MAX_AWARENESS_STATES = 100; // cap per room
 const PERSIST_RETRY_ATTEMPTS = 3;
 const PERSIST_RETRY_BASE_MS = 1000;
 const RATE_LIMITER_GC_INTERVAL = 60000; // clean disconnected socket entries every 60s
-const STATS_CACHE_TTL = 2000;
+const STATS_CACHE_TTL = 500; // v12: reduced from 2s to 500ms for faster admin refresh
 
 // ─── State ─────────────────────────────────────────────────────────────
 const rooms = new Map();
@@ -256,6 +256,29 @@ function renameRoom(roomId, name) {
   roomNames.set(roomId, name);
   roomStatsCache = null;
   return true;
+}
+
+// ─── v12: Kick User by socketId ───────────────────────────────────────
+function kickUser(socketId, io) {
+  const targetSocket = io?.sockets?.sockets?.get(socketId);
+  if (!targetSocket) return { success: false, reason: 'Socket not found' };
+  
+  const username = targetSocket.user?.username || 'Unknown';
+  
+  // Notify the kicked user before disconnecting
+  targetSocket.emit('competition:kicked', {
+    message: 'You have been removed from the room by the admin.',
+    timestamp: Date.now(),
+  });
+  
+  // Give a brief moment for the event to reach the client, then disconnect
+  setTimeout(() => {
+    try { targetSocket.disconnect(true); } catch (e) {}
+  }, 200);
+  
+  roomStatsCache = null;
+  console.log(`[Admin] Kicked user: ${username} (socket: ${socketId})`);
+  return { success: true, username };
 }
 
 // ─── Main Handler ──────────────────────────────────────────────────────
@@ -765,6 +788,13 @@ function getActiveRooms() {
         roomName: room.roomName || null,
         userCount: room.users.size,
         users: Array.from(room.users.values()).map(u => u.username),
+        // v12: Include detailed user list with socketIds for kick feature
+        userDetails: Array.from(room.users.values()).map(u => ({
+          socketId: u.socketId,
+          username: u.username,
+          userId: u.userId,
+          joinedAt: u.joinedAt,
+        })),
         isPublic: room.isPublic,
         language: room.language,
         videoUsers: room.videoUsers.size,
@@ -852,4 +882,4 @@ function getHealthStats() {
   };
 }
 
-module.exports = { initRoomHandler, getActiveRooms, roomExists, gracefulShutdown, getHealthStats, renameRoom };
+module.exports = { initRoomHandler, getActiveRooms, roomExists, gracefulShutdown, getHealthStats, renameRoom, kickUser };

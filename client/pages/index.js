@@ -1,5 +1,5 @@
 /**
- * Landing Page v14.0 — Custom Room Names
+ * Landing Page v15.0 — Phase 3 Fixes
  * 
  * Changes in v14:
  *  - Custom room naming input in create room section
@@ -520,7 +520,7 @@ export default function Home() {
 
   async function handleJoinRoom(e) {
     e.preventDefault();
-    const code = joinCode.trim().toUpperCase();
+    const code = joinCode.trim();
     if (!code) { setError('Enter a room code'); return; }
     if (code.length < 3) { setError('Code too short'); return; }
     setJoinLoading(true); setError('');
@@ -806,14 +806,14 @@ export default function Home() {
                   <div className="w-2.5 h-2.5 rounded-full bg-[#ffb347] breathe" />
                   <h3 className="text-[14px] font-display font-semibold text-white">join room</h3>
                 </div>
-                <span className="text-[10px] text-[#555] font-mono">got a code?</span>
+                <span className="text-[10px] text-[#555] font-mono">got a code or room name?</span>
               </div>
               <form onSubmit={handleJoinRoom}>
                 <div className="mb-6">
                   <input type="text" value={joinCode}
-                    onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setError(''); }}
-                    placeholder="ABC123" maxLength={6}
-                    className="w-full px-4 py-3.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 focus:shadow-[0_0_0_3px_rgba(94,158,255,0.08)] font-mono text-center text-xl tracking-[0.3em] uppercase transition-all" />
+                    onChange={(e) => { setJoinCode(e.target.value); setError(''); }}
+                    placeholder="room code or name" maxLength={30}
+                    className="w-full px-4 py-3.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 focus:shadow-[0_0_0_3px_rgba(94,158,255,0.08)] font-mono text-center text-lg tracking-wider transition-all" />
                   {error && <p className="mt-2 text-[#ff6b6b] text-[11px] font-mono pl-1 fade-up">{error}</p>}
                 </div>
                 <button type="submit" disabled={joinLoading}

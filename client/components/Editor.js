@@ -1,18 +1,18 @@
 /**
- * Editor Component v7.0
+ * Editor Component v8.0 — Enhanced IntelliSense
  * 
  * Monaco Editor + Yjs CRDT. 20 languages.
  * 
- * CRITICAL FIX v7: Bulletproof Yjs <-> Monaco binding.
+ * v8.0: Enhanced code suggestions with modular syntax
+ *   - ES6 import/export completions for JavaScript/TypeScript
+ *   - CommonJS require/module.exports completions
+ *   - Python import/from completions
+ *   - Java/C++ includes and imports
+ *   - Go package imports
+ *   - Rust use/mod completions
+ *   - Language-specific snippets and patterns
  * 
- * Root cause of double-typing/double-enter: The Yjs observer fires synchronously
- * for local mutations and the guard was racy. Fixed by:
- *   1. Using a Symbol as transaction origin (identity-based, not string-based)
- *   2. Wrapping all Yjs->Monaco edits in _isApplyingRemote = true
- *   3. All Monaco->Yjs in transact(fn, ORIGIN) — observer checks origin identity
- *   4. Observer bails EARLY when origin matches OR _isApplyingRemote is set
- *   5. Debounced cursor awareness (50ms)
- *   6. Proper disposal of all listeners on cleanup
+ * CRITICAL FIX v7: Bulletproof Yjs <-> Monaco binding.
  *
  * made with <3 by Namish
  */
@@ -389,9 +389,180 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
       padding: { top: 12 },
     });
 
+    // v8: Register enhanced completion providers
+    registerCompletionProviders(monaco, language);
+
     setupYjsBinding(editor, monaco);
     editor.focus();
   }, [ydoc, provider, user, language]);
+
+  // ─── v8: Enhanced IntelliSense with Modular Syntax ───────────────────
+  function registerCompletionProviders(monaco, lang) {
+    // Prevent double-registration
+    if (registerCompletionProviders._registered) return;
+    registerCompletionProviders._registered = true;
+
+    // ── JavaScript / TypeScript ────────────────────────────────────────
+    const jsSnippets = [
+      // ES6 Modules
+      { label: 'import', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "import { ${1:name} } from '${2:module}';", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'ES6 named import', documentation: 'Import named exports from a module' },
+      { label: 'import default', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "import ${1:name} from '${2:module}';", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'ES6 default import', documentation: 'Import default export from a module' },
+      { label: 'import *', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "import * as ${1:name} from '${2:module}';", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'ES6 namespace import', documentation: 'Import all exports as namespace' },
+      { label: 'import type', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "import type { ${1:Type} } from '${2:module}';", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'TypeScript type import', documentation: 'Import type-only export' },
+      { label: 'export default', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "export default ${1:expression};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'ES6 default export' },
+      { label: 'export named', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "export { ${1:name} };", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'ES6 named export' },
+      { label: 'export const', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "export const ${1:name} = ${2:value};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Export constant' },
+      { label: 'export function', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "export function ${1:name}(${2:params}) {\n\t${3}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Export function' },
+      { label: 'export class', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "export class ${1:Name} {\n\tconstructor(${2:params}) {\n\t\t${3}\n\t}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Export class' },
+      // CommonJS
+      { label: 'require', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "const ${1:name} = require('${2:module}');", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'CommonJS require', documentation: 'Require a CommonJS module' },
+      { label: 'module.exports', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "module.exports = { ${1} };", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'CommonJS module export' },
+      // Destructuring
+      { label: 'destructure object', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "const { ${1:prop} } = ${2:object};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Object destructuring' },
+      { label: 'destructure array', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "const [${1:item}] = ${2:array};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Array destructuring' },
+      // Modern patterns
+      { label: 'arrow function', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "const ${1:name} = (${2:params}) => {\n\t${3}\n};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Arrow function' },
+      { label: 'async function', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "async function ${1:name}(${2:params}) {\n\ttry {\n\t\t${3}\n\t} catch (error) {\n\t\tconsole.error(error);\n\t}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Async function with try-catch' },
+      { label: 'async arrow', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "const ${1:name} = async (${2:params}) => {\n\t${3}\n};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Async arrow function' },
+      { label: 'promise', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "new Promise((resolve, reject) => {\n\t${1}\n});", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Promise constructor' },
+      { label: 'try catch', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "try {\n\t${1}\n} catch (${2:error}) {\n\tconsole.error(${2:error});\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Try-catch block' },
+      { label: 'forEach', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "${1:array}.forEach((${2:item}) => {\n\t${3}\n});", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Array forEach' },
+      { label: 'map', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "${1:array}.map((${2:item}) => {\n\t${3}\n});", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Array map' },
+      { label: 'filter', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "${1:array}.filter((${2:item}) => {\n\t${3}\n});", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Array filter' },
+      { label: 'reduce', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "${1:array}.reduce((${2:acc}, ${3:item}) => {\n\t${4}\n}, ${5:initialValue});", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Array reduce' },
+      { label: 'class', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "class ${1:Name} {\n\tconstructor(${2:params}) {\n\t\t${3}\n\t}\n\n\t${4:method}() {\n\t\t${5}\n\t}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Class declaration' },
+      { label: 'extends class', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "class ${1:Name} extends ${2:Base} {\n\tconstructor(${3:params}) {\n\t\tsuper(${4});\n\t\t${5}\n\t}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Class with inheritance' },
+      { label: 'template literal', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "`${1:text} \\${${2:expression}}`", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Template literal' },
+      { label: 'spread operator', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "...${1:iterable}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Spread operator' },
+      { label: 'optional chaining', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "${1:obj}?.${2:prop}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Optional chaining ?.' },
+      { label: 'nullish coalescing', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "${1:value} ?? ${2:default}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Nullish coalescing ??' },
+    ];
+
+    ['javascript', 'typescript'].forEach(langId => {
+      monaco.languages.registerCompletionItemProvider(langId, {
+        provideCompletionItems: (model, position) => {
+          const word = model.getWordUntilPosition(position);
+          const range = { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: word.startColumn, endColumn: word.endColumn };
+          return { suggestions: jsSnippets.map(s => ({ ...s, range })) };
+        },
+      });
+    });
+
+    // ── Python ─────────────────────────────────────────────────────────
+    const pySnippets = [
+      { label: 'import', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "import ${1:module}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Import module' },
+      { label: 'from import', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "from ${1:module} import ${2:name}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'From module import' },
+      { label: 'from import as', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "from ${1:module} import ${2:name} as ${3:alias}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Import with alias' },
+      { label: 'import as', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "import ${1:module} as ${2:alias}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Import module with alias' },
+      { label: 'def function', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "def ${1:name}(${2:params}):\n\t${3:pass}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Function definition' },
+      { label: 'async def', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "async def ${1:name}(${2:params}):\n\t${3:pass}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Async function definition' },
+      { label: 'class', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "class ${1:Name}:\n\tdef __init__(self${2:, params}):\n\t\t${3:pass}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Class definition' },
+      { label: 'class inherit', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "class ${1:Name}(${2:Base}):\n\tdef __init__(self${3:, params}):\n\t\tsuper().__init__(${4})\n\t\t${5:pass}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Class with inheritance' },
+      { label: 'if __name__', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'if __name__ == "__main__":\n\t${1:main()}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Main guard' },
+      { label: 'list comprehension', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "[${1:expr} for ${2:item} in ${3:iterable}]", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'List comprehension' },
+      { label: 'dict comprehension', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "{${1:key}: ${2:value} for ${3:item} in ${4:iterable}}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Dict comprehension' },
+      { label: 'try except', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "try:\n\t${1:pass}\nexcept ${2:Exception} as ${3:e}:\n\t${4:print(e)}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Try-except block' },
+      { label: 'with open', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "with open('${1:file}', '${2:r}') as ${3:f}:\n\t${4:content = f.read()}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'File open context manager' },
+      { label: 'lambda', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "lambda ${1:x}: ${2:x}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Lambda expression' },
+      { label: 'decorator', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "def ${1:decorator}(func):\n\tdef wrapper(*args, **kwargs):\n\t\t${2}\n\t\tresult = func(*args, **kwargs)\n\t\t${3}\n\t\treturn result\n\treturn wrapper", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Decorator pattern' },
+      { label: 'dataclass', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "from dataclasses import dataclass\n\n@dataclass\nclass ${1:Name}:\n\t${2:field}: ${3:str}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Dataclass' },
+      { label: 'enumerate', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "for ${1:i}, ${2:item} in enumerate(${3:iterable}):\n\t${4:pass}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Enumerate loop' },
+      { label: 'f-string', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'f"${1:text} {${2:expr}}"', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'F-string' },
+    ];
+
+    monaco.languages.registerCompletionItemProvider('python', {
+      provideCompletionItems: (model, position) => {
+        const word = model.getWordUntilPosition(position);
+        const range = { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: word.startColumn, endColumn: word.endColumn };
+        return { suggestions: pySnippets.map(s => ({ ...s, range })) };
+      },
+    });
+
+    // ── Java ───────────────────────────────────────────────────────────
+    const javaSnippets = [
+      { label: 'import', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "import ${1:java.util}.${2:*};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Java import' },
+      { label: 'import static', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "import static ${1:package}.${2:Class}.${3:*};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Static import' },
+      { label: 'public class', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "public class ${1:Name} {\n\tpublic static void main(String[] args) {\n\t\t${2}\n\t}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Main class' },
+      { label: 'interface', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "public interface ${1:Name} {\n\t${2:void method();}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Interface' },
+      { label: 'try-catch', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "try {\n\t${1}\n} catch (${2:Exception} ${3:e}) {\n\t${4:e.printStackTrace();}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Try-catch' },
+      { label: 'for-each', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "for (${1:Type} ${2:item} : ${3:collection}) {\n\t${4}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Enhanced for loop' },
+      { label: 'stream', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "${1:list}.stream()\n\t.filter(${2:item} -> ${3:condition})\n\t.map(${4:item} -> ${5:transform})\n\t.collect(Collectors.toList());", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Stream pipeline' },
+    ];
+
+    monaco.languages.registerCompletionItemProvider('java', {
+      provideCompletionItems: (model, position) => {
+        const word = model.getWordUntilPosition(position);
+        const range = { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: word.startColumn, endColumn: word.endColumn };
+        return { suggestions: javaSnippets.map(s => ({ ...s, range })) };
+      },
+    });
+
+    // ── C/C++ ──────────────────────────────────────────────────────────
+    const cppSnippets = [
+      { label: '#include <>',  kind: monaco.languages.CompletionItemKind.Snippet, insertText: "#include <${1:header}>", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'System include' },
+      { label: '#include ""', kind: monaco.languages.CompletionItemKind.Snippet, insertText: '#include "${1:header}"', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Local include' },
+      { label: 'using namespace', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "using namespace ${1:std};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Using namespace' },
+      { label: 'class', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "class ${1:Name} {\npublic:\n\t${1:Name}(${2}) {\n\t\t${3}\n\t}\n\nprivate:\n\t${4}\n};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Class definition' },
+      { label: 'struct', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "struct ${1:Name} {\n\t${2:int field};\n};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Struct definition' },
+      { label: 'for range', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "for (auto& ${1:item} : ${2:container}) {\n\t${3}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Range-based for loop' },
+      { label: 'unique_ptr', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "std::unique_ptr<${1:Type}> ${2:ptr} = std::make_unique<${1:Type}>(${3});", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Unique pointer' },
+      { label: 'shared_ptr', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "std::shared_ptr<${1:Type}> ${2:ptr} = std::make_shared<${1:Type}>(${3});", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Shared pointer' },
+      { label: 'template', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "template <typename ${1:T}>\n${2:T} ${3:name}(${4:T param}) {\n\t${5}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Template function' },
+      { label: 'lambda', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "[${1:capture}](${2:params}) {\n\t${3}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Lambda expression' },
+    ];
+
+    ['c', 'cpp'].forEach(langId => {
+      monaco.languages.registerCompletionItemProvider(langId, {
+        provideCompletionItems: (model, position) => {
+          const word = model.getWordUntilPosition(position);
+          const range = { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: word.startColumn, endColumn: word.endColumn };
+          return { suggestions: cppSnippets.map(s => ({ ...s, range })) };
+        },
+      });
+    });
+
+    // ── Go ──────────────────────────────────────────────────────────────
+    const goSnippets = [
+      { label: 'import', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'import (\n\t"${1:fmt}"\n)', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Import block' },
+      { label: 'func', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "func ${1:name}(${2:params}) ${3:returnType} {\n\t${4}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Function' },
+      { label: 'struct', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "type ${1:Name} struct {\n\t${2:Field} ${3:Type}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Struct type' },
+      { label: 'interface', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "type ${1:Name} interface {\n\t${2:Method}(${3}) ${4}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Interface type' },
+      { label: 'method', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "func (${1:r} *${2:Type}) ${3:Name}(${4}) ${5} {\n\t${6}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Method with receiver' },
+      { label: 'goroutine', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "go func() {\n\t${1}\n}()", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Goroutine' },
+      { label: 'channel', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "${1:ch} := make(chan ${2:Type})", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Channel' },
+      { label: 'error handling', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "if err != nil {\n\t${1:return err}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Error check' },
+    ];
+
+    monaco.languages.registerCompletionItemProvider('go', {
+      provideCompletionItems: (model, position) => {
+        const word = model.getWordUntilPosition(position);
+        const range = { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: word.startColumn, endColumn: word.endColumn };
+        return { suggestions: goSnippets.map(s => ({ ...s, range })) };
+      },
+    });
+
+    // ── Rust ────────────────────────────────────────────────────────────
+    const rustSnippets = [
+      { label: 'use', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "use ${1:std}::${2:io};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Use import' },
+      { label: 'use {', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "use ${1:std}::{${2:io, fs}};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Use multiple imports' },
+      { label: 'mod', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "mod ${1:name};", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Module declaration' },
+      { label: 'pub mod', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "pub mod ${1:name} {\n\t${2}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Public module' },
+      { label: 'fn', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "fn ${1:name}(${2:params}) -> ${3:ReturnType} {\n\t${4}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Function' },
+      { label: 'impl', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "impl ${1:Type} {\n\tpub fn ${2:new}(${3}) -> Self {\n\t\t${4}\n\t}\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Implementation block' },
+      { label: 'struct', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "#[derive(Debug)]\nstruct ${1:Name} {\n\t${2:field}: ${3:Type},\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Struct with derive' },
+      { label: 'enum', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "#[derive(Debug)]\nenum ${1:Name} {\n\t${2:Variant},\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Enum with derive' },
+      { label: 'match', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "match ${1:value} {\n\t${2:pattern} => ${3:result},\n\t_ => ${4:default},\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Match expression' },
+      { label: 'trait', kind: monaco.languages.CompletionItemKind.Snippet, insertText: "trait ${1:Name} {\n\tfn ${2:method}(&self) -> ${3:Type};\n}", insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'Trait definition' },
+    ];
+
+    monaco.languages.registerCompletionItemProvider('rust', {
+      provideCompletionItems: (model, position) => {
+        const word = model.getWordUntilPosition(position);
+        const range = { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: word.startColumn, endColumn: word.endColumn };
+        return { suggestions: rustSnippets.map(s => ({ ...s, range })) };
+      },
+    });
+  }
 
   /**
    * Bulletproof Yjs <-> Monaco binding v7.

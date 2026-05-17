@@ -31,7 +31,7 @@ const { connectDB, disconnectDB, getConnectionStatus } = require('./config/db');
 const { socketAuthMiddleware } = require('./middleware/auth');
 const { generalLimiter } = require('./middleware/rateLimiter');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
-const { initRoomHandler, getActiveRooms, roomExists, gracefulShutdown: shutdownRooms, getHealthStats, renameRoom } = require('./sockets/roomHandler');
+const { initRoomHandler, getActiveRooms, roomExists, gracefulShutdown: shutdownRooms, getHealthStats, renameRoom, kickUser } = require('./sockets/roomHandler');
 const { cleanup: cleanupExecution } = require('./controllers/executionController');
 
 const executionRoutes = require('./routes/execution');
@@ -200,6 +200,7 @@ app.set('io', io);
 app.set('getActiveRooms', getActiveRooms);
 app.set('getHealthStats', getHealthStats);
 app.set('renameRoom', renameRoom);
+app.set('kickUser', kickUser);
 
 initRoomHandler(io, { competitionState, addViolation });
 

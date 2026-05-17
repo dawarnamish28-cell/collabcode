@@ -630,7 +630,124 @@ function postProcessOutput(result, language) {
     result.stderr = result.stderr.replace(/\/tmp\/collabcode-[a-zA-Z0-9]+\//g, '');
   }
 
+  // v12: Parse structured error info (line numbers, error types)
+  if (result.stderr && result.exitCode !== 0) {
+    result.parsedErrors = parseErrors(result.stderr, language);
+  }
+
   return result;
+}
+
+// ─── v12: Structured Error Parsing ────────────────────────────────────
+function parseErrors(stderr, language) {
+  const errors = [];
+  const lines = stderr.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    let parsed = null;
+
+    // Python: File "main.py", line 5, in <module>
+    //   or: SyntaxError: invalid syntax
+    //   or: Traceback (most recent call last):
+    if (language === 'python') {
+      const fileMatch = line.match(/\s*File\s+"([^"]*)",\s*line\s*(\d+)(?:,\s*in\s+(.+))?/);
+      if (fileMatch) {
+        parsed = { file: fileMatch[1], line: parseInt(fileMatch[2]), context: fileMatch[3] || '' };
+      }
+      const errMatch = line.match(/^(\w*Error|\w*Exception|\w*Warning):\s*(.+)/);
+      if (errMatch) {
+        if (parsed) {
+          parsed.type = errMatch[1];
+          parsed.message = errMatch[2];
+        } else {
+          parsed = { type: errMatch[1], message: errMatch[2] };
+        }
+      }
+    }
+
+    // JavaScript/TypeScript: main.js:5
+    //   or: SyntaxError: Unexpected token
+    //   or: ReferenceError: x is not defined
+    if (language === 'javascript' || language === 'typescript') {
+      const fileMatch = line.match(/^\s*([\w.-]+\.[jt]sx?):(\d+)(?::(\d+))?/);
+      if (fileMatch) {
+        parsed = { file: fileMatch[1], line: parseInt(fileMatch[2]), column: fileMatch[3] ? parseInt(fileMatch[3]) : undefined };
+      }
+      const errMatch = line.match(/^\s*(\w*Error|\w*TypeError|\w*RangeError|\w*ReferenceError|\w*SyntaxError):\s*(.+)/);
+      if (errMatch) {
+        if (parsed) {
+          parsed.type = errMatch[1];
+          parsed.message = errMatch[2];
+        } else {
+          parsed = { type: errMatch[1], message: errMatch[2] };
+        }
+      }
+    }
+
+    // C/C++: main.c:5:10: error: expected ';'
+    //   or: main.cpp:12:3: warning: unused variable
+    if (language === 'c' || language === 'cpp') {
+      const gccMatch = line.match(/^([\w.-]+\.\w+):(\d+):(\d+):\s*(error|warning|note|fatal error):\s*(.+)/);
+      if (gccMatch) {
+        parsed = { file: gccMatch[1], line: parseInt(gccMatch[2]), column: parseInt(gccMatch[3]), type: gccMatch[4], message: gccMatch[5] };
+      }
+    }
+
+    // Java: Main.java:5: error: ';' expected
+    if (language === 'java') {
+      const javaMatch = line.match(/^([\w.-]+\.java):(\d+):\s*(error|warning):\s*(.+)/);
+      if (javaMatch) {
+        parsed = { file: javaMatch[1], line: parseInt(javaMatch[2]), type: javaMatch[3], message: javaMatch[4] };
+      }
+    }
+
+    // Go: ./main.go:12:5: undefined: x
+    if (language === 'go') {
+      const goMatch = line.match(/^\.?\/?(\w[\w.-]*\.go):(\d+):(\d+):\s*(.+)/);
+      if (goMatch) {
+        parsed = { file: goMatch[1], line: parseInt(goMatch[2]), column: parseInt(goMatch[3]), message: goMatch[4] };
+      }
+    }
+
+    // Rust: error[E0425]: cannot find value `x` in this scope
+    //  --> main.rs:5:5
+    if (language === 'rust') {
+      const rustErrMatch = line.match(/^(error|warning)\[?(E\d+)?\]?:\s*(.+)/);
+      if (rustErrMatch) {
+        parsed = { type: rustErrMatch[1], code: rustErrMatch[2] || '', message: rustErrMatch[3] };
+      }
+      const rustLocMatch = line.match(/-->\s*([\w.-]+):(\d+):(\d+)/);
+      if (rustLocMatch) {
+        parsed = parsed || {};
+        parsed.file = rustLocMatch[1];
+        parsed.line = parseInt(rustLocMatch[2]);
+        parsed.column = parseInt(rustLocMatch[3]);
+      }
+    }
+
+    // Ruby: main.rb:5:in `<main>': undefined local variable
+    if (language === 'ruby') {
+      const rubyMatch = line.match(/^([\w.-]+\.rb):(\d+)(?::in\s*`(.+)')?:\s*(.+)/);
+      if (rubyMatch) {
+        parsed = { file: rubyMatch[1], line: parseInt(rubyMatch[2]), context: rubyMatch[3] || '', message: rubyMatch[4] };
+      }
+    }
+
+    // PHP: Fatal error: ... in main.php on line 5
+    if (language === 'php') {
+      const phpMatch = line.match(/(Fatal error|Parse error|Warning|Notice):\s*(.+?)\s+in\s+([\w.-]+\.php)\s+on\s+line\s+(\d+)/);
+      if (phpMatch) {
+        parsed = { type: phpMatch[1], message: phpMatch[2], file: phpMatch[3], line: parseInt(phpMatch[4]) };
+      }
+    }
+
+    if (parsed && (parsed.line || parsed.type)) {
+      errors.push(parsed);
+    }
+  }
+
+  return errors;
 }
 
 // ─── Execute Locally ───────────────────────────────────────────────────
@@ -664,6 +781,7 @@ async function executeLocal(code, language, stdin) {
           success: processed.exitCode === 0, stdout: processed.stdout, stderr: processed.stderr,
           exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
           status: processed.exitCode === 0 ? 'Success' : `Exit Code: ${processed.exitCode}`, phase: 'run',
+          parsedErrors: processed.parsedErrors || [],
         };
       } catch (runErr) {
         const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
@@ -685,6 +803,7 @@ async function executeLocal(code, language, stdin) {
             success: false, stdout: processed.stdout, stderr: processed.stderr,
             exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
             status: compileResult.status, phase: compileResult.phase,
+            parsedErrors: processed.parsedErrors || [],
           };
         }
 
@@ -699,6 +818,7 @@ async function executeLocal(code, language, stdin) {
           exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
           status: processed.exitCode === 0 ? 'Success' : `Exit Code: ${processed.exitCode}`,
           phase: 'run', cached: compileResult.cached,
+          parsedErrors: processed.parsedErrors || [],
         };
       } catch (err) {
         const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
@@ -720,6 +840,7 @@ async function executeLocal(code, language, stdin) {
         success: processed.exitCode === 0, stdout: processed.stdout, stderr: processed.stderr,
         exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
         status: processed.exitCode === 0 ? 'Success' : `Exit Code: ${processed.exitCode}`, phase: 'run',
+        parsedErrors: processed.parsedErrors || [],
       };
     } catch (runErr) {
       const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
@@ -763,6 +884,7 @@ async function executeCode(req, res) {
         status: result.status, engine: 'local', language: lang.name,
         version: lang.version, phase: result.phase,
         cached: result.cached || false,
+        parsedErrors: result.parsedErrors || [],
       });
     }
     return res.status(501).json({ error: true, message: `${lang.name} runtime is not available on this server.` });

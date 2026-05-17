@@ -1,5 +1,5 @@
 /**
- * Admin Routes v1.0 — Competition Mode & Room Management
+ * Admin Routes v2.0 — Competition Mode & Room Management + Kick Users
  * 
  * Features:
  *  - Admin login with JWT-protected endpoints
@@ -220,6 +220,25 @@ router.post('/rooms/:roomId/rename', adminAuthMiddleware, (req, res) => {
     return res.status(404).json({ error: true, message: 'Room not found' });
   }
   res.json({ success: true, roomId, name: name.trim() });
+});
+
+// ─── Kick User from Room ───────────────────────────────────────────────
+router.post('/rooms/:roomId/kick/:socketId', adminAuthMiddleware, (req, res) => {
+  const { roomId, socketId } = req.params;
+  const kickUser = req.app.get('kickUser');
+  const io = req.app.get('io');
+  
+  if (!kickUser || !io) {
+    return res.status(500).json({ error: true, message: 'Kick functionality not available' });
+  }
+
+  const result = kickUser(socketId, io);
+  if (!result.success) {
+    return res.status(404).json({ error: true, message: result.reason || 'User not found' });
+  }
+
+  console.log(`[Admin] Kicked ${result.username} from room ${roomId}`);
+  res.json({ success: true, username: result.username, roomId });
 });
 
 module.exports = {

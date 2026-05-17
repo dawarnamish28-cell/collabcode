@@ -1,5 +1,5 @@
 /**
- * OutputConsole v16.0 — Hardened for Heavy Load
+ * OutputConsole v17.0 — Enhanced Error Formatting
  *
  * v16.0 hardening:
  *  - terminalLines state capped at 5000 lines (oldest pruned on overflow)
@@ -68,17 +68,10 @@ const THEMES = {
   },
 };
 
-// Syntax highlight error lines
+// Syntax highlight error lines (v17: enhanced patterns)
 function highlightErrorLine(text, theme) {
-  // File path pattern: /path/to/file.ext:line:col
-  const filePathRegex = /((?:\/[\w.-]+)+(?:\.\w+)?):(\d+)(?::(\d+))?/g;
-  // Error type pattern: ErrorType: message
-  const errorTypeRegex = /^(\w*Error|\w*Exception|panic|FATAL|fatal|error\[E\d+\]):/;
-  // Line number references: "at line N", "line N"
-  const lineRefRegex = /\b(line|Line|at)\s+(\d+)/g;
   // Arrow indicators: ^^^, ~~~, ---
   const arrowRegex = /^(\s*)([\^~-]{3,})(\s*)$/;
-
   if (arrowRegex.test(text)) {
     return [{ text, color: theme.warn, bold: false }];
   }
@@ -86,27 +79,41 @@ function highlightErrorLine(text, theme) {
   const parts = [];
   let remaining = text;
 
+  // Error/warning type patterns — match at start
+  const errorTypeRegex = /^(\w*Error|\w*Exception|\w*TypeError|\w*RangeError|\w*ReferenceError|\w*SyntaxError|Fatal error|Parse error|Warning|panic|FATAL|fatal|error\[E\d+\]|error|warning|note)(?=:|\s)/;
   const errorMatch = remaining.match(errorTypeRegex);
   if (errorMatch) {
-    parts.push({ text: errorMatch[1] + ':', color: theme.error, bold: true });
-    remaining = remaining.slice(errorMatch[0].length);
+    const isWarning = /warning|Warning|note/i.test(errorMatch[1]);
+    parts.push({ text: errorMatch[1], color: isWarning ? theme.warn : theme.error, bold: true });
+    remaining = remaining.slice(errorMatch[1].length);
+    // Consume the colon if present
+    if (remaining.startsWith(':')) {
+      parts.push({ text: ':', color: isWarning ? theme.warn : theme.error, bold: true });
+      remaining = remaining.slice(1);
+    }
   }
 
-  // Highlight file paths
+  // Process remaining text: highlight file:line:col patterns and "line N" references
+  const combinedRegex = /((?:[\w.-]+\.\w+):(\d+)(?::(\d+))?)|(\b(?:line|Line|on line)\s+(\d+)(?:\s*,?\s*(?:col(?:umn)?|position)\s+(\d+))?)/g;
   let lastIdx = 0;
   let match;
   const tempRemaining = remaining;
-  filePathRegex.lastIndex = 0;
-  while ((match = filePathRegex.exec(tempRemaining)) !== null) {
+  combinedRegex.lastIndex = 0;
+
+  while ((match = combinedRegex.exec(tempRemaining)) !== null) {
+    // Add text before this match
     if (match.index > lastIdx) {
       parts.push({ text: tempRemaining.slice(lastIdx, match.index), color: null, bold: false });
     }
+    // Highlight the matched location reference
     parts.push({ text: match[0], color: theme.accent, bold: false });
     lastIdx = match.index + match[0].length;
   }
+
   if (lastIdx < tempRemaining.length) {
     parts.push({ text: tempRemaining.slice(lastIdx), color: null, bold: false });
   }
+
   if (parts.length === 0) {
     parts.push({ text, color: null, bold: false });
   }
@@ -192,6 +199,26 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
       const outputLines = output.content.split('\n');
       outputLines.forEach(l => newLines.push({ type: 'stdout', text: l }));
     }
+    // v17: Structured error display from parsed errors
+    if (output.parsedErrors && output.parsedErrors.length > 0) {
+      newLines.push({ type: 'error-summary-header', text: `${output.parsedErrors.length} error${output.parsedErrors.length > 1 ? 's' : ''} found` });
+      output.parsedErrors.forEach((err, idx) => {
+        const parts = [];
+        if (err.type) parts.push(err.type);
+        if (err.file) parts.push(err.file);
+        if (err.line) parts.push(`line ${err.line}`);
+        if (err.column) parts.push(`col ${err.column}`);
+        const location = parts.join(' · ');
+        const message = err.message || '';
+        newLines.push({
+          type: 'error-item',
+          text: `${location}${message ? ': ' + message : ''}`,
+          errorData: err,
+        });
+      });
+      newLines.push({ type: 'dim', text: '' });
+    }
+
     if (output.error) {
       const errorLines = output.error.split('\n').filter(l => l.trim());
       if (errorLines.length > 0) {
@@ -569,6 +596,51 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
             if (line.type === 'stdin') return <div key={i} className="pl-2 opacity-70" style={{ color: theme.accent }}>{line.text}</div>;
             if (line.type === 'input') return <div key={i} style={{ color: theme.warn }}>{line.text}</div>;
             if (line.type === 'info') return <div key={i} className="italic text-[11px]" style={{ color: theme.dim }}>{line.text}</div>;
+
+            {/* v17: Structured error display */}
+            if (line.type === 'error-summary-header') {
+              return (
+                <div key={i} className="flex items-center gap-2 mt-2 mb-1 py-1.5 px-2 rounded-lg"
+                  style={{ background: theme.error + '10', borderLeft: `3px solid ${theme.error}` }}>
+                  <svg className="w-3.5 h-3.5 flex-shrink-0" style={{ color: theme.error }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  <span className="text-[11px] font-semibold" style={{ color: theme.error }}>{line.text}</span>
+                </div>
+              );
+            }
+
+            if (line.type === 'error-item') {
+              const err = line.errorData || {};
+              return (
+                <div key={i} className="flex items-start gap-2 py-1 px-2 ml-1 rounded hover:bg-white/[0.02] transition"
+                  style={{ borderLeft: `2px solid ${theme.error}40` }}>
+                  <span className="text-[10px] mt-0.5 flex-shrink-0" style={{ color: theme.error }}>●</span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {err.type && (
+                        <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded"
+                          style={{ color: theme.error, background: theme.error + '15' }}>
+                          {err.type}
+                        </span>
+                      )}
+                      {err.line && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded"
+                          style={{ color: theme.accent, background: theme.accent + '15' }}>
+                          line {err.line}{err.column ? `:${err.column}` : ''}
+                        </span>
+                      )}
+                      {err.file && (
+                        <span className="text-[10px]" style={{ color: theme.dimmer }}>{err.file}</span>
+                      )}
+                    </div>
+                    {err.message && (
+                      <p className="text-[11px] mt-0.5" style={{ color: theme.text }}>{err.message}</p>
+                    )}
+                  </div>
+                </div>
+              );
+            }
 
             // Collapsible stderr header
             if (line.type === 'stderr-header') {
