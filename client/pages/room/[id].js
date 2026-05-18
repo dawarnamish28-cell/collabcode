@@ -1,5 +1,5 @@
 /**
- * Room Workspace v20.0 — Phase 3: Kick Users, Error Formatting
+ * Room Workspace v21.0 — Phase 4: WebRTC Fix, Language Fix, Admin Features
  * 
  * New in v16:
  *  - Video collaboration: WebRTC video chat & screen sharing
@@ -350,9 +350,12 @@ export default function RoomPage() {
 
     const isPublicRoom = queryPublic === 'true';
 
-    socket.on('connect', () => { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang, isPublic: isPublicRoom, roomName: queryRoomName || undefined }); });
+    // v21: Only send language on initial room creation (when queryLang is explicitly set),
+    // not on every join/reconnect — prevents overwriting the room's established language
+    const sendLang = queryLang ? lang : undefined;
+    socket.on('connect', () => { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: sendLang, isPublic: isPublicRoom, roomName: queryRoomName || undefined }); });
     socket.on('disconnect', () => setConnectionStatus('disconnected'));
-    socket.on('reconnect', () => { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang }); });
+    socket.on('reconnect', () => { setConnectionStatus('connected'); socket.emit('room:join', { roomId }); });
     socket.on('room:state', (data) => {
       if (data.users) setUsers(data.users);
       if (data.isPublic !== undefined) setIsPublic(data.isPublic);
@@ -408,14 +411,33 @@ export default function RoomPage() {
       router.push('/');
     });
 
+    // v21: Handle admin broadcast messages
+    socket.on('admin:broadcast', (data) => {
+      const typeMap = { warning: 'error', success: 'join', info: 'info' };
+      addToast(`📢 ${data.message}`, typeMap[data.type] || 'info');
+      addNotification(`Admin: ${data.message}`, typeMap[data.type] || 'info', 'admin');
+    });
+
+    // v21: Handle admin force disconnect
+    socket.on('admin:force-disconnect', (data) => {
+      alert(data.message || 'You have been disconnected by the admin.');
+      router.push('/');
+    });
+
+    // v21: Handle admin ban
+    socket.on('admin:banned', (data) => {
+      alert(data.message || 'You have been banned by the admin.');
+      router.push('/');
+    });
+
     provider.on('awareness-change', (states) => setAwarenessStates(new Map(states)));
 
-    if (socket.connected) { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: lang, isPublic: isPublicRoom, roomName: queryRoomName || undefined }); }
+    if (socket.connected) { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: sendLang, isPublic: isPublicRoom, roomName: queryRoomName || undefined }); }
     else setConnectionStatus('connecting');
 
     return () => {
       provider.destroy();
-      ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change','room:visibility-changed','competition:lock-change','competition:mode-change','competition:kicked'].forEach(e => socket.off(e));
+      ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change','room:visibility-changed','competition:lock-change','competition:mode-change','competition:kicked','admin:broadcast','admin:force-disconnect','admin:banned'].forEach(e => socket.off(e));
       disconnectSocket();
       ydoc.destroy();
     };

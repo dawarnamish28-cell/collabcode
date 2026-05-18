@@ -1,5 +1,5 @@
 /**
- * CollabCode Server v10.0 — Hardened for Continuous Heavy Use
+ * CollabCode Server v11.0 — Hardened for Continuous Heavy Use + Phase 4 Admin
  * 
  * v9.0 hardening:
  *  - Graceful shutdown with connection draining (waits for active requests)
@@ -40,7 +40,8 @@ const fileRoutes = require('./routes/files');
 const galleryRoutes = require('./routes/gallery');
 const workspaceRoutes = require('./routes/workspaces');
 const teamRoutes = require('./routes/teams');
-const { router: adminRoutes, competitionState, addViolation } = require('./routes/admin');
+const { router: adminRoutes, competitionState, addViolation, isBanned } = require('./routes/admin');
+const { getExecutionStats } = require('./controllers/executionController');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 
@@ -195,12 +196,34 @@ io.use((socket, next) => {
 
 io.use(socketAuthMiddleware);
 
+// v13: Block banned users from connecting via Socket.IO
+io.use((socket, next) => {
+  const userId = socket.user?.userId;
+  if (userId && isBanned(userId)) {
+    console.log(`[Socket] Blocked banned user: ${userId}`);
+    return next(new Error('You have been banned by the admin.'));
+  }
+  next();
+});
+
 // ─── Store io and room functions on app for admin routes ─────────────
 app.set('io', io);
 app.set('getActiveRooms', getActiveRooms);
 app.set('getHealthStats', getHealthStats);
 app.set('renameRoom', renameRoom);
 app.set('kickUser', kickUser);
+// v13: Wire execution stats as a pure function for admin /stats/executions
+app.set('getExecStats', () => {
+  const mem = process.memoryUsage();
+  return {
+    memoryUsage: {
+      rss: Math.round(mem.rss / 1048576),
+      heapUsed: Math.round(mem.heapUsed / 1048576),
+      heapTotal: Math.round(mem.heapTotal / 1048576),
+    },
+    uptime: Math.floor(process.uptime()),
+  };
+});
 
 initRoomHandler(io, { competitionState, addViolation });
 

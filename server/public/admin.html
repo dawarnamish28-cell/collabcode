@@ -25,11 +25,14 @@
     .scrollbar-thin::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
     .violation-flash { animation: violationFlash 0.5s ease; }
     @keyframes violationFlash { 0%, 100% { background: transparent; } 50% { background: rgba(255, 107, 107, 0.1); } }
+    .tab-active { border-bottom: 2px solid #5e9eff; color: #5e9eff; }
+    .tab-inactive { border-bottom: 2px solid transparent; color: #666; }
+    .tab-inactive:hover { color: #aaa; }
   </style>
 </head>
 <body class="min-h-screen">
 
-  <!-- ── LOGIN PAGE ─────────────────────────────────────────── -->
+  <!-- LOGIN PAGE -->
   <div id="login-page" class="min-h-screen flex items-center justify-center p-4">
     <div class="w-full max-w-sm fade-in">
       <div class="text-center mb-8">
@@ -57,7 +60,7 @@
     </div>
   </div>
 
-  <!-- ── DASHBOARD PAGE ────────────────────────────────────── -->
+  <!-- DASHBOARD PAGE -->
   <div id="dashboard-page" class="hidden min-h-screen">
     <!-- Header -->
     <header class="border-b border-[#1e1e1e] bg-[#0f1012]/80 backdrop-blur-md sticky top-0 z-50">
@@ -66,7 +69,7 @@
           <div class="w-8 h-8 rounded-lg bg-[#1a1b1e] border border-[#282828] flex items-center justify-center text-xs font-bold text-[#5e9eff] mono">//</div>
           <div>
             <h1 class="text-sm font-semibold text-white">CollabCode Admin</h1>
-            <p class="text-[10px] text-[#555] mono">competition control panel</p>
+            <p class="text-[10px] text-[#555] mono">competition control panel v3</p>
           </div>
         </div>
         <div class="flex items-center gap-3">
@@ -81,109 +84,148 @@
       </div>
     </header>
 
+    <!-- Tabs -->
+    <div class="max-w-7xl mx-auto px-6 pt-4">
+      <div class="flex gap-4 border-b border-[#222]">
+        <button onclick="switchTab('overview')" id="tab-overview" class="pb-2 px-1 text-sm mono transition tab-active">Overview</button>
+        <button onclick="switchTab('rooms')" id="tab-rooms" class="pb-2 px-1 text-sm mono transition tab-inactive">Rooms & Users</button>
+        <button onclick="switchTab('tools')" id="tab-tools" class="pb-2 px-1 text-sm mono transition tab-inactive">Admin Tools</button>
+        <button onclick="switchTab('bans')" id="tab-bans" class="pb-2 px-1 text-sm mono transition tab-inactive">Bans</button>
+      </div>
+    </div>
+
     <main class="max-w-7xl mx-auto px-6 py-6">
-      <!-- ── Competition Controls ────────────────────────────── -->
-      <div class="grid md:grid-cols-2 gap-4 mb-6 fade-in">
-        <!-- Lock/Unlock Card -->
-        <div id="lock-card" class="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 transition-all">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h2 class="text-sm font-semibold text-white flex items-center gap-2">
-                <svg class="w-4 h-4 text-[#ffb347]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                Room Lock Control
-              </h2>
-              <p class="text-xs text-[#555] mt-0.5 mono">Start/stop coding across all rooms</p>
-            </div>
-            <div id="lock-status-badge" class="px-3 py-1 rounded-full text-xs font-medium mono">
-              <!-- Filled by JS -->
-            </div>
-          </div>
-          <div class="flex gap-3">
-            <button id="lock-btn" onclick="toggleLock(true)" 
-              class="btn flex-1 py-3 bg-[#ff6b6b] hover:bg-[#ff8a8a] text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-              Lock All Rooms
-            </button>
-            <button id="unlock-btn" onclick="toggleLock(false)"
-              class="btn flex-1 py-3 bg-[#5bd882] hover:bg-[#7ae69e] text-[#0a0a0a] font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
-              Unlock All Rooms
-            </button>
-          </div>
-          <p id="lock-timestamp" class="text-[10px] text-[#444] mono mt-3 text-center"></p>
-        </div>
 
-        <!-- Competition Mode Card -->
-        <div id="mode-card" class="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 transition-all">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h2 class="text-sm font-semibold text-white flex items-center gap-2">
-                <svg class="w-4 h-4 text-[#c4b5fd]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+      <!-- OVERVIEW TAB -->
+      <div id="panel-overview">
+        <!-- Competition Controls -->
+        <div class="grid md:grid-cols-2 gap-4 mb-6 fade-in">
+          <!-- Lock/Unlock Card -->
+          <div id="lock-card" class="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 transition-all">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h2 class="text-sm font-semibold text-white flex items-center gap-2">
+                  <svg class="w-4 h-4 text-[#ffb347]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                  Room Lock Control
+                </h2>
+                <p class="text-xs text-[#555] mt-0.5 mono">Start/stop coding across all rooms</p>
+              </div>
+              <div id="lock-status-badge" class="px-3 py-1 rounded-full text-xs font-medium mono"></div>
+            </div>
+            <div class="flex gap-3">
+              <button onclick="toggleLock(true)" class="btn flex-1 py-3 bg-[#ff6b6b] hover:bg-[#ff8a8a] text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                Lock All Rooms
+              </button>
+              <button onclick="toggleLock(false)" class="btn flex-1 py-3 bg-[#5bd882] hover:bg-[#7ae69e] text-[#0a0a0a] font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
+                Unlock All Rooms
+              </button>
+            </div>
+            <p id="lock-timestamp" class="text-[10px] text-[#444] mono mt-3 text-center"></p>
+          </div>
+
+          <!-- Competition Mode Card -->
+          <div id="mode-card" class="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 transition-all">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h2 class="text-sm font-semibold text-white flex items-center gap-2">
+                  <svg class="w-4 h-4 text-[#c4b5fd]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                  Competition Mode
+                </h2>
+                <p class="text-xs text-[#555] mt-0.5 mono">Force fullscreen on all participants</p>
+              </div>
+              <div id="mode-status-badge" class="px-3 py-1 rounded-full text-xs font-medium mono"></div>
+            </div>
+            <div class="flex gap-3">
+              <button onclick="setMode('competition')" class="btn flex-1 py-3 bg-[#c4b5fd] hover:bg-[#d4c7ff] text-[#0a0a0a] font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                 Competition Mode
-              </h2>
-              <p class="text-xs text-[#555] mt-0.5 mono">Force fullscreen on all participants</p>
+              </button>
+              <button onclick="setMode('normal')" class="btn flex-1 py-3 bg-[#333] hover:bg-[#444] text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                Normal Mode
+              </button>
             </div>
-            <div id="mode-status-badge" class="px-3 py-1 rounded-full text-xs font-medium mono">
-              <!-- Filled by JS -->
+            <p id="mode-timestamp" class="text-[10px] text-[#444] mono mt-3 text-center"></p>
+          </div>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6 fade-in" style="animation-delay: 100ms">
+          <div class="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 text-center">
+            <div id="stat-rooms" class="text-2xl font-bold text-[#5e9eff] mono">0</div>
+            <div class="text-xs text-[#555] mono mt-1">Active Rooms</div>
+          </div>
+          <div class="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 text-center">
+            <div id="stat-users" class="text-2xl font-bold text-[#5bd882] mono">0</div>
+            <div class="text-xs text-[#555] mono mt-1">Total Users</div>
+          </div>
+          <div class="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 text-center">
+            <div id="stat-voice" class="text-2xl font-bold text-[#ffb347] mono">0</div>
+            <div class="text-xs text-[#555] mono mt-1">In Voice/Video</div>
+          </div>
+          <div class="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 text-center">
+            <div id="stat-memory" class="text-2xl font-bold text-[#ff6b6b] mono">0</div>
+            <div class="text-xs text-[#555] mono mt-1">Memory (MB)</div>
+          </div>
+          <div class="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 text-center">
+            <div id="stat-uptime" class="text-2xl font-bold text-[#c4b5fd] mono">0m</div>
+            <div class="text-xs text-[#555] mono mt-1">Uptime</div>
+          </div>
+        </div>
+
+        <!-- Violations & Quick Actions -->
+        <div class="grid md:grid-cols-2 gap-4 fade-in" style="animation-delay: 200ms">
+          <!-- Fullscreen Violations -->
+          <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
+            <div class="px-5 py-3 border-b border-[#222] flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-[#ff6b6b]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                <h3 class="text-sm font-semibold text-white">Fullscreen Violations</h3>
+                <span id="violation-count" class="text-xs px-1.5 py-0.5 rounded-full bg-[#ff6b6b]/10 text-[#ff6b6b] mono">0</span>
+              </div>
+              <button onclick="clearViolations()" class="btn text-xs text-[#555] hover:text-[#aaa] mono transition">clear</button>
+            </div>
+            <div id="violations-list" class="max-h-[400px] overflow-y-auto scrollbar-thin">
+              <div class="px-5 py-10 text-center">
+                <p class="text-sm text-[#444] mono">no violations yet</p>
+                <p class="text-xs text-[#333] mono mt-1">violations appear here in real-time</p>
+              </div>
             </div>
           </div>
-          <div class="flex gap-3">
-            <button id="competition-btn" onclick="setMode('competition')"
-              class="btn flex-1 py-3 bg-[#c4b5fd] hover:bg-[#d4c7ff] text-[#0a0a0a] font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-              Competition Mode
-            </button>
-            <button id="normal-btn" onclick="setMode('normal')"
-              class="btn flex-1 py-3 bg-[#333] hover:bg-[#444] text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
-              Normal Mode
-            </button>
+
+          <!-- Broadcast Message -->
+          <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
+            <div class="px-5 py-3 border-b border-[#222] flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#5e9eff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>
+              <h3 class="text-sm font-semibold text-white">Broadcast Message</h3>
+            </div>
+            <div class="p-5">
+              <p class="text-xs text-[#666] mono mb-3">Send an announcement to all connected users in real-time.</p>
+              <textarea id="broadcast-msg" rows="3" maxlength="500" placeholder="Type your announcement..."
+                class="w-full px-3 py-2 bg-[#111] border border-[#282828] rounded-lg text-sm text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/50 mono resize-none"></textarea>
+              <div class="flex items-center justify-between mt-3">
+                <div class="flex gap-2">
+                  <button onclick="sendBroadcast('info')" class="btn px-3 py-1.5 bg-[#5e9eff]/15 text-[#5e9eff] text-xs rounded-lg mono hover:bg-[#5e9eff]/25 transition">
+                    Info
+                  </button>
+                  <button onclick="sendBroadcast('warning')" class="btn px-3 py-1.5 bg-[#ffb347]/15 text-[#ffb347] text-xs rounded-lg mono hover:bg-[#ffb347]/25 transition">
+                    Warning
+                  </button>
+                  <button onclick="sendBroadcast('success')" class="btn px-3 py-1.5 bg-[#5bd882]/15 text-[#5bd882] text-xs rounded-lg mono hover:bg-[#5bd882]/25 transition">
+                    Success
+                  </button>
+                </div>
+                <span id="broadcast-chars" class="text-[10px] text-[#444] mono">0/500</span>
+              </div>
+            </div>
           </div>
-          <p id="mode-timestamp" class="text-[10px] text-[#444] mono mt-3 text-center"></p>
         </div>
       </div>
 
-      <!-- ── Stats Row ───────────────────────────────────────── -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 fade-in" style="animation-delay: 100ms">
-        <div class="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 text-center">
-          <div id="stat-rooms" class="text-2xl font-bold text-[#5e9eff] mono">0</div>
-          <div class="text-xs text-[#555] mono mt-1">Active Rooms</div>
-        </div>
-        <div class="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 text-center">
-          <div id="stat-users" class="text-2xl font-bold text-[#5bd882] mono">0</div>
-          <div class="text-xs text-[#555] mono mt-1">Total Users</div>
-        </div>
-        <div class="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 text-center">
-          <div id="stat-memory" class="text-2xl font-bold text-[#ffb347] mono">0</div>
-          <div class="text-xs text-[#555] mono mt-1">Memory (MB)</div>
-        </div>
-        <div class="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 text-center">
-          <div id="stat-uptime" class="text-2xl font-bold text-[#c4b5fd] mono">0m</div>
-          <div class="text-xs text-[#555] mono mt-1">Uptime</div>
-        </div>
-      </div>
-
-      <!-- ── Violations & Rooms ──────────────────────────────── -->
-      <div class="grid md:grid-cols-[1fr_1.2fr] gap-4 fade-in" style="animation-delay: 200ms">
-        <!-- Fullscreen Violations -->
-        <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
-          <div class="px-5 py-3 border-b border-[#222] flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <svg class="w-4 h-4 text-[#ff6b6b]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-              <h3 class="text-sm font-semibold text-white">Fullscreen Violations</h3>
-              <span id="violation-count" class="text-xs px-1.5 py-0.5 rounded-full bg-[#ff6b6b]/10 text-[#ff6b6b] mono">0</span>
-            </div>
-            <button onclick="clearViolations()" class="btn text-xs text-[#555] hover:text-[#aaa] mono transition">clear</button>
-          </div>
-          <div id="violations-list" class="max-h-[400px] overflow-y-auto scrollbar-thin">
-            <div class="px-5 py-10 text-center">
-              <p class="text-sm text-[#444] mono">no violations yet</p>
-              <p class="text-xs text-[#333] mono mt-1">violations appear here in real-time</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Active Rooms -->
+      <!-- ROOMS & USERS TAB -->
+      <div id="panel-rooms" class="hidden">
         <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
           <div class="px-5 py-3 border-b border-[#222] flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -191,9 +233,15 @@
               <h3 class="text-sm font-semibold text-white">Active Rooms</h3>
               <span id="rooms-count" class="text-xs px-1.5 py-0.5 rounded-full bg-[#5e9eff]/10 text-[#5e9eff] mono">0</span>
             </div>
-            <button onclick="refreshRooms()" class="btn text-xs text-[#555] hover:text-[#aaa] mono transition">refresh</button>
+            <div class="flex items-center gap-2">
+              <button onclick="exportRoomsData()" class="btn text-xs text-[#5e9eff] hover:text-[#7ab3ff] mono transition flex items-center gap-1">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                export
+              </button>
+              <button onclick="refreshRooms()" class="btn text-xs text-[#555] hover:text-[#aaa] mono transition">refresh</button>
+            </div>
           </div>
-          <div id="rooms-list" class="max-h-[400px] overflow-y-auto scrollbar-thin">
+          <div id="rooms-list" class="max-h-[600px] overflow-y-auto scrollbar-thin">
             <div class="px-5 py-10 text-center">
               <p class="text-sm text-[#444] mono">no active rooms</p>
               <p class="text-xs text-[#333] mono mt-1">rooms appear when users create them</p>
@@ -201,6 +249,114 @@
           </div>
         </div>
       </div>
+
+      <!-- ADMIN TOOLS TAB -->
+      <div id="panel-tools" class="hidden">
+        <div class="grid md:grid-cols-2 gap-4">
+          <!-- Force Disconnect All -->
+          <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6">
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-[#ff6b6b]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+              Force Disconnect All
+            </h3>
+            <p class="text-xs text-[#666] mono mb-4">Emergency: disconnect all connected users immediately.</p>
+            <input id="disconnect-reason" type="text" placeholder="Reason (optional)..." maxlength="200"
+              class="w-full px-3 py-2 bg-[#111] border border-[#282828] rounded-lg text-sm text-white placeholder-[#444] focus:outline-none focus:border-[#ff6b6b]/50 mono mb-3" />
+            <button onclick="forceDisconnectAll()" class="btn w-full py-2.5 bg-[#ff6b6b] hover:bg-[#ff8a8a] text-white font-semibold rounded-xl text-sm transition">
+              Disconnect All Users
+            </button>
+          </div>
+
+          <!-- Quick Room Link -->
+          <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6">
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-[#5e9eff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+              Quick Room Link Generator
+            </h3>
+            <p class="text-xs text-[#666] mono mb-4">Generate a shareable room link with pre-configured settings.</p>
+            <div class="space-y-3">
+              <input id="gen-room-name" type="text" placeholder="Room name (optional)" maxlength="30"
+                class="w-full px-3 py-2 bg-[#111] border border-[#282828] rounded-lg text-sm text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/50 mono" />
+              <select id="gen-lang" class="w-full px-3 py-2 bg-[#111] border border-[#282828] rounded-lg text-sm text-white focus:outline-none focus:border-[#5e9eff]/50 mono">
+                <option value="python">Python</option>
+                <option value="javascript" selected>JavaScript</option>
+                <option value="typescript">TypeScript</option>
+                <option value="java">Java</option>
+                <option value="c">C</option>
+                <option value="cpp">C++</option>
+                <option value="go">Go</option>
+                <option value="rust">Rust</option>
+                <option value="ruby">Ruby</option>
+                <option value="php">PHP</option>
+              </select>
+              <button onclick="generateRoomLink()" class="btn w-full py-2.5 bg-[#5e9eff] hover:bg-[#7ab3ff] text-[#0a0a0a] font-semibold rounded-xl text-sm transition">
+                Generate Link
+              </button>
+              <div id="generated-link-area" class="hidden">
+                <div class="flex items-center gap-2 mt-2">
+                  <input id="generated-link" type="text" readonly
+                    class="flex-1 px-3 py-2 bg-[#111] border border-[#5e9eff]/30 rounded-lg text-xs text-[#5e9eff] mono" />
+                  <button onclick="copyGeneratedLink()" class="btn px-3 py-2 bg-[#5e9eff]/15 text-[#5e9eff] rounded-lg text-xs mono hover:bg-[#5e9eff]/25 transition">
+                    copy
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Server Info -->
+          <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6">
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-4">
+              <svg class="w-4 h-4 text-[#c4b5fd]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
+              Server Resources
+            </h3>
+            <div id="server-info" class="space-y-2 text-xs mono">
+              <div class="flex justify-between"><span class="text-[#666]">RSS Memory</span><span id="info-rss" class="text-white">—</span></div>
+              <div class="flex justify-between"><span class="text-[#666]">Heap Used</span><span id="info-heap" class="text-white">—</span></div>
+              <div class="flex justify-between"><span class="text-[#666]">Heap Total</span><span id="info-heap-total" class="text-white">—</span></div>
+              <div class="flex justify-between"><span class="text-[#666]">Active Rooms</span><span id="info-rooms" class="text-white">—</span></div>
+              <div class="flex justify-between"><span class="text-[#666]">Total Users</span><span id="info-users" class="text-white">—</span></div>
+              <div class="flex justify-between"><span class="text-[#666]">Voice Users</span><span id="info-voice" class="text-white">—</span></div>
+              <div class="flex justify-between"><span class="text-[#666]">Video Users</span><span id="info-video" class="text-white">—</span></div>
+              <div class="flex justify-between"><span class="text-[#666]">Pending Cleanups</span><span id="info-cleanups" class="text-white">—</span></div>
+              <div class="flex justify-between"><span class="text-[#666]">Uptime</span><span id="info-uptime" class="text-white">—</span></div>
+            </div>
+          </div>
+
+          <!-- Activity Log (recent actions) -->
+          <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6">
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-[#5bd882]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              Admin Activity Log
+            </h3>
+            <p class="text-xs text-[#666] mono mb-3">Recent admin actions during this session.</p>
+            <div id="activity-log" class="max-h-[250px] overflow-y-auto scrollbar-thin space-y-1">
+              <p class="text-xs text-[#444] mono text-center py-4">No actions yet</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BANS TAB -->
+      <div id="panel-bans" class="hidden">
+        <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
+          <div class="px-5 py-3 border-b border-[#222] flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#ff6b6b]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+              <h3 class="text-sm font-semibold text-white">Banned Users</h3>
+              <span id="bans-count" class="text-xs px-1.5 py-0.5 rounded-full bg-[#ff6b6b]/10 text-[#ff6b6b] mono">0</span>
+            </div>
+            <button onclick="refreshBans()" class="btn text-xs text-[#555] hover:text-[#aaa] mono transition">refresh</button>
+          </div>
+          <div id="bans-list" class="max-h-[500px] overflow-y-auto scrollbar-thin">
+            <div class="px-5 py-10 text-center">
+              <p class="text-sm text-[#444] mono">no banned users</p>
+              <p class="text-xs text-[#333] mono mt-1">banned users appear here</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </main>
   </div>
 
@@ -208,7 +364,9 @@
     // ─── State ────────────────────────────────────────────────────
     let adminToken = null;
     let pollInterval = null;
+    let activityLog = [];
     const API_BASE = window.location.origin;
+    const CLIENT_URL = window.location.protocol + '//' + window.location.hostname + ':3000';
 
     // ─── API Helper ────────────────────────────────────────────────
     async function api(path, opts = {}) {
@@ -218,6 +376,30 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'API error');
       return data;
+    }
+
+    // ─── Tab Switching ────────────────────────────────────────────
+    function switchTab(tab) {
+      ['overview', 'rooms', 'tools', 'bans'].forEach(t => {
+        document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
+        document.getElementById(`tab-${t}`).className = t === tab
+          ? 'pb-2 px-1 text-sm mono transition tab-active'
+          : 'pb-2 px-1 text-sm mono transition tab-inactive';
+      });
+    }
+
+    // ─── Activity Log ──────────────────────────────────────────────
+    function logAction(action) {
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      activityLog.unshift({ time, action });
+      if (activityLog.length > 50) activityLog.pop();
+      const container = document.getElementById('activity-log');
+      container.innerHTML = activityLog.map(e => `
+        <div class="flex items-start gap-2 py-1 px-2 rounded hover:bg-[#222]/30">
+          <span class="text-[10px] text-[#555] mono flex-shrink-0 mt-0.5">${e.time}</span>
+          <span class="text-xs text-[#999] mono">${e.action}</span>
+        </div>
+      `).join('');
     }
 
     // ─── Login ─────────────────────────────────────────────────────
@@ -252,6 +434,7 @@
     async function showDashboard() {
       document.getElementById('login-page').classList.add('hidden');
       document.getElementById('dashboard-page').classList.remove('hidden');
+      logAction('Admin logged in');
       await refreshAll();
       pollInterval = setInterval(refreshAll, 3000);
     }
@@ -268,9 +451,9 @@
         updateCompetitionUI(competition);
         updateRooms(roomsData.rooms);
         updateViolations(competition.fullscreenViolations);
+        updateServerInfo(health);
       } catch (err) {
         if (err.message.includes('401') || err.message.includes('authentication')) {
-          // Token expired
           adminToken = null;
           localStorage.removeItem('admin_token');
           clearInterval(pollInterval);
@@ -284,6 +467,7 @@
     function updateStats(health) {
       document.getElementById('stat-rooms').textContent = health.rooms || 0;
       document.getElementById('stat-users').textContent = health.totalUsers || 0;
+      document.getElementById('stat-voice').textContent = (health.totalVoice || 0) + (health.totalVideo || 0);
       document.getElementById('stat-memory').textContent = health.memory?.heapUsed || 0;
       const uptimeSec = Math.floor(health.uptime || 0);
       const h = Math.floor(uptimeSec / 3600);
@@ -291,9 +475,25 @@
       document.getElementById('stat-uptime').textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
     }
 
+    // ─── Update Server Info (tools tab) ─────────────────────────────
+    function updateServerInfo(health) {
+      document.getElementById('info-rss').textContent = (health.memory?.rss || 0) + ' MB';
+      document.getElementById('info-heap').textContent = (health.memory?.heapUsed || 0) + ' MB';
+      document.getElementById('info-heap-total').textContent = (health.memory?.heapTotal || 0) + ' MB';
+      document.getElementById('info-rooms').textContent = health.rooms || 0;
+      document.getElementById('info-users').textContent = health.totalUsers || 0;
+      document.getElementById('info-voice').textContent = health.totalVoice || 0;
+      document.getElementById('info-video').textContent = health.totalVideo || 0;
+      document.getElementById('info-cleanups').textContent = health.pendingCleanups || 0;
+      const uptimeSec = Math.floor(health.uptime || 0);
+      const h = Math.floor(uptimeSec / 3600);
+      const m = Math.floor((uptimeSec % 3600) / 60);
+      const s = uptimeSec % 60;
+      document.getElementById('info-uptime').textContent = `${h}h ${m}m ${s}s`;
+    }
+
     // ─── Update Competition UI ─────────────────────────────────────
     function updateCompetitionUI(state) {
-      // Lock status
       const lockBadge = document.getElementById('lock-status-badge');
       const lockCard = document.getElementById('lock-card');
       if (state.roomsLocked) {
@@ -305,7 +505,6 @@
         lockBadge.className = 'px-3 py-1 rounded-full text-xs font-medium mono bg-[#5bd882]/15 text-[#5bd882]';
         lockCard.className = 'bg-[#1a1b1e] border border-[#5bd882]/30 rounded-2xl p-6 transition-all glow-green';
       }
-      // Lock timestamp
       const lockTs = document.getElementById('lock-timestamp');
       if (state.roomsLocked && state.lockedAt) {
         lockTs.textContent = `Locked at ${new Date(state.lockedAt).toLocaleTimeString()}`;
@@ -314,8 +513,6 @@
       } else {
         lockTs.textContent = '';
       }
-
-      // Mode status
       const modeBadge = document.getElementById('mode-status-badge');
       const modeCard = document.getElementById('mode-card');
       if (state.mode === 'competition') {
@@ -327,7 +524,6 @@
         modeBadge.className = 'px-3 py-1 rounded-full text-xs font-medium mono bg-[#555]/15 text-[#888]';
         modeCard.className = 'bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 transition-all';
       }
-      // Mode timestamp
       const modeTs = document.getElementById('mode-timestamp');
       if (state.modeChangedAt) {
         modeTs.textContent = `Changed at ${new Date(state.modeChangedAt).toLocaleTimeString()}`;
@@ -336,7 +532,17 @@
       }
     }
 
-    // ─── Update Rooms List (v2: per-user kick buttons) ──────────────
+    // ─── Format Duration ──────────────────────────────────────────
+    function formatDuration(ms) {
+      const sec = Math.floor(ms / 1000);
+      if (sec < 60) return `${sec}s`;
+      const min = Math.floor(sec / 60);
+      if (min < 60) return `${min}m ${sec % 60}s`;
+      const hr = Math.floor(min / 60);
+      return `${hr}h ${min % 60}m`;
+    }
+
+    // ─── Update Rooms List ─────────────────────────────────────────
     function updateRooms(rooms) {
       document.getElementById('rooms-count').textContent = rooms.length;
       const container = document.getElementById('rooms-list');
@@ -347,6 +553,7 @@
         </div>`;
         return;
       }
+      const now = Date.now();
       container.innerHTML = rooms.map(room => `
         <div class="border-b border-[#222]/60">
           <div class="px-5 py-3 hover:bg-[#222]/30 transition flex items-center justify-between gap-3">
@@ -364,11 +571,12 @@
             </div>
             <div class="flex items-center gap-3 flex-shrink-0">
               <span class="text-xs mono px-2 py-0.5 rounded bg-[#5e9eff]/10 text-[#5e9eff]">${room.language || 'js'}</span>
+              ${room.videoUsers > 0 ? `<span class="text-[10px] mono text-[#c4b5fd]">${room.videoUsers} video</span>` : ''}
               <span class="text-xs mono text-[#888]">${room.userCount} user${room.userCount !== 1 ? 's' : ''}</span>
               ${room.isPublic ? '<span class="text-[10px] mono text-[#5bd882]">public</span>' : '<span class="text-[10px] mono text-[#666]">private</span>'}
             </div>
           </div>
-          <!-- Per-user list with kick buttons -->
+          <!-- Per-user list with kick & ban buttons -->
           <div class="px-5 pb-2">
             ${(room.userDetails || []).map(u => `
               <div class="flex items-center justify-between py-1.5 px-3 ml-5 rounded-lg hover:bg-[#222]/40 transition group">
@@ -376,12 +584,19 @@
                   <div class="w-1.5 h-1.5 rounded-full bg-[#5bd882] flex-shrink-0"></div>
                   <span class="text-xs mono text-[#999] truncate">${u.username}</span>
                   <span class="text-[9px] text-[#444] mono hidden group-hover:inline">${u.socketId.slice(0, 8)}...</span>
+                  <span class="text-[9px] text-[#555] mono">${formatDuration(now - u.joinedAt)}</span>
                 </div>
-                <button onclick="kickUser('${room.roomId}', '${u.socketId}', '${u.username.replace(/'/g, "\\'")}')"
-                  class="btn text-[10px] px-2 py-0.5 rounded-md bg-[#ff6b6b]/10 text-[#ff6b6b] hover:bg-[#ff6b6b]/20 transition opacity-0 group-hover:opacity-100 mono flex items-center gap-1">
-                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
-                  kick
-                </button>
+                <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                  <button onclick="kickUser('${room.roomId}', '${u.socketId}', '${u.username.replace(/'/g, "\\'")}')"
+                    class="btn text-[10px] px-2 py-0.5 rounded-md bg-[#ff6b6b]/10 text-[#ff6b6b] hover:bg-[#ff6b6b]/20 transition mono flex items-center gap-1">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                    kick
+                  </button>
+                  <button onclick="banUser('${u.userId}', '${u.username.replace(/'/g, "\\'")}')"
+                    class="btn text-[10px] px-2 py-0.5 rounded-md bg-[#ff6b6b]/10 text-[#ff6b6b] hover:bg-[#ff6b6b]/20 transition mono">
+                    ban
+                  </button>
+                </div>
               </div>
             `).join('')}
           </div>
@@ -400,7 +615,6 @@
         </div>`;
         return;
       }
-      // Show newest first
       container.innerHTML = [...violations].reverse().map(v => `
         <div class="violation-flash px-5 py-3 border-b border-[#222]/60 flex items-start gap-3">
           <div class="w-6 h-6 rounded-full bg-[#ff6b6b]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -418,10 +632,39 @@
       `).join('');
     }
 
+    // ─── Update Bans List ──────────────────────────────────────────
+    function updateBans(bans) {
+      document.getElementById('bans-count').textContent = bans.length;
+      const container = document.getElementById('bans-list');
+      if (!bans.length) {
+        container.innerHTML = `<div class="px-5 py-10 text-center">
+          <p class="text-sm text-[#444] mono">no banned users</p>
+          <p class="text-xs text-[#333] mono mt-1">banned users appear here</p>
+        </div>`;
+        return;
+      }
+      container.innerHTML = bans.map(b => `
+        <div class="px-5 py-3 border-b border-[#222]/60 flex items-center justify-between hover:bg-[#222]/30 transition">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-[#ff6b6b] font-medium mono">${b.userId}</span>
+            </div>
+            <div class="text-xs text-[#666] mono mt-0.5">Reason: ${b.reason || 'none'}</div>
+            <div class="text-[10px] text-[#444] mono mt-0.5">Banned at ${new Date(b.bannedAt).toLocaleString()} by ${b.bannedBy}</div>
+          </div>
+          <button onclick="unbanUser('${b.userId}')"
+            class="btn px-3 py-1.5 bg-[#5bd882]/15 text-[#5bd882] text-xs rounded-lg mono hover:bg-[#5bd882]/25 transition">
+            unban
+          </button>
+        </div>
+      `).join('');
+    }
+
     // ─── Actions ───────────────────────────────────────────────────
     async function toggleLock(locked) {
       try {
         await api('/competition/lock', { method: 'POST', body: JSON.stringify({ locked }) });
+        logAction(`Rooms ${locked ? 'LOCKED' : 'UNLOCKED'}`);
         await refreshAll();
       } catch (err) { alert('Failed: ' + err.message); }
     }
@@ -429,6 +672,7 @@
     async function setMode(mode) {
       try {
         await api('/competition/mode', { method: 'POST', body: JSON.stringify({ mode }) });
+        logAction(`Mode changed to ${mode}`);
         await refreshAll();
       } catch (err) { alert('Failed: ' + err.message); }
     }
@@ -436,6 +680,7 @@
     async function clearViolations() {
       try {
         await api('/competition/clear-violations', { method: 'POST' });
+        logAction('Violations cleared');
         await refreshAll();
       } catch (err) { alert('Failed: ' + err.message); }
     }
@@ -451,12 +696,110 @@
       if (!confirm(`Kick "${username}" from room ${roomId}?`)) return;
       try {
         await api(`/rooms/${roomId}/kick/${socketId}`, { method: 'POST' });
-        // Refresh immediately
+        logAction(`Kicked ${username} from ${roomId}`);
         await refreshAll();
       } catch (err) {
         alert('Failed to kick user: ' + err.message);
       }
     }
+
+    async function banUser(userId, username) {
+      const reason = prompt(`Ban "${username}"? Enter reason (optional):`, 'Cheating');
+      if (reason === null) return; // cancelled
+      try {
+        await api(`/ban/${userId}`, { method: 'POST', body: JSON.stringify({ reason }) });
+        logAction(`Banned ${username} (${userId}): ${reason}`);
+        await refreshAll();
+        await refreshBans();
+      } catch (err) {
+        alert('Failed to ban user: ' + err.message);
+      }
+    }
+
+    async function unbanUser(userId) {
+      if (!confirm(`Unban user ${userId}?`)) return;
+      try {
+        await api(`/unban/${userId}`, { method: 'POST' });
+        logAction(`Unbanned ${userId}`);
+        await refreshBans();
+      } catch (err) {
+        alert('Failed to unban: ' + err.message);
+      }
+    }
+
+    async function refreshBans() {
+      try {
+        const data = await api('/bans');
+        updateBans(data.bans);
+      } catch (err) {}
+    }
+
+    async function sendBroadcast(type) {
+      const msg = document.getElementById('broadcast-msg').value.trim();
+      if (!msg) { alert('Enter a message first'); return; }
+      try {
+        await api('/broadcast', { method: 'POST', body: JSON.stringify({ message: msg, type }) });
+        logAction(`Broadcast (${type}): ${msg}`);
+        document.getElementById('broadcast-msg').value = '';
+        document.getElementById('broadcast-chars').textContent = '0/500';
+      } catch (err) {
+        alert('Failed to broadcast: ' + err.message);
+      }
+    }
+
+    async function forceDisconnectAll() {
+      if (!confirm('This will disconnect ALL users from ALL rooms. Are you sure?')) return;
+      const reason = document.getElementById('disconnect-reason').value.trim() || undefined;
+      try {
+        await api('/force-disconnect', { method: 'POST', body: JSON.stringify({ reason }) });
+        logAction(`Force disconnected all users${reason ? ': ' + reason : ''}`);
+        document.getElementById('disconnect-reason').value = '';
+        await refreshAll();
+      } catch (err) {
+        alert('Failed: ' + err.message);
+      }
+    }
+
+    async function exportRoomsData() {
+      try {
+        const data = await api('/export/rooms');
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `collabcode-rooms-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        logAction('Exported rooms data');
+      } catch (err) {
+        alert('Failed to export: ' + err.message);
+      }
+    }
+
+    function generateRoomLink() {
+      const name = document.getElementById('gen-room-name').value.trim();
+      const lang = document.getElementById('gen-lang').value;
+      const roomId = name || (Math.random().toString(36).slice(2, 8).toUpperCase());
+      let link = `${CLIENT_URL}/room/${encodeURIComponent(roomId)}?lang=${lang}&public=true`;
+      if (name) link += `&roomName=${encodeURIComponent(name)}`;
+      document.getElementById('generated-link').value = link;
+      document.getElementById('generated-link-area').classList.remove('hidden');
+      logAction(`Generated room link: ${roomId} (${lang})`);
+    }
+
+    function copyGeneratedLink() {
+      const input = document.getElementById('generated-link');
+      navigator.clipboard.writeText(input.value).then(() => {
+        const btn = input.nextElementSibling;
+        btn.textContent = 'copied!';
+        setTimeout(() => { btn.textContent = 'copy'; }, 1500);
+      });
+    }
+
+    // Broadcast char counter
+    document.getElementById('broadcast-msg')?.addEventListener('input', (e) => {
+      document.getElementById('broadcast-chars').textContent = `${e.target.value.length}/500`;
+    });
 
     // ─── Auto-login from stored token ──────────────────────────────
     (async function init() {

@@ -1,7 +1,14 @@
 /**
- * VoiceChat v12.0 — Hardened for Heavy Load
+ * VoiceChat v13.0 — Phase 4: Fix Remote Audio Not Playing
  * 
- * v12.0 hardening:
+ * v13.0 fixes:
+ *  - Fixed remote audio not playing: added explicit audio.play() with autoplay policy fallback
+ *  - New joiner now handles `voice:user-joined` by creating an offer to late joiners
+ *    (previously only the joiner initiated offers via voice:peers — existing users never sent offers to new joiners)
+ *  - Added retry logic for playRemoteAudio with interaction-based resume
+ *  - Improved ontrack handler to handle stream replacement
+ *
+ * v12.0 hardening (retained):
  *  - Reusable AudioContext via ref (prevents resource leak on every join)
  *  - Mounted guard ref prevents state updates after unmount
  *  - Stable leaveVoice via useCallback with ref-based socket access
@@ -112,6 +119,11 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
         if (prev.find(u => u.userId === data.userId)) return prev;
         return [...prev, { userId: data.userId, username: data.username }];
       }));
+      // v13: Existing user also creates an offer to the new joiner
+      // This ensures bidirectional peer connection establishment
+      if (localStreamRef.current && data.socketId) {
+        createOffer(data.socketId, data.username, data.userId);
+      }
     };
 
     const handleUserLeft = (data) => {
@@ -292,18 +304,35 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
     }
   }
 
-  // v12: Audio element management via tracked Map instead of raw DOM queries
+  // v13: Audio element management — explicit play() call for autoplay policy compliance
   function playRemoteAudio(stream, id) {
+    if (!stream) return;
     let audio = remoteAudioMapRef.current.get(id);
     if (!audio) {
       audio = document.createElement('audio');
       audio.id = `voice-audio-${id}`;
       audio.autoplay = true;
+      audio.playsInline = true;
       document.body.appendChild(audio);
       remoteAudioMapRef.current.set(id, audio);
     }
     audio.srcObject = stream;
     audio.muted = isDeafened;
+    // v13: Explicitly call play() to handle autoplay policy
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        console.warn('[Voice] Autoplay blocked for remote audio:', err.message);
+        // Retry on next user interaction
+        const resumePlay = () => {
+          audio.play().catch(() => {});
+          document.removeEventListener('click', resumePlay);
+          document.removeEventListener('keydown', resumePlay);
+        };
+        document.addEventListener('click', resumePlay, { once: true });
+        document.addEventListener('keydown', resumePlay, { once: true });
+      });
+    }
   }
 
   // v12: Reusable AudioContext — create once, reuse across join/leave cycles

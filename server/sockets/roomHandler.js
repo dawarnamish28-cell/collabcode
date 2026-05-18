@@ -1,5 +1,5 @@
 /**
- * Room Socket Handler v12.0 — Phase 3 Fixes + Kick Users
+ * Room Socket Handler v13.0 — Phase 4: Language Fix + Admin Features
  * 
  * v9.0 hardening:
  *  - Race-safe room cleanup with mutex-like guard (cleanupInProgress flag)
@@ -329,12 +329,15 @@ function initRoomHandler(io, ctx) {
       // v9: Clear cleanup-in-progress flag since someone is joining
       room._cleanupInProgress = false;
 
+      // v13: Only set language/public on room creation (first user), not on subsequent joins
       if (room.users.size === 0) {
         await loadRoomState(roomId, room.ydoc);
         if (isPublic !== undefined) room.isPublic = !!isPublic;
         room.createdBy = socket.user.userId;
+        // Only the creator sets the room language
+        if (language) room.language = language;
       }
-      if (language) room.language = language;
+      // Subsequent joiners do NOT overwrite the room's language
 
       // v11: Custom room name support
       if (data.roomName && typeof data.roomName === 'string' && room.users.size === 0) {

@@ -111,7 +111,7 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
     };
   }, []);
 
-  // ─── Create Peer Connection (v9: hardened) ──────────────────────
+  // ─── Create Peer Connection (v10: fixed — no onnegotiationneeded race) ────
   function createPeerConnection(targetSocketId, isInitiator, stream, userInfo = {}) {
     // v9: Dedup — reuse existing connection
     if (peersRef.current.has(targetSocketId)) {
@@ -139,27 +139,26 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
       }
     };
 
+    // v10: Robust ontrack handler — attach stream + explicit play() for autoplay policy
     pc.ontrack = (event) => {
       if (!mountedRef.current) return;
-      const videoEl = document.getElementById(`remote-video-${userInfo.userId}`);
-      if (videoEl && event.streams[0]) {
-        videoEl.srcObject = event.streams[0];
-      }
-      remoteVideosRef.current.set(userInfo.userId, event.streams[0]);
+      const remoteStream = event.streams[0];
+      if (!remoteStream) return;
+      remoteVideosRef.current.set(userInfo.userId, remoteStream);
+      // Try to attach immediately if DOM element exists
+      attachRemoteStream(userInfo.userId, remoteStream);
     };
 
     // v9: ICE restart on failure with backoff
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
       if (state === 'connected') {
-        // Clear timeout and reset restart attempts
         if (peerTimeoutsRef.current.has(targetSocketId)) {
           clearTimeout(peerTimeoutsRef.current.get(targetSocketId));
           peerTimeoutsRef.current.delete(targetSocketId);
         }
         iceRestartAttemptsRef.current.delete(targetSocketId);
       } else if (state === 'disconnected') {
-        // Wait briefly — might recover
         setTimeout(() => {
           if (pc.connectionState === 'disconnected') {
             attemptIceRestart(targetSocketId, pc);
@@ -176,19 +175,10 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
       // Silently handle ICE candidate errors
     };
 
-    // v9: Handle renegotiation needed
-    pc.onnegotiationneeded = async () => {
-      if (!isInitiator) return; // only initiator renegotiates
-      try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        if (socketRef.current) {
-          socketRef.current.emit('video:offer', { to: targetSocketId, offer: pc.localDescription });
-        }
-      } catch (err) {
-        console.error('[Video] Renegotiation error:', err);
-      }
-    };
+    // v10: REMOVED onnegotiationneeded handler — it raced with the explicit
+    // createOffer() below, sending duplicate offers that broke the handshake.
+    // Renegotiation (e.g. screen share track swap) is handled via replaceTrack()
+    // which does NOT require a new offer/answer exchange.
 
     peersRef.current.set(targetSocketId, { pc, userId: userInfo.userId, username: userInfo.username });
 
@@ -201,18 +191,42 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
     }, PEER_CONNECT_TIMEOUT);
     peerTimeoutsRef.current.set(targetSocketId, timeoutId);
 
+    // v10: Only the initiator creates and sends an offer
     if (isInitiator) {
-      pc.createOffer()
-        .then(offer => pc.setLocalDescription(offer))
-        .then(() => {
+      (async () => {
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
           if (socketRef.current) {
             socketRef.current.emit('video:offer', { to: targetSocketId, offer: pc.localDescription });
           }
-        })
-        .catch(err => console.error('[Video] Create offer error:', err));
+        } catch (err) {
+          console.error('[Video] Create offer error:', err);
+        }
+      })();
     }
 
     return pc;
+  }
+
+  // v10: Helper to attach a remote stream to its video element + play()
+  function attachRemoteStream(userId, stream) {
+    if (!stream) return;
+    const videoEl = document.getElementById(`remote-video-${userId}`);
+    if (videoEl) {
+      videoEl.srcObject = stream;
+      const playPromise = videoEl.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          // Autoplay blocked — retry on interaction
+          const resume = () => {
+            videoEl.play().catch(() => {});
+            document.removeEventListener('click', resume);
+          };
+          document.addEventListener('click', resume, { once: true });
+        });
+      }
+    }
   }
 
   // v9: ICE restart with backoff
@@ -293,8 +307,12 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
       if (!mountedRef.current) return;
       setVideoUsers(peers);
       if (localStreamRef.current) {
+        // v10: The joiner initiates offers to all existing peers
+        // (changed from isInitiator=false to true — joiner must send offers
+        // because existing users already sent their offers via user-joined but
+        // the joiner also needs to initiate for bidirectional connection)
         peers.forEach(peer => {
-          createPeerConnection(peer.socketId, false, localStreamRef.current, peer);
+          createPeerConnection(peer.socketId, true, localStreamRef.current, peer);
         });
       }
     };
@@ -306,7 +324,20 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
         let pc;
         if (peer) {
           pc = peer.pc;
-          // v9: Handle re-offers (renegotiation)
+          // v10: Handle "glare" condition — both sides sent offers simultaneously.
+          // If we're in have-local-offer state, we need to resolve the collision.
+          // The "polite" peer (one with higher socket ID) rolls back its own offer.
+          if (pc.signalingState === 'have-local-offer') {
+            const isPolite = socket.id > data.from; // higher ID is polite (yields)
+            if (!isPolite) {
+              // We are impolite — ignore incoming offer, keep ours
+              console.log('[Video] Glare: impolite peer, ignoring incoming offer');
+              return;
+            }
+            // We are polite — rollback our offer and accept theirs
+            console.log('[Video] Glare: polite peer, rolling back our offer');
+            await pc.setLocalDescription({ type: 'rollback' });
+          }
           await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
         } else {
           pc = createPeerConnection(data.from, false, localStreamRef.current, { userId: data.userId, username: data.username });
@@ -368,6 +399,19 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
       localVideoRef.current.srcObject = localStreamRef.current;
     }
   }, [isInVideo, isCameraOn]);
+
+  // v10: Re-attach remote streams whenever videoUsers changes
+  // This handles the case where ontrack fires before the DOM element is rendered
+  useEffect(() => {
+    if (!isInVideo) return;
+    // Give React a tick to render the new video elements
+    const timer = setTimeout(() => {
+      for (const [userId, stream] of remoteVideosRef.current) {
+        attachRemoteStream(userId, stream);
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [videoUsers, isInVideo]);
 
   // ─── Join Video ─────────────────────────────────────────────────
   const joinVideo = useCallback(async () => {

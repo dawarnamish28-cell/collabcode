@@ -1,5 +1,5 @@
 /**
- * Admin Routes v2.0 — Competition Mode & Room Management + Kick Users
+ * Admin Routes v3.0 — Phase 4: Enhanced Admin Features
  * 
  * Features:
  *  - Admin login with JWT-protected endpoints
@@ -241,6 +241,141 @@ router.post('/rooms/:roomId/kick/:socketId', adminAuthMiddleware, (req, res) => 
   res.json({ success: true, username: result.username, roomId });
 });
 
+// ─── v3: Broadcast Message to All Users ─────────────────────────────────
+router.post('/broadcast', adminAuthMiddleware, (req, res) => {
+  const { message, type } = req.body;
+  if (!message || typeof message !== 'string' || message.trim().length === 0) {
+    return res.status(400).json({ error: true, message: 'Message is required' });
+  }
+  if (message.length > 500) {
+    return res.status(400).json({ error: true, message: 'Message must be under 500 characters' });
+  }
+  const io = req.app.get('io');
+  if (!io) {
+    return res.status(500).json({ error: true, message: 'Socket.IO not available' });
+  }
+  io.emit('admin:broadcast', {
+    message: message.trim(),
+    type: type || 'info', // info | warning | success
+    timestamp: Date.now(),
+    from: 'Admin',
+  });
+  console.log(`[Admin] Broadcast: "${message.trim()}" (type: ${type || 'info'})`);
+  res.json({ success: true, message: message.trim() });
+});
+
+// ─── v3: Force Disconnect All Users ─────────────────────────────────────
+router.post('/force-disconnect', adminAuthMiddleware, (req, res) => {
+  const io = req.app.get('io');
+  if (!io) {
+    return res.status(500).json({ error: true, message: 'Socket.IO not available' });
+  }
+  const { reason } = req.body;
+  const msg = reason || 'Admin has disconnected all users.';
+  
+  // Notify all users before disconnecting
+  io.emit('admin:force-disconnect', {
+    message: msg,
+    timestamp: Date.now(),
+  });
+  
+  // Disconnect all sockets after a brief delay
+  setTimeout(() => {
+    io.sockets.sockets.forEach((s) => {
+      try { s.disconnect(true); } catch (e) {}
+    });
+  }, 500);
+  
+  console.log(`[Admin] Force disconnected all users: ${msg}`);
+  res.json({ success: true, message: msg });
+});
+
+// ─── v3: Export Rooms Data as JSON ──────────────────────────────────────
+router.get('/export/rooms', adminAuthMiddleware, (req, res) => {
+  const getActiveRooms = req.app.get('getActiveRooms');
+  if (!getActiveRooms) {
+    return res.json({ rooms: [], exportedAt: Date.now() });
+  }
+  const rooms = getActiveRooms();
+  const exportData = {
+    exportedAt: new Date().toISOString(),
+    serverUptime: process.uptime(),
+    totalRooms: rooms.length,
+    totalUsers: rooms.reduce((sum, r) => sum + r.userCount, 0),
+    rooms: rooms.map(r => ({
+      ...r,
+      userDetails: r.userDetails.map(u => ({
+        ...u,
+        joinedAtFormatted: new Date(u.joinedAt).toISOString(),
+        durationSec: Math.floor((Date.now() - u.joinedAt) / 1000),
+      })),
+    })),
+  };
+  res.json(exportData);
+});
+
+// ─── v3: Get Execution Stats ────────────────────────────────────────────
+router.get('/stats/executions', adminAuthMiddleware, (req, res) => {
+  const getExecStats = req.app.get('getExecStats');
+  if (!getExecStats) {
+    return res.json({ totalExecutions: 0, byLanguage: {}, recentErrors: 0 });
+  }
+  res.json(getExecStats());
+});
+
+// ─── v3: Ban User (temporary session ban) ───────────────────────────────
+const bannedUsers = new Map(); // userId -> { reason, bannedAt, bannedBy }
+
+router.post('/ban/:userId', adminAuthMiddleware, (req, res) => {
+  const { userId } = req.params;
+  const { reason } = req.body;
+  const io = req.app.get('io');
+  
+  bannedUsers.set(userId, {
+    reason: reason || 'Banned by admin',
+    bannedAt: Date.now(),
+    bannedBy: req.admin.username,
+  });
+  
+  // Disconnect all sockets for this user
+  if (io) {
+    io.sockets.sockets.forEach((s) => {
+      if (s.user?.userId === userId) {
+        s.emit('admin:banned', {
+          message: reason || 'You have been banned by the admin.',
+          timestamp: Date.now(),
+        });
+        setTimeout(() => { try { s.disconnect(true); } catch (e) {} }, 300);
+      }
+    });
+  }
+  
+  console.log(`[Admin] Banned user: ${userId} (reason: ${reason || 'none'})`);
+  res.json({ success: true, userId });
+});
+
+router.post('/unban/:userId', adminAuthMiddleware, (req, res) => {
+  const { userId } = req.params;
+  const deleted = bannedUsers.delete(userId);
+  if (!deleted) {
+    return res.status(404).json({ error: true, message: 'User not in ban list' });
+  }
+  console.log(`[Admin] Unbanned user: ${userId}`);
+  res.json({ success: true, userId });
+});
+
+router.get('/bans', adminAuthMiddleware, (req, res) => {
+  const bans = [];
+  for (const [userId, info] of bannedUsers) {
+    bans.push({ userId, ...info });
+  }
+  res.json({ bans, total: bans.length });
+});
+
+function isBanned(userId) {
+  return bannedUsers.has(userId);
+}
+
 module.exports = {
   router,
   competitionState,
@@ -248,4 +383,5 @@ module.exports = {
   addViolation,
   clearViolations,
   adminAuthMiddleware,
+  isBanned,
 };
