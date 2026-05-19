@@ -405,10 +405,22 @@ export default function RoomPage() {
       }
     });
 
-    // v20: Handle admin kick
+    // v22: Graceful exit helper — shows toast, waits, then redirects
+    // Replaces alert() which blocked the thread and caused abrupt exits
+    const gracefulExit = (message, type = 'error') => {
+      addToast(message, type);
+      addNotification(message, type, 'admin');
+      // Small delay so the user sees the toast before redirect
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          router.push('/');
+        }
+      }, 2500);
+    };
+
+    // v22: Handle admin kick (graceful)
     socket.on('competition:kicked', (data) => {
-      alert(data.message || 'You have been removed from this room by the admin.');
-      router.push('/');
+      gracefulExit(data.message || 'You have been removed from this room by the admin.');
     });
 
     // v21: Handle admin broadcast messages
@@ -418,16 +430,14 @@ export default function RoomPage() {
       addNotification(`Admin: ${data.message}`, typeMap[data.type] || 'info', 'admin');
     });
 
-    // v21: Handle admin force disconnect
+    // v22: Handle admin force disconnect (graceful)
     socket.on('admin:force-disconnect', (data) => {
-      alert(data.message || 'You have been disconnected by the admin.');
-      router.push('/');
+      gracefulExit(data.message || 'You have been disconnected by the admin.');
     });
 
-    // v21: Handle admin ban
+    // v22: Handle admin ban (graceful)
     socket.on('admin:banned', (data) => {
-      alert(data.message || 'You have been banned by the admin.');
-      router.push('/');
+      gracefulExit(data.message || 'You have been banned by the admin.');
     });
 
     provider.on('awareness-change', (states) => setAwarenessStates(new Map(states)));

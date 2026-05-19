@@ -1,12 +1,15 @@
 /**
- * VoiceChat v13.0 — Phase 4: Fix Remote Audio Not Playing
+ * VoiceChat v14.0 — Phase 4.1: Fix dual-offer race condition
  * 
- * v13.0 fixes:
- *  - Fixed remote audio not playing: added explicit audio.play() with autoplay policy fallback
- *  - New joiner now handles `voice:user-joined` by creating an offer to late joiners
- *    (previously only the joiner initiated offers via voice:peers — existing users never sent offers to new joiners)
- *  - Added retry logic for playRemoteAudio with interaction-based resume
- *  - Improved ontrack handler to handle stream replacement
+ * v14.0 fixes:
+ *  - FIXED: Both sides were sending offers simultaneously (joiner via voice:peers,
+ *    existing user via voice:user-joined). The dedup guard in handleOffer silently
+ *    rejected the second offer, so neither side got an answer and the connection
+ *    never completed.
+ *  - FIX: Only the JOINER (voice:peers) creates offers. Existing users (voice:user-joined)
+ *    just update their user list and WAIT for the incoming offer.
+ *  - handleOffer now has proper glare handling instead of hard dedup rejection —
+ *    if a peer already exists in have-local-offer state, the polite peer rolls back.
  *
  * v12.0 hardening (retained):
  *  - Reusable AudioContext via ref (prevents resource leak on every join)
@@ -119,11 +122,10 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
         if (prev.find(u => u.userId === data.userId)) return prev;
         return [...prev, { userId: data.userId, username: data.username }];
       }));
-      // v13: Existing user also creates an offer to the new joiner
-      // This ensures bidirectional peer connection establishment
-      if (localStreamRef.current && data.socketId) {
-        createOffer(data.socketId, data.username, data.userId);
-      }
+      // v14: Do NOT create an offer here! The new joiner will receive voice:peers
+      // and create offers TO US. We just wait for their offer in handleOffer.
+      // Creating offers from both sides caused a dual-offer race condition where
+      // the dedup guard silently dropped the second offer, killing the connection.
     };
 
     const handleUserLeft = (data) => {
@@ -138,20 +140,34 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
 
     const handleOffer = async (data) => {
       if (!localStreamRef.current) return;
-      // v12: Peer dedup — if we already have a connection to this socket, skip
-      if (peersRef.current.has(data.from)) {
-        console.warn('[Voice] Duplicate offer from', data.from, '— ignoring');
-        return;
-      }
-      // v12: Max peers cap
-      if (peersRef.current.size >= MAX_PEERS) {
+      // v14: Max peers cap
+      if (!peersRef.current.has(data.from) && peersRef.current.size >= MAX_PEERS) {
         console.warn('[Voice] Max peers reached, rejecting offer');
         return;
       }
       try {
-        const pc = createPeerConnection(data.from, data.userId, data.username);
-        localStreamRef.current.getTracks().forEach(t => pc.addTrack(t, localStreamRef.current));
-        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        let pc;
+        const existingPeer = peersRef.current.get(data.from);
+        if (existingPeer) {
+          pc = existingPeer.pc;
+          // v14: Glare handling — we already have a local offer pending.
+          // Use polite peer pattern: higher socket ID yields (rolls back).
+          if (pc.signalingState === 'have-local-offer') {
+            const isPolite = socket.id > data.from;
+            if (!isPolite) {
+              console.log('[Voice] Glare: impolite peer, ignoring incoming offer');
+              return;
+            }
+            console.log('[Voice] Glare: polite peer, rolling back');
+            await pc.setLocalDescription({ type: 'rollback' });
+          }
+          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        } else {
+          // New peer — create PC and add tracks
+          pc = createPeerConnection(data.from, data.userId, data.username);
+          localStreamRef.current.getTracks().forEach(t => pc.addTrack(t, localStreamRef.current));
+          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        }
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         socketRef.current?.emit('voice:answer', { to: data.from, answer });
@@ -288,9 +304,12 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
 
   async function createOffer(targetSocketId, username, userId) {
     if (!localStreamRef.current || !socketRef.current) return;
-    // v12: Peer dedup
-    if (peersRef.current.has(targetSocketId)) return;
-    // v12: Max peers cap
+    // v14: Skip if we already have a connected/connecting peer to avoid duplicate offers
+    const existing = peersRef.current.get(targetSocketId);
+    if (existing && existing.pc.connectionState !== 'failed' && existing.pc.connectionState !== 'closed') return;
+    // If old peer exists in failed/closed state, clean it up first
+    if (existing) destroyPeer(targetSocketId);
+    // Max peers cap
     if (peersRef.current.size >= MAX_PEERS) return;
     try {
       const pc = createPeerConnection(targetSocketId, userId, username);

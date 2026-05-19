@@ -279,12 +279,12 @@ router.post('/force-disconnect', adminAuthMiddleware, (req, res) => {
     timestamp: Date.now(),
   });
   
-  // Disconnect all sockets after a brief delay
+  // v4: Give clients time for graceful exit (toast + redirect) before force-disconnect
   setTimeout(() => {
     io.sockets.sockets.forEach((s) => {
       try { s.disconnect(true); } catch (e) {}
     });
-  }, 500);
+  }, 3000);
   
   console.log(`[Admin] Force disconnected all users: ${msg}`);
   res.json({ success: true, message: msg });
@@ -345,7 +345,8 @@ router.post('/ban/:userId', adminAuthMiddleware, (req, res) => {
           message: reason || 'You have been banned by the admin.',
           timestamp: Date.now(),
         });
-        setTimeout(() => { try { s.disconnect(true); } catch (e) {} }, 300);
+        // v4: Give the client time for graceful exit (toast + redirect) before force-disconnect
+        setTimeout(() => { try { s.disconnect(true); } catch (e) {} }, 3000);
       }
     });
   }

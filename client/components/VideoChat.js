@@ -1,17 +1,21 @@
 /**
- * VideoChat v9.0 — Hardened for Continuous Heavy Use
+ * VideoChat v11.0 — Phase 4.1: Fix dual-offer race condition
  * 
- * v9.0 hardening:
- *  - Stable leaveVideo ref via useRef (no stale closure in cleanup)
- *  - ICE restart on connection failure with exponential backoff
- *  - Peer connection dedup: rapid join/leave can't create duplicate PCs
- *  - negotiationneeded handler for proper renegotiation
- *  - Connection timeout: reject peers that don't connect within 15s
- *  - getUserMedia timeout protection
- *  - Safe cleanup order: tracks → peers → state (prevents race conditions)
- *  - Remote video element cleanup guards (null checks everywhere)
- *  - Max peer cap to prevent resource exhaustion
- *  - Error boundary: all async operations wrapped in try-catch
+ * v11.0 fixes:
+ *  - FIXED: Both sides sent offers simultaneously (joiner via video:peers with
+ *    isInitiator=true, existing user via video:user-joined with isInitiator=true).
+ *    The createPeerConnection dedup guard returned the existing PC but both sides
+ *    were trying to set local offers, causing glare and broken handshakes.
+ *  - FIX: Only the JOINER (video:peers) creates offers with isInitiator=true.
+ *    Existing users (video:user-joined) create the PC with isInitiator=false and
+ *    WAIT for the joiner's incoming offer.
+ *  - onVideoOffer glare handling retained as safety net for ICE restarts.
+ *
+ * v9.0 hardening (retained):
+ *  - Stable leaveVideo ref via useRef
+ *  - ICE restart on failure with backoff
+ *  - Connection timeout, getUserMedia timeout
+ *  - Max peer cap, safe cleanup
  *
  * made with <3 by Namish
  */
@@ -111,11 +115,17 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
     };
   }, []);
 
-  // ─── Create Peer Connection (v10: fixed — no onnegotiationneeded race) ────
+  // ─── Create Peer Connection (v11: fixed dual-offer race) ────
   function createPeerConnection(targetSocketId, isInitiator, stream, userInfo = {}) {
-    // v9: Dedup — reuse existing connection
-    if (peersRef.current.has(targetSocketId)) {
-      return peersRef.current.get(targetSocketId).pc;
+    // v11: Dedup — if connection is alive, reuse it; if dead, clean up first
+    const existingPeer = peersRef.current.get(targetSocketId);
+    if (existingPeer) {
+      const state = existingPeer.pc.connectionState;
+      if (state !== 'failed' && state !== 'closed') {
+        return existingPeer.pc;
+      }
+      // Dead connection — clean it up before creating new one
+      cleanupPeer(targetSocketId, existingPeer.userId);
     }
 
     // v9: Max peer cap
@@ -287,9 +297,9 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
         if (prev.find(u => u.userId === user.userId)) return prev;
         return [...prev, user];
       });
-      if (localStreamRef.current) {
-        createPeerConnection(user.socketId, true, localStreamRef.current, user);
-      }
+      // v11: Do NOT create an offer here! The new joiner will receive video:peers
+      // and create offers TO US via isInitiator=true. We just wait for their offer
+      // in onVideoOffer. Creating offers from both sides caused a dual-offer race.
     };
 
     const onVideoUserLeft = (data) => {
@@ -307,10 +317,9 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
       if (!mountedRef.current) return;
       setVideoUsers(peers);
       if (localStreamRef.current) {
-        // v10: The joiner initiates offers to all existing peers
-        // (changed from isInitiator=false to true — joiner must send offers
-        // because existing users already sent their offers via user-joined but
-        // the joiner also needs to initiate for bidirectional connection)
+        // v11: The joiner is the ONLY side that initiates offers.
+        // Existing users do NOT send offers (fixed in onVideoUserJoined).
+        // This eliminates the dual-offer race condition.
         peers.forEach(peer => {
           createPeerConnection(peer.socketId, true, localStreamRef.current, peer);
         });

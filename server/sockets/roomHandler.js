@@ -271,10 +271,10 @@ function kickUser(socketId, io) {
     timestamp: Date.now(),
   });
   
-  // Give a brief moment for the event to reach the client, then disconnect
+  // v14: Give the client time for graceful exit (toast + redirect) before force-disconnect
   setTimeout(() => {
     try { targetSocket.disconnect(true); } catch (e) {}
-  }, 200);
+  }, 3000);
   
   roomStatsCache = null;
   console.log(`[Admin] Kicked user: ${username} (socket: ${socketId})`);
