@@ -1,39 +1,92 @@
 /**
- * VideoChat v11.0 — Phase 4.1: Fix dual-offer race condition
- * 
- * v11.0 fixes:
- *  - FIXED: Both sides sent offers simultaneously (joiner via video:peers with
- *    isInitiator=true, existing user via video:user-joined with isInitiator=true).
- *    The createPeerConnection dedup guard returned the existing PC but both sides
- *    were trying to set local offers, causing glare and broken handshakes.
- *  - FIX: Only the JOINER (video:peers) creates offers with isInitiator=true.
- *    Existing users (video:user-joined) create the PC with isInitiator=false and
- *    WAIT for the joiner's incoming offer.
- *  - onVideoOffer glare handling retained as safety net for ICE restarts.
+ * VideoChat v12.0 — Production-Grade WebRTC Video Chat (Complete Rewrite)
  *
- * v9.0 hardening (retained):
- *  - Stable leaveVideo ref via useRef
- *  - ICE restart on failure with backoff
- *  - Connection timeout, getUserMedia timeout
- *  - Max peer cap, safe cleanup
+ * Architecture (mirrors VoiceChat v15):
+ *  - Single-direction offer: ONLY the joiner (video:peers receiver) creates offers.
+ *    Existing users (video:user-joined) wait for incoming offers and answer them.
+ *  - ICE candidate queuing: candidates buffered until remoteDescription is set.
+ *  - TURN server support for NAT traversal.
+ *  - All WebRTC state managed via refs (no stale closures).
+ *  - Polite-peer glare handling as safety net for ICE restarts.
+ *  - Explicit video.play() with autoplay-policy fallback.
+ *  - Remote stream re-attach on videoUsers state change (DOM timing fix).
  *
  * made with <3 by Namish
  */
 
 import { useState, useEffect, useRef, useCallback, memo } from 'react';
 
-const ICE_SERVERS = [
+// Fallback ICE servers — used if /api/ice-servers endpoint is unreachable
+const FALLBACK_ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turns:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
 ];
 
+// Fetch fresh ICE servers from backend (production-grade: server manages credentials)
+let cachedIceServers = null;
+let cacheExpiry = 0;
+function getServerBaseUrl() {
+  if (process.env.NEXT_PUBLIC_SERVER_URL) return process.env.NEXT_PUBLIC_SERVER_URL;
+  if (typeof window !== 'undefined') {
+    const origin = window.location.origin;
+    if (origin.includes('-sandbox') || origin.includes('.sandbox.')) {
+      return origin.replace(/\/\/3000-/, '//4000-');
+    }
+    return origin.replace(':3000', ':4000');
+  }
+  return 'http://localhost:4000';
+}
+async function getIceServers() {
+  const now = Date.now();
+  if (cachedIceServers && now < cacheExpiry) return cachedIceServers;
+  try {
+    const baseUrl = getServerBaseUrl();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const resp = await fetch(`${baseUrl}/api/ice-servers`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!resp.ok) throw new Error('Failed to fetch ICE servers');
+    const data = await resp.json();
+    cachedIceServers = data.iceServers;
+    cacheExpiry = now + ((data.ttl || 3600) * 500); // refresh at half-TTL
+    console.log('[Video] Fetched ICE servers from backend:', cachedIceServers.length, 'servers');
+    return cachedIceServers;
+  } catch (err) {
+    console.warn('[Video] Using fallback ICE servers:', err.message);
+    return FALLBACK_ICE_SERVERS;
+  }
+}
+
 const MAX_PEERS = 8;
-const PEER_CONNECT_TIMEOUT = 15000; // 15s to establish connection
-const ICE_RESTART_DELAY_BASE = 2000;
-const ICE_RESTART_MAX_ATTEMPTS = 3;
+const PEER_TIMEOUT_MS = 20000;
+const ICE_RESTART_MAX = 2;
+const ICE_RESTART_DELAY = 3000;
 
 const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
+  // ─── State ─────────────────────────────────────────────────────
   const [isInVideo, setIsInVideo] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
@@ -43,47 +96,49 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
   const [connecting, setConnecting] = useState(false);
   const [expanded, setExpanded] = useState(true);
 
+  // ─── Refs ──────────────────────────────────────────────────────
   const localVideoRef = useRef(null);
-  const localStreamRef = useRef(null);
-  const screenStreamRef = useRef(null);
-  const peersRef = useRef(new Map());
-  const remoteVideosRef = useRef(new Map());
-  const peerTimeoutsRef = useRef(new Map()); // v9: track connection timeouts
-  const iceRestartAttemptsRef = useRef(new Map()); // v9: track ICE restart attempts
-  const isInVideoRef = useRef(false); // v9: stable ref for cleanup
+  const localStream = useRef(null);
+  const screenStream = useRef(null);
+  const peers = useRef(new Map());            // socketId -> { pc, userId, username, iceCandidateQueue, remoteDescSet }
+  const remoteStreams = useRef(new Map());     // userId -> MediaStream
+  const peerTimers = useRef(new Map());
+  const iceRestarts = useRef(new Map());
+  const isInVideoRef = useRef(false);
   const socketRef = useRef(socket);
-  const mountedRef = useRef(true);
+  const mounted = useRef(true);
 
   // Keep refs in sync
   useEffect(() => { socketRef.current = socket; }, [socket]);
   useEffect(() => { isInVideoRef.current = isInVideo; }, [isInVideo]);
-  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
-  // v9: Stable leaveVideo via ref to avoid stale closures
+  const safe = useCallback((fn) => { if (mounted.current) fn(); }, []);
+
+  // Stable leaveVideo ref
   const leaveVideoRef = useRef(null);
 
+  // ─── Cleanup ───────────────────────────────────────────────────
   const doLeaveVideo = useCallback(() => {
     // Stop all local tracks
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
-      localStreamRef.current = null;
+    if (localStream.current) {
+      localStream.current.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+      localStream.current = null;
     }
-    if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
-      screenStreamRef.current = null;
+    if (screenStream.current) {
+      screenStream.current.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+      screenStream.current = null;
     }
-    // Clear all peer connection timeouts
-    for (const [, timer] of peerTimeoutsRef.current) {
-      clearTimeout(timer);
-    }
-    peerTimeoutsRef.current.clear();
-    iceRestartAttemptsRef.current.clear();
     // Close all peer connections
-    peersRef.current.forEach(({ pc }) => {
-      try { pc.close(); } catch (e) {}
-    });
-    peersRef.current.clear();
-    remoteVideosRef.current.clear();
+    for (const [sid, peer] of peers.current) {
+      try { peer.pc.close(); } catch (e) {}
+    }
+    peers.current.clear();
+    remoteStreams.current.clear();
+    // Clear timers
+    for (const t of peerTimers.current.values()) clearTimeout(t);
+    peerTimers.current.clear();
+    iceRestarts.current.clear();
     // Clean up remote video elements
     try {
       document.querySelectorAll('[id^="remote-video-"]').forEach(el => {
@@ -91,22 +146,20 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
       });
     } catch (e) {}
 
-    if (socketRef.current) {
-      socketRef.current.emit('video:leave');
-    }
+    socketRef.current?.emit('video:leave');
 
-    if (mountedRef.current) {
+    safe(() => {
       setIsInVideo(false);
       setIsCameraOn(true);
       setIsMicOn(true);
       setIsScreenSharing(false);
       setVideoUsers([]);
-    }
+    });
   }, []);
 
   leaveVideoRef.current = doLeaveVideo;
 
-  // Cleanup on unmount — uses ref, no stale closure
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (leaveVideoRef.current && isInVideoRef.current) {
@@ -115,273 +168,257 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
     };
   }, []);
 
-  // ─── Create Peer Connection (v11: fixed dual-offer race) ────
-  function createPeerConnection(targetSocketId, isInitiator, stream, userInfo = {}) {
-    // v11: Dedup — if connection is alive, reuse it; if dead, clean up first
-    const existingPeer = peersRef.current.get(targetSocketId);
-    if (existingPeer) {
-      const state = existingPeer.pc.connectionState;
+  // ─── Destroy single peer ──────────────────────────────────────
+  function destroyPeer(socketId, userId) {
+    const peer = peers.current.get(socketId);
+    if (peer) {
+      try { peer.pc.close(); } catch (e) {}
+      peers.current.delete(socketId);
+    }
+    if (userId) {
+      const el = document.getElementById(`remote-video-${userId}`);
+      if (el) try { el.srcObject = null; } catch (e) {}
+      remoteStreams.current.delete(userId);
+    }
+    const t = peerTimers.current.get(socketId);
+    if (t) { clearTimeout(t); peerTimers.current.delete(socketId); }
+    iceRestarts.current.delete(socketId);
+  }
+
+  // ─── Attach remote stream to video element ─────────────────────
+  function attachRemoteStream(userId, stream) {
+    if (!stream) return;
+    const el = document.getElementById(`remote-video-${userId}`);
+    if (el) {
+      el.srcObject = stream;
+      const p = el.play();
+      if (p && p.catch) {
+        p.catch(() => {
+          const retry = () => {
+            el.play().catch(() => {});
+            document.removeEventListener('click', retry);
+          };
+          document.addEventListener('click', retry, { once: true });
+        });
+      }
+    }
+  }
+
+  // ─── Create RTCPeerConnection ──────────────────────────────────
+  async function makePeerConnection(targetSocketId, userId, username) {
+    // Clean up stale connection
+    const existing = peers.current.get(targetSocketId);
+    if (existing) {
+      const state = existing.pc.connectionState;
       if (state !== 'failed' && state !== 'closed') {
-        return existingPeer.pc;
+        return existing.pc; // Reuse live connection
       }
-      // Dead connection — clean it up before creating new one
-      cleanupPeer(targetSocketId, existingPeer.userId);
+      try { existing.pc.close(); } catch (e) {}
+      peers.current.delete(targetSocketId);
     }
+    if (peers.current.size >= MAX_PEERS) return null;
 
-    // v9: Max peer cap
-    if (peersRef.current.size >= MAX_PEERS) {
-      console.warn('[Video] Max peer cap reached, rejecting new connection');
-      return null;
-    }
+    // Fetch ICE servers from backend (cached, production-grade)
+    const iceServers = await getIceServers();
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({
+      iceServers,
+      iceCandidatePoolSize: 4,
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require',
+    });
 
-    // Add local tracks
-    if (stream) {
-      stream.getTracks().forEach(track => {
-        try { pc.addTrack(track, stream); } catch (e) {}
-      });
-    }
+    const peerData = { pc, userId, username, iceCandidateQueue: [], remoteDescSet: false };
+    peers.current.set(targetSocketId, peerData);
 
-    pc.onicecandidate = (event) => {
-      if (event.candidate && socketRef.current) {
-        socketRef.current.emit('video:ice-candidate', { to: targetSocketId, candidate: event.candidate });
+    pc.onicecandidate = (e) => {
+      if (e.candidate && socketRef.current) {
+        socketRef.current.emit('video:ice-candidate', { to: targetSocketId, candidate: e.candidate });
       }
     };
 
-    // v10: Robust ontrack handler — attach stream + explicit play() for autoplay policy
-    pc.ontrack = (event) => {
-      if (!mountedRef.current) return;
-      const remoteStream = event.streams[0];
-      if (!remoteStream) return;
-      remoteVideosRef.current.set(userInfo.userId, remoteStream);
-      // Try to attach immediately if DOM element exists
-      attachRemoteStream(userInfo.userId, remoteStream);
+    pc.ontrack = (e) => {
+      if (!mounted.current) return;
+      const remoteStream = e.streams[0] || new MediaStream([e.track]);
+      remoteStreams.current.set(userId, remoteStream);
+      attachRemoteStream(userId, remoteStream);
     };
 
-    // v9: ICE restart on failure with backoff
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
       if (state === 'connected') {
-        if (peerTimeoutsRef.current.has(targetSocketId)) {
-          clearTimeout(peerTimeoutsRef.current.get(targetSocketId));
-          peerTimeoutsRef.current.delete(targetSocketId);
-        }
-        iceRestartAttemptsRef.current.delete(targetSocketId);
-      } else if (state === 'disconnected') {
-        setTimeout(() => {
-          if (pc.connectionState === 'disconnected') {
-            attemptIceRestart(targetSocketId, pc);
-          }
-        }, 3000);
+        const t = peerTimers.current.get(targetSocketId);
+        if (t) { clearTimeout(t); peerTimers.current.delete(targetSocketId); }
+        iceRestarts.current.delete(targetSocketId);
       } else if (state === 'failed') {
         attemptIceRestart(targetSocketId, pc);
-      } else if (state === 'closed') {
-        cleanupPeer(targetSocketId, userInfo.userId);
-      }
-    };
-
-    pc.onicecandidateerror = () => {
-      // Silently handle ICE candidate errors
-    };
-
-    // v10: REMOVED onnegotiationneeded handler — it raced with the explicit
-    // createOffer() below, sending duplicate offers that broke the handshake.
-    // Renegotiation (e.g. screen share track swap) is handled via replaceTrack()
-    // which does NOT require a new offer/answer exchange.
-
-    peersRef.current.set(targetSocketId, { pc, userId: userInfo.userId, username: userInfo.username });
-
-    // v9: Connection timeout
-    const timeoutId = setTimeout(() => {
-      if (pc.connectionState !== 'connected') {
-        console.warn(`[Video] Peer ${targetSocketId} connection timeout`);
-        cleanupPeer(targetSocketId, userInfo.userId);
-      }
-    }, PEER_CONNECT_TIMEOUT);
-    peerTimeoutsRef.current.set(targetSocketId, timeoutId);
-
-    // v10: Only the initiator creates and sends an offer
-    if (isInitiator) {
-      (async () => {
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          if (socketRef.current) {
-            socketRef.current.emit('video:offer', { to: targetSocketId, offer: pc.localDescription });
+      } else if (state === 'disconnected') {
+        setTimeout(() => {
+          if (mounted.current && pc.connectionState === 'disconnected') {
+            attemptIceRestart(targetSocketId, pc);
           }
-        } catch (err) {
-          console.error('[Video] Create offer error:', err);
-        }
-      })();
-    }
+        }, 5000);
+      } else if (state === 'closed') {
+        destroyPeer(targetSocketId, userId);
+      }
+    };
+
+    // Connection timeout
+    const timer = setTimeout(() => {
+      const p = peers.current.get(targetSocketId);
+      if (p && p.pc.connectionState !== 'connected') {
+        destroyPeer(targetSocketId, userId);
+      }
+      peerTimers.current.delete(targetSocketId);
+    }, PEER_TIMEOUT_MS);
+    peerTimers.current.set(targetSocketId, timer);
 
     return pc;
   }
 
-  // v10: Helper to attach a remote stream to its video element + play()
-  function attachRemoteStream(userId, stream) {
-    if (!stream) return;
-    const videoEl = document.getElementById(`remote-video-${userId}`);
-    if (videoEl) {
-      videoEl.srcObject = stream;
-      const playPromise = videoEl.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(() => {
-          // Autoplay blocked — retry on interaction
-          const resume = () => {
-            videoEl.play().catch(() => {});
-            document.removeEventListener('click', resume);
-          };
-          document.addEventListener('click', resume, { once: true });
-        });
-      }
+  // ─── Flush queued ICE candidates ───────────────────────────────
+  async function flushIceCandidates(socketId) {
+    const peer = peers.current.get(socketId);
+    if (!peer) return;
+    peer.remoteDescSet = true;
+    for (const candidate of peer.iceCandidateQueue) {
+      try { await peer.pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) {}
     }
+    peer.iceCandidateQueue = [];
   }
 
-  // v9: ICE restart with backoff
-  function attemptIceRestart(targetSocketId, pc) {
-    const attempts = iceRestartAttemptsRef.current.get(targetSocketId) || 0;
-    if (attempts >= ICE_RESTART_MAX_ATTEMPTS) {
-      console.warn(`[Video] ICE restart failed after ${ICE_RESTART_MAX_ATTEMPTS} attempts for ${targetSocketId}`);
-      const peer = peersRef.current.get(targetSocketId);
-      cleanupPeer(targetSocketId, peer?.userId);
+  // ─── ICE restart ───────────────────────────────────────────────
+  function attemptIceRestart(socketId, pc) {
+    const attempts = iceRestarts.current.get(socketId) || 0;
+    if (attempts >= ICE_RESTART_MAX) {
+      const peer = peers.current.get(socketId);
+      destroyPeer(socketId, peer?.userId);
       return;
     }
-
-    iceRestartAttemptsRef.current.set(targetSocketId, attempts + 1);
-    const delay = ICE_RESTART_DELAY_BASE * Math.pow(2, attempts);
-
+    iceRestarts.current.set(socketId, attempts + 1);
     setTimeout(async () => {
+      if (!mounted.current) return;
+      const peer = peers.current.get(socketId);
+      if (!peer || pc.connectionState === 'closed') return;
       try {
-        if (pc.connectionState === 'closed') return;
+        pc.restartIce();
         const offer = await pc.createOffer({ iceRestart: true });
         await pc.setLocalDescription(offer);
-        if (socketRef.current) {
-          socketRef.current.emit('video:offer', { to: targetSocketId, offer: pc.localDescription });
-        }
-      } catch (err) {
-        console.error('[Video] ICE restart error:', err);
+        socketRef.current?.emit('video:offer', { to: socketId, offer: pc.localDescription });
+      } catch (e) {
+        const p = peers.current.get(socketId);
+        destroyPeer(socketId, p?.userId);
       }
-    }, delay);
+    }, ICE_RESTART_DELAY * Math.pow(2, attempts));
   }
 
-  // v9: Safe peer cleanup
-  function cleanupPeer(targetSocketId, userId) {
-    if (peerTimeoutsRef.current.has(targetSocketId)) {
-      clearTimeout(peerTimeoutsRef.current.get(targetSocketId));
-      peerTimeoutsRef.current.delete(targetSocketId);
-    }
-    iceRestartAttemptsRef.current.delete(targetSocketId);
-
-    const peer = peersRef.current.get(targetSocketId);
-    if (peer) {
-      try { peer.pc.close(); } catch (e) {}
-      peersRef.current.delete(targetSocketId);
-    }
-
-    if (userId) {
-      const el = document.getElementById(`remote-video-${userId}`);
-      if (el) try { el.srcObject = null; } catch (e) {}
-      remoteVideosRef.current.delete(userId);
+  // ─── JOINER: Send offer to an existing peer ────────────────────
+  async function sendOffer(targetSocketId, userId, username) {
+    if (!localStream.current || !socketRef.current) return;
+    try {
+      const pc = await makePeerConnection(targetSocketId, userId, username);
+      if (!pc) return;
+      // Add local tracks
+      localStream.current.getTracks().forEach(t => {
+        try { pc.addTrack(t, localStream.current); } catch (e) {}
+      });
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socketRef.current.emit('video:offer', { to: targetSocketId, offer: pc.localDescription });
+    } catch (err) {
+      console.error('[Video] sendOffer error:', err);
+      destroyPeer(targetSocketId, userId);
     }
   }
 
-  // Socket event handlers
+  // ─── Socket event handlers ─────────────────────────────────────
   useEffect(() => {
     if (!socket) return;
 
+    // New user joined video → update UI only (do NOT send offer)
     const onVideoUserJoined = (user) => {
-      if (!mountedRef.current) return;
+      if (!mounted.current) return;
       setVideoUsers(prev => {
         if (prev.find(u => u.userId === user.userId)) return prev;
         return [...prev, user];
       });
-      // v11: Do NOT create an offer here! The new joiner will receive video:peers
-      // and create offers TO US via isInitiator=true. We just wait for their offer
-      // in onVideoOffer. Creating offers from both sides caused a dual-offer race.
+      // The new user will send us an offer via video:peers → sendOffer
     };
 
     const onVideoUserLeft = (data) => {
-      if (!mountedRef.current) return;
+      if (!mounted.current) return;
       setVideoUsers(prev => prev.filter(u => u.userId !== data.userId));
-      // Clean up all peer connections for this user
-      for (const [sid, peer] of peersRef.current) {
-        if (peer.userId === data.userId) {
-          cleanupPeer(sid, data.userId);
-        }
+      for (const [sid, peer] of peers.current) {
+        if (peer.userId === data.userId) destroyPeer(sid, data.userId);
       }
     };
 
-    const onVideoPeers = (peers) => {
-      if (!mountedRef.current) return;
-      setVideoUsers(peers);
-      if (localStreamRef.current) {
-        // v11: The joiner is the ONLY side that initiates offers.
-        // Existing users do NOT send offers (fixed in onVideoUserJoined).
-        // This eliminates the dual-offer race condition.
-        peers.forEach(peer => {
-          createPeerConnection(peer.socketId, true, localStreamRef.current, peer);
-        });
+    // Joiner receives list of existing video users → send offers to each
+    const onVideoPeers = (peerList) => {
+      if (!mounted.current) return;
+      setVideoUsers(peerList);
+      if (localStream.current) {
+        peerList.forEach(p => sendOffer(p.socketId, p.userId, p.username));
       }
     };
 
+    // Incoming offer → we are the answerer
     const onVideoOffer = async (data) => {
-      if (!localStreamRef.current) return;
+      if (!localStream.current) return;
       try {
-        let peer = peersRef.current.get(data.from);
+        let peer = peers.current.get(data.from);
         let pc;
+
         if (peer) {
           pc = peer.pc;
-          // v10: Handle "glare" condition — both sides sent offers simultaneously.
-          // If we're in have-local-offer state, we need to resolve the collision.
-          // The "polite" peer (one with higher socket ID) rolls back its own offer.
+          // Glare handling (ICE restart race)
           if (pc.signalingState === 'have-local-offer') {
-            const isPolite = socket.id > data.from; // higher ID is polite (yields)
-            if (!isPolite) {
-              // We are impolite — ignore incoming offer, keep ours
-              console.log('[Video] Glare: impolite peer, ignoring incoming offer');
-              return;
-            }
-            // We are polite — rollback our offer and accept theirs
-            console.log('[Video] Glare: polite peer, rolling back our offer');
+            const weArePolite = socket.id > data.from;
+            if (!weArePolite) return;
             await pc.setLocalDescription({ type: 'rollback' });
           }
-          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
         } else {
-          pc = createPeerConnection(data.from, false, localStreamRef.current, { userId: data.userId, username: data.username });
-          if (!pc) return; // max peers reached
-          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+          pc = await makePeerConnection(data.from, data.userId, data.username);
+          if (!pc) return;
+          localStream.current.getTracks().forEach(t => {
+            try { pc.addTrack(t, localStream.current); } catch (e) {}
+          });
         }
+
+        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        await flushIceCandidates(data.from);
+
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        socket.emit('video:answer', { to: data.from, answer });
+        socket.emit('video:answer', { to: data.from, answer: pc.localDescription });
       } catch (err) {
-        console.error('[Video] Offer handling error:', err);
+        console.error('[Video] onVideoOffer error:', err);
+        destroyPeer(data.from, data.userId);
       }
     };
 
+    // Incoming answer
     const onVideoAnswer = async (data) => {
-      const peer = peersRef.current.get(data.from);
-      if (peer?.pc) {
-        try {
-          if (peer.pc.signalingState === 'have-local-offer') {
-            await peer.pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-          }
-        } catch (e) {
-          console.error('[Video] Answer handling error:', e);
+      const peer = peers.current.get(data.from);
+      if (!peer) return;
+      try {
+        if (peer.pc.signalingState === 'have-local-offer') {
+          await peer.pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          await flushIceCandidates(data.from);
         }
+      } catch (err) {
+        console.error('[Video] onVideoAnswer error:', err);
       }
     };
 
+    // Incoming ICE candidate → queue if remote desc not set
     const onVideoIceCandidate = async (data) => {
-      const peer = peersRef.current.get(data.from);
-      if (peer?.pc && data.candidate) {
-        try {
-          await peer.pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } catch (e) {
-          // Silently ignore late ICE candidates
-        }
+      const peer = peers.current.get(data.from);
+      if (!peer || !data.candidate) return;
+      if (peer.remoteDescSet) {
+        try { await peer.pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (e) {}
+      } else {
+        peer.iceCandidateQueue.push(data.candidate);
       }
     };
 
@@ -404,32 +441,29 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
 
   // Attach local stream to video element
   useEffect(() => {
-    if (localVideoRef.current && localStreamRef.current) {
-      localVideoRef.current.srcObject = localStreamRef.current;
+    if (localVideoRef.current && localStream.current) {
+      localVideoRef.current.srcObject = localStream.current;
     }
   }, [isInVideo, isCameraOn]);
 
-  // v10: Re-attach remote streams whenever videoUsers changes
-  // This handles the case where ontrack fires before the DOM element is rendered
+  // Re-attach remote streams when videoUsers changes (DOM timing fix)
   useEffect(() => {
     if (!isInVideo) return;
-    // Give React a tick to render the new video elements
     const timer = setTimeout(() => {
-      for (const [userId, stream] of remoteVideosRef.current) {
+      for (const [userId, stream] of remoteStreams.current) {
         attachRemoteStream(userId, stream);
       }
-    }, 100);
+    }, 150);
     return () => clearTimeout(timer);
   }, [videoUsers, isInVideo]);
 
-  // ─── Join Video ─────────────────────────────────────────────────
+  // ─── Join Video ────────────────────────────────────────────────
   const joinVideo = useCallback(async () => {
     if (!socket || isInVideo || connecting) return;
     setConnecting(true);
     setError('');
 
     try {
-      // v9: getUserMedia with timeout protection
       const mediaPromise = navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 640, max: 1280 },
@@ -437,24 +471,21 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
           facingMode: 'user',
           frameRate: { ideal: 24, max: 30 },
         },
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
+      const stream = await Promise.race([
+        mediaPromise,
+        new Promise((_, rej) => setTimeout(() => rej(new Error('MEDIA_TIMEOUT')), 10000)),
+      ]);
 
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('MEDIA_TIMEOUT')), 10000)
-      );
+      if (!mounted.current) { stream.getTracks().forEach(t => t.stop()); return; }
 
-      const stream = await Promise.race([mediaPromise, timeoutPromise]);
-
-      if (!mountedRef.current) {
-        stream.getTracks().forEach(t => t.stop());
-        return;
-      }
-
-      localStreamRef.current = stream;
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-      }
+      localStream.current = stream;
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
       setIsCameraOn(true);
       setIsMicOn(true);
@@ -464,92 +495,80 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
 
       socket.emit('video:join', { userId: currentUser.userId, username: currentUser.username });
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!mounted.current) return;
       setConnecting(false);
-      if (err.message === 'MEDIA_TIMEOUT') {
-        setError('Camera access timed out. Try again.');
-      } else if (err.name === 'NotAllowedError') {
-        setError('Camera permission denied. Check browser settings.');
-      } else if (err.name === 'NotFoundError') {
-        setError('No camera found on this device.');
-      } else if (err.name === 'NotReadableError') {
-        setError('Camera is already in use by another app.');
-      } else {
-        setError('Failed to access camera. Try again.');
-      }
+      const msg =
+        err.message === 'MEDIA_TIMEOUT' ? 'Camera access timed out. Try again.' :
+        err.name === 'NotAllowedError' ? 'Camera permission denied. Check browser settings.' :
+        err.name === 'NotFoundError' ? 'No camera found on this device.' :
+        err.name === 'NotReadableError' ? 'Camera is already in use by another app.' :
+        'Failed to access camera. Try again.';
+      setError(msg);
     }
   }, [socket, isInVideo, connecting, currentUser]);
 
-  // ─── Toggle Camera ──────────────────────────────────────────────
+  // ─── Toggle Camera ─────────────────────────────────────────────
   const toggleCamera = useCallback(() => {
-    if (!localStreamRef.current) return;
-    const videoTrack = localStreamRef.current.getVideoTracks()[0];
-    if (videoTrack) {
-      videoTrack.enabled = !videoTrack.enabled;
-      setIsCameraOn(videoTrack.enabled);
-    }
+    if (!localStream.current) return;
+    const track = localStream.current.getVideoTracks()[0];
+    if (track) { track.enabled = !track.enabled; setIsCameraOn(track.enabled); }
   }, []);
 
-  // ─── Toggle Mic ─────────────────────────────────────────────────
+  // ─── Toggle Mic ────────────────────────────────────────────────
   const toggleMic = useCallback(() => {
-    if (!localStreamRef.current) return;
-    const audioTrack = localStreamRef.current.getAudioTracks()[0];
-    if (audioTrack) {
-      audioTrack.enabled = !audioTrack.enabled;
-      setIsMicOn(audioTrack.enabled);
-    }
+    if (!localStream.current) return;
+    const track = localStream.current.getAudioTracks()[0];
+    if (track) { track.enabled = !track.enabled; setIsMicOn(track.enabled); }
   }, []);
 
-  // ─── Screen Share ───────────────────────────────────────────────
+  // ─── Screen Share ──────────────────────────────────────────────
   const toggleScreenShare = useCallback(async () => {
     if (isScreenSharing) {
-      if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
-        screenStreamRef.current = null;
+      // Stop sharing
+      if (screenStream.current) {
+        screenStream.current.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+        screenStream.current = null;
       }
-      if (localStreamRef.current) {
-        const videoTrack = localStreamRef.current.getVideoTracks()[0];
+      // Swap back to camera track
+      if (localStream.current) {
+        const videoTrack = localStream.current.getVideoTracks()[0];
         if (videoTrack) {
-          peersRef.current.forEach(({ pc }) => {
+          peers.current.forEach(({ pc }) => {
             try {
               const sender = pc.getSenders().find(s => s.track?.kind === 'video');
               if (sender) sender.replaceTrack(videoTrack).catch(() => {});
             } catch (e) {}
           });
         }
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = localStreamRef.current;
-        }
+        if (localVideoRef.current) localVideoRef.current.srcObject = localStream.current;
       }
       setIsScreenSharing(false);
-      if (socketRef.current) socketRef.current.emit('video:screen-share-stop');
+      socketRef.current?.emit('video:screen-share-stop');
       return;
     }
 
     try {
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      screenStreamRef.current = screenStream;
-      const screenTrack = screenStream.getVideoTracks()[0];
+      const ss = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      screenStream.current = ss;
+      const screenTrack = ss.getVideoTracks()[0];
 
-      peersRef.current.forEach(({ pc }) => {
+      peers.current.forEach(({ pc }) => {
         try {
           const sender = pc.getSenders().find(s => s.track?.kind === 'video');
           if (sender) sender.replaceTrack(screenTrack).catch(() => {});
         } catch (e) {}
       });
 
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = screenStream;
-      }
+      if (localVideoRef.current) localVideoRef.current.srcObject = ss;
 
       screenTrack.onended = () => {
-        if (!mountedRef.current) return;
+        if (!mounted.current) return;
         setIsScreenSharing(false);
-        if (localStreamRef.current && localVideoRef.current) {
-          localVideoRef.current.srcObject = localStreamRef.current;
-          const videoTrack = localStreamRef.current.getVideoTracks()[0];
+        if (localStream.current && localVideoRef.current) {
+          localVideoRef.current.srcObject = localStream.current;
+          const videoTrack = localStream.current.getVideoTracks()[0];
           if (videoTrack) {
-            peersRef.current.forEach(({ pc }) => {
+            peers.current.forEach(({ pc }) => {
               try {
                 const sender = pc.getSenders().find(s => s.track?.kind === 'video');
                 if (sender) sender.replaceTrack(videoTrack).catch(() => {});
@@ -557,19 +576,19 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
             });
           }
         }
-        if (socketRef.current) socketRef.current.emit('video:screen-share-stop');
+        socketRef.current?.emit('video:screen-share-stop');
       };
 
       setIsScreenSharing(true);
-      if (socketRef.current) socketRef.current.emit('video:screen-share-start');
+      socketRef.current?.emit('video:screen-share-start');
     } catch (err) {
-      // User cancelled — do nothing
+      // User cancelled
     }
   }, [isScreenSharing]);
 
   const totalInCall = videoUsers.length + (isInVideo ? 1 : 0);
 
-  // ─── NOT in video: compact join bar ─────────────────────────────
+  // ─── NOT in video: compact join bar ────────────────────────────
   if (!isInVideo) {
     return (
       <div className="px-2 sm:px-3 py-2 bg-[#19191c] border-b border-[#282828] flex-shrink-0">
@@ -610,7 +629,7 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
     );
   }
 
-  // ─── IN video: video panel ──────────────────────────────────────
+  // ─── IN video: video panel ─────────────────────────────────────
   return (
     <div className="bg-[#19191c] border-b border-[#282828] flex-shrink-0">
       <div className="px-2 sm:px-3 py-2 flex items-center justify-between gap-2">
@@ -709,7 +728,11 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
             {videoUsers.map(user => (
               <div key={user.userId} className="relative rounded-lg overflow-hidden bg-[#111] border border-[#282828]" style={{ aspectRatio: '16/9' }}>
                 <video id={`remote-video-${user.userId}`} autoPlay playsInline className="w-full h-full object-cover"
-                  ref={(el) => { if (el && remoteVideosRef.current.has(user.userId)) { try { el.srcObject = remoteVideosRef.current.get(user.userId); } catch (e) {} } }} />
+                  ref={(el) => {
+                    if (el && remoteStreams.current.has(user.userId)) {
+                      try { el.srcObject = remoteStreams.current.get(user.userId); } catch (e) {}
+                    }
+                  }} />
                 <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1b1e] to-[#222]" style={{ zIndex: 0 }}>
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold font-mono"
                     style={{ background: (user.color || '#5e9eff') + '25', color: user.color || '#5e9eff' }}>

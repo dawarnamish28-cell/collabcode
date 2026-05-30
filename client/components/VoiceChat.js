@@ -1,46 +1,102 @@
 /**
- * VoiceChat v14.0 — Phase 4.1: Fix dual-offer race condition
- * 
- * v14.0 fixes:
- *  - FIXED: Both sides were sending offers simultaneously (joiner via voice:peers,
- *    existing user via voice:user-joined). The dedup guard in handleOffer silently
- *    rejected the second offer, so neither side got an answer and the connection
- *    never completed.
- *  - FIX: Only the JOINER (voice:peers) creates offers. Existing users (voice:user-joined)
- *    just update their user list and WAIT for the incoming offer.
- *  - handleOffer now has proper glare handling instead of hard dedup rejection —
- *    if a peer already exists in have-local-offer state, the polite peer rolls back.
+ * VoiceChat v15.0 — Production-Grade WebRTC Voice Chat (Complete Rewrite)
  *
- * v12.0 hardening (retained):
- *  - Reusable AudioContext via ref (prevents resource leak on every join)
- *  - Mounted guard ref prevents state updates after unmount
- *  - Stable leaveVoice via useCallback with ref-based socket access
- *  - DOM audio element tracking via ref map (prevents orphan <audio> elements)
- *  - ICE restart on peer connection failure with exponential backoff
- *  - Peer dedup guard (prevents duplicate connections to same socket)
- *  - Connection timeout (15s) for peers that never connect
- *  - Max peers cap (8) to prevent resource exhaustion
- *  - Proper cleanup of all listeners using named handler refs
- *  - getUserMedia timeout wrapper (10s)
- * 
- * Features: deafen, audio bars, connection quality, speaking highlight
- * 
+ * Architecture:
+ *  - Single-direction offer: ONLY the joiner (voice:peers receiver) creates offers.
+ *    Existing users (voice:user-joined) wait for incoming offers and answer them.
+ *  - ICE candidate queuing: candidates buffered until remoteDescription is set.
+ *  - TURN server support for NAT traversal (STUN-only fails behind symmetric NATs).
+ *  - All WebRTC state managed via refs (no stale closures).
+ *  - Polite-peer glare handling as safety net for ICE restarts.
+ *  - Explicit audio.play() with autoplay-policy fallback.
+ *
+ * Signaling flow:
+ *  1. B clicks "Join Voice" → getUserMedia → emit('voice:join')
+ *  2. Server adds B → broadcasts 'voice:user-joined' to A → sends 'voice:peers' to B
+ *  3. B receives voice:peers → for each peer A: createOffer(A) → emit('voice:offer')
+ *  4. A receives voice:offer → createPeerConnection → setRemoteDescription → createAnswer → emit('voice:answer')
+ *  5. B receives voice:answer → setRemoteDescription → connection established
+ *  6. ICE candidates exchanged in parallel via voice:ice-candidate
+ *
  * made with <3 by Namish
  */
 
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
 
-const ICE_SERVERS = [
+// Fallback ICE servers — used if /api/ice-servers endpoint is unreachable
+const FALLBACK_ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turns:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
 ];
 
+// Fetch fresh ICE servers from backend (production-grade: server manages credentials)
+let cachedIceServers = null;
+let cacheExpiry = 0;
+function getServerBaseUrl() {
+  // Use environment variable set by Next.js
+  if (process.env.NEXT_PUBLIC_SERVER_URL) return process.env.NEXT_PUBLIC_SERVER_URL;
+  // Fallback: replace port in current origin
+  if (typeof window !== 'undefined') {
+    const origin = window.location.origin;
+    // Handle sandbox URLs like https://3000-xxx.sandbox.novita.ai → https://4000-xxx.sandbox.novita.ai
+    if (origin.includes('-sandbox') || origin.includes('.sandbox.')) {
+      return origin.replace(/\/\/3000-/, '//4000-');
+    }
+    return origin.replace(':3000', ':4000');
+  }
+  return 'http://localhost:4000';
+}
+async function getIceServers() {
+  const now = Date.now();
+  if (cachedIceServers && now < cacheExpiry) return cachedIceServers;
+  try {
+    const baseUrl = getServerBaseUrl();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const resp = await fetch(`${baseUrl}/api/ice-servers`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!resp.ok) throw new Error('Failed to fetch ICE servers');
+    const data = await resp.json();
+    cachedIceServers = data.iceServers;
+    cacheExpiry = now + ((data.ttl || 3600) * 500); // refresh at half-TTL
+    console.log('[Voice] Fetched ICE servers from backend:', cachedIceServers.length, 'servers');
+    return cachedIceServers;
+  } catch (err) {
+    console.warn('[Voice] Using fallback ICE servers:', err.message);
+    return FALLBACK_ICE_SERVERS;
+  }
+}
+
 const MAX_PEERS = 8;
-const PEER_CONNECT_TIMEOUT_MS = 15000;
-const ICE_RESTART_MAX_ATTEMPTS = 3;
-const ICE_RESTART_BASE_DELAY = 2000;
+const PEER_TIMEOUT_MS = 20000;    // 20s to establish connection
+const ICE_RESTART_MAX = 2;        // max ICE restart attempts
+const ICE_RESTART_DELAY = 3000;   // base delay for ICE restart
 
 const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
+  // ─── State ─────────────────────────────────────────────────────
   const [isInVoice, setIsInVoice] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
@@ -50,422 +106,433 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
   const [audioLevel, setAudioLevel] = useState(0);
   const [audioBars, setAudioBars] = useState([0, 0, 0]);
 
-  const peersRef = useRef(new Map());
-  const localStreamRef = useRef(null);
-  const audioCtxRef = useRef(null); // v12: reusable AudioContext
-  const analyserRef = useRef(null);
-  const animFrameRef = useRef(null);
-  const remoteAudioMapRef = useRef(new Map()); // v12: tracked audio elements
-  const mountedRef = useRef(true); // v12: mounted guard
-  const socketRef = useRef(socket); // v12: stable ref for socket
-  const peerTimeoutsRef = useRef(new Map()); // v12: connection timeouts
-  const iceRestartCountsRef = useRef(new Map()); // v12: ICE restart tracking
+  // ─── Refs (all mutable state for WebRTC lives here, not in React state) ──
+  const peers = useRef(new Map());          // socketId -> { pc, userId, username, iceCandidateQueue }
+  const localStream = useRef(null);
+  const audioElements = useRef(new Map());  // socketId -> HTMLAudioElement
+  const audioCtx = useRef(null);
+  const analyser = useRef(null);
+  const animFrame = useRef(null);
+  const mounted = useRef(true);
+  const socketRef = useRef(socket);
+  const peerTimers = useRef(new Map());     // socketId -> timeout id
+  const iceRestarts = useRef(new Map());    // socketId -> attempt count
+  const isDeafenedRef = useRef(false);
 
-  // Keep socketRef current
+  // Keep refs in sync
   useEffect(() => { socketRef.current = socket; }, [socket]);
+  useEffect(() => { isDeafenedRef.current = isDeafened; }, [isDeafened]);
 
-  // v12: Mounted guard
+  // ─── Mounted guard ─────────────────────────────────────────────
   useEffect(() => {
-    mountedRef.current = true;
+    mounted.current = true;
     return () => {
-      mountedRef.current = false;
-      // Cleanup everything on unmount
-      cleanupAll();
+      mounted.current = false;
+      fullCleanup();
     };
   }, []);
 
-  // Safe state setter — only updates if still mounted
-  const safeSetState = useCallback((setter) => {
-    if (mountedRef.current) setter();
-  }, []);
+  const safe = useCallback((fn) => { if (mounted.current) fn(); }, []);
 
-  function cleanupAll() {
+  // ─── Full cleanup (all resources) ──────────────────────────────
+  function fullCleanup() {
     stopAudioMonitor();
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(t => t.stop());
-      localStreamRef.current = null;
+    // Stop local mic
+    if (localStream.current) {
+      localStream.current.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+      localStream.current = null;
     }
-    peersRef.current.forEach(({ pc }) => { try { pc.close(); } catch (e) {} });
-    peersRef.current.clear();
-    // Remove tracked audio elements
-    for (const [id, audio] of remoteAudioMapRef.current) {
-      try { audio.srcObject = null; audio.remove(); } catch (e) {}
+    // Close all peer connections
+    for (const [sid, peer] of peers.current) {
+      try { peer.pc.close(); } catch (e) {}
     }
-    remoteAudioMapRef.current.clear();
-    // Clear peer connection timeouts
-    for (const timer of peerTimeoutsRef.current.values()) {
-      clearTimeout(timer);
+    peers.current.clear();
+    // Remove audio elements
+    for (const [, el] of audioElements.current) {
+      try { el.srcObject = null; el.remove(); } catch (e) {}
     }
-    peerTimeoutsRef.current.clear();
-    iceRestartCountsRef.current.clear();
-    // Close reusable AudioContext
-    if (audioCtxRef.current) {
-      try { audioCtxRef.current.close(); } catch (e) {}
-      audioCtxRef.current = null;
+    audioElements.current.clear();
+    // Clear timers
+    for (const t of peerTimers.current.values()) clearTimeout(t);
+    peerTimers.current.clear();
+    iceRestarts.current.clear();
+    // Close AudioContext
+    if (audioCtx.current) {
+      try { audioCtx.current.close(); } catch (e) {}
+      audioCtx.current = null;
     }
-    if (socketRef.current) {
-      socketRef.current.emit('voice:leave');
+    // Tell server we left
+    try { socketRef.current?.emit('voice:leave'); } catch (e) {}
+  }
+
+  // ─── Destroy a single peer ─────────────────────────────────────
+  function destroyPeer(socketId) {
+    const peer = peers.current.get(socketId);
+    if (peer) {
+      try { peer.pc.close(); } catch (e) {}
+      peers.current.delete(socketId);
+    }
+    const el = audioElements.current.get(socketId);
+    if (el) {
+      try { el.srcObject = null; el.remove(); } catch (e) {}
+      audioElements.current.delete(socketId);
+    }
+    const t = peerTimers.current.get(socketId);
+    if (t) { clearTimeout(t); peerTimers.current.delete(socketId); }
+    iceRestarts.current.delete(socketId);
+  }
+
+  // ─── Play remote audio stream ──────────────────────────────────
+  function playRemoteAudio(stream, socketId) {
+    if (!stream) return;
+    let el = audioElements.current.get(socketId);
+    if (!el) {
+      el = document.createElement('audio');
+      el.id = `voice-audio-${socketId}`;
+      el.autoplay = true;
+      el.playsInline = true;
+      // MUST NOT set el.muted = true — that would silence remote audio
+      document.body.appendChild(el);
+      audioElements.current.set(socketId, el);
+    }
+    el.srcObject = stream;
+    el.muted = isDeafenedRef.current;
+    // Force play with autoplay policy fallback
+    const p = el.play();
+    if (p && p.catch) {
+      p.catch(() => {
+        // Retry on user gesture
+        const retry = () => {
+          el.play().catch(() => {});
+          document.removeEventListener('click', retry);
+          document.removeEventListener('keydown', retry);
+        };
+        document.addEventListener('click', retry, { once: true });
+        document.addEventListener('keydown', retry, { once: true });
+      });
     }
   }
 
-  // Socket event handlers
-  useEffect(() => {
-    if (!socket) return;
+  // ─── Create RTCPeerConnection ──────────────────────────────────
+  async function makePeerConnection(targetSocketId, userId, username) {
+    // Clean up stale connection if exists
+    const existing = peers.current.get(targetSocketId);
+    if (existing) {
+      try { existing.pc.close(); } catch (e) {}
+      peers.current.delete(targetSocketId);
+    }
+    if (peers.current.size >= MAX_PEERS) return null;
 
-    const handlePeers = (peers) => {
-      safeSetState(() => setVoiceUsers(peers.map(p => ({ userId: p.userId, username: p.username }))));
-      peers.forEach(peer => createOffer(peer.socketId, peer.username, peer.userId));
-    };
+    // Fetch ICE servers from backend (cached, production-grade)
+    const iceServers = await getIceServers();
 
-    const handleUserJoined = (data) => {
-      safeSetState(() => setVoiceUsers(prev => {
-        if (prev.find(u => u.userId === data.userId)) return prev;
-        return [...prev, { userId: data.userId, username: data.username }];
-      }));
-      // v14: Do NOT create an offer here! The new joiner will receive voice:peers
-      // and create offers TO US. We just wait for their offer in handleOffer.
-      // Creating offers from both sides caused a dual-offer race condition where
-      // the dedup guard silently dropped the second offer, killing the connection.
-    };
+    const pc = new RTCPeerConnection({
+      iceServers,
+      iceCandidatePoolSize: 4,       // Pre-allocate ICE candidates for faster connection
+      bundlePolicy: 'max-bundle',    // Multiplex all media on one transport
+      rtcpMuxPolicy: 'require',      // Require RTCP muxing
+    });
 
-    const handleUserLeft = (data) => {
-      safeSetState(() => setVoiceUsers(prev => prev.filter(u => u.userId !== data.userId)));
-      // Clean up peer connections for this user
-      for (const [sid, peer] of peersRef.current) {
-        if (peer.userId === data.userId) {
-          destroyPeer(sid);
-        }
-      }
-    };
+    const peerData = { pc, userId, username, iceCandidateQueue: [], remoteDescSet: false };
+    peers.current.set(targetSocketId, peerData);
 
-    const handleOffer = async (data) => {
-      if (!localStreamRef.current) return;
-      // v14: Max peers cap
-      if (!peersRef.current.has(data.from) && peersRef.current.size >= MAX_PEERS) {
-        console.warn('[Voice] Max peers reached, rejecting offer');
-        return;
-      }
-      try {
-        let pc;
-        const existingPeer = peersRef.current.get(data.from);
-        if (existingPeer) {
-          pc = existingPeer.pc;
-          // v14: Glare handling — we already have a local offer pending.
-          // Use polite peer pattern: higher socket ID yields (rolls back).
-          if (pc.signalingState === 'have-local-offer') {
-            const isPolite = socket.id > data.from;
-            if (!isPolite) {
-              console.log('[Voice] Glare: impolite peer, ignoring incoming offer');
-              return;
-            }
-            console.log('[Voice] Glare: polite peer, rolling back');
-            await pc.setLocalDescription({ type: 'rollback' });
-          }
-          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-        } else {
-          // New peer — create PC and add tracks
-          pc = createPeerConnection(data.from, data.userId, data.username);
-          localStreamRef.current.getTracks().forEach(t => pc.addTrack(t, localStreamRef.current));
-          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-        }
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socketRef.current?.emit('voice:answer', { to: data.from, answer });
-      } catch (err) {
-        console.error('[Voice] Offer handling error:', err);
-        destroyPeer(data.from);
-      }
-    };
-
-    const handleAnswer = async (data) => {
-      const peer = peersRef.current.get(data.from);
-      if (peer) {
-        try { await peer.pc.setRemoteDescription(new RTCSessionDescription(data.answer)); }
-        catch (e) { console.warn('[Voice] Answer error:', e.message); }
-      }
-    };
-
-    const handleIceCandidate = async (data) => {
-      const peer = peersRef.current.get(data.from);
-      if (peer) {
-        try { await peer.pc.addIceCandidate(new RTCIceCandidate(data.candidate)); }
-        catch (e) { /* ICE candidate errors are common and non-fatal */ }
-      }
-    };
-
-    socket.on('voice:peers', handlePeers);
-    socket.on('voice:user-joined', handleUserJoined);
-    socket.on('voice:user-left', handleUserLeft);
-    socket.on('voice:offer', handleOffer);
-    socket.on('voice:answer', handleAnswer);
-    socket.on('voice:ice-candidate', handleIceCandidate);
-
-    return () => {
-      socket.off('voice:peers', handlePeers);
-      socket.off('voice:user-joined', handleUserJoined);
-      socket.off('voice:user-left', handleUserLeft);
-      socket.off('voice:offer', handleOffer);
-      socket.off('voice:answer', handleAnswer);
-      socket.off('voice:ice-candidate', handleIceCandidate);
-    };
-  }, [socket]);
-
-  // v12: Create a peer connection with ICE restart, connection timeout, and state monitoring
-  function createPeerConnection(targetSocketId, userId, username) {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-
+    // ICE candidates → send to remote
     pc.onicecandidate = (e) => {
-      if (e.candidate) socketRef.current?.emit('voice:ice-candidate', { to: targetSocketId, candidate: e.candidate });
+      if (e.candidate && socketRef.current) {
+        socketRef.current.emit('voice:ice-candidate', {
+          to: targetSocketId,
+          candidate: e.candidate,
+        });
+      }
     };
 
+    // Remote audio track received
     pc.ontrack = (e) => {
-      playRemoteAudio(e.streams[0], targetSocketId);
+      const remoteStream = e.streams[0] || new MediaStream([e.track]);
+      playRemoteAudio(remoteStream, targetSocketId);
     };
 
-    // v12: ICE restart on failure
+    // Connection state monitoring
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
       if (state === 'connected') {
-        // Clear connection timeout on success
-        const timer = peerTimeoutsRef.current.get(targetSocketId);
-        if (timer) { clearTimeout(timer); peerTimeoutsRef.current.delete(targetSocketId); }
-        iceRestartCountsRef.current.delete(targetSocketId);
+        // Success — clear timer and restart counter
+        const t = peerTimers.current.get(targetSocketId);
+        if (t) { clearTimeout(t); peerTimers.current.delete(targetSocketId); }
+        iceRestarts.current.delete(targetSocketId);
       } else if (state === 'failed') {
-        handlePeerFailure(targetSocketId, pc);
+        attemptIceRestart(targetSocketId, pc);
       } else if (state === 'disconnected') {
-        // Give it a moment to recover before treating as failure
+        // Wait before treating as failure — often recovers
         setTimeout(() => {
-          if (pc.connectionState === 'disconnected') {
-            handlePeerFailure(targetSocketId, pc);
+          if (mounted.current && pc.connectionState === 'disconnected') {
+            attemptIceRestart(targetSocketId, pc);
           }
         }, 5000);
       }
     };
 
-    // v12: Connection timeout — destroy peer if it never connects
-    const timeout = setTimeout(() => {
-      const peer = peersRef.current.get(targetSocketId);
-      if (peer && peer.pc.connectionState !== 'connected') {
-        console.warn('[Voice] Peer connection timeout:', targetSocketId);
+    // Connection timeout
+    const timer = setTimeout(() => {
+      const p = peers.current.get(targetSocketId);
+      if (p && p.pc.connectionState !== 'connected') {
+        console.warn('[Voice] Peer timeout:', targetSocketId);
         destroyPeer(targetSocketId);
       }
-      peerTimeoutsRef.current.delete(targetSocketId);
-    }, PEER_CONNECT_TIMEOUT_MS);
-    peerTimeoutsRef.current.set(targetSocketId, timeout);
+      peerTimers.current.delete(targetSocketId);
+    }, PEER_TIMEOUT_MS);
+    peerTimers.current.set(targetSocketId, timer);
 
-    peersRef.current.set(targetSocketId, { pc, userId, username });
     return pc;
   }
 
-  // v12: ICE restart with exponential backoff
-  function handlePeerFailure(targetSocketId, pc) {
-    const attempts = iceRestartCountsRef.current.get(targetSocketId) || 0;
-    if (attempts >= ICE_RESTART_MAX_ATTEMPTS) {
-      console.warn('[Voice] Max ICE restart attempts for', targetSocketId);
-      destroyPeer(targetSocketId);
+  // ─── Flush queued ICE candidates after remoteDescription is set ──
+  async function flushIceCandidates(socketId) {
+    const peer = peers.current.get(socketId);
+    if (!peer) return;
+    peer.remoteDescSet = true;
+    for (const candidate of peer.iceCandidateQueue) {
+      try { await peer.pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) {}
+    }
+    peer.iceCandidateQueue = [];
+  }
+
+  // ─── ICE restart with backoff ──────────────────────────────────
+  function attemptIceRestart(socketId, pc) {
+    const attempts = iceRestarts.current.get(socketId) || 0;
+    if (attempts >= ICE_RESTART_MAX) {
+      destroyPeer(socketId);
       return;
     }
-    iceRestartCountsRef.current.set(targetSocketId, attempts + 1);
-    const delay = ICE_RESTART_BASE_DELAY * Math.pow(2, attempts);
-    setTimeout(() => {
-      if (!mountedRef.current) return;
-      const peer = peersRef.current.get(targetSocketId);
-      if (!peer) return;
+    iceRestarts.current.set(socketId, attempts + 1);
+    setTimeout(async () => {
+      if (!mounted.current) return;
+      const peer = peers.current.get(socketId);
+      if (!peer || pc.connectionState === 'closed') return;
       try {
         pc.restartIce();
-        pc.createOffer({ iceRestart: true }).then(offer => {
-          pc.setLocalDescription(offer);
-          socketRef.current?.emit('voice:offer', { to: targetSocketId, offer });
-        }).catch(() => destroyPeer(targetSocketId));
+        const offer = await pc.createOffer({ iceRestart: true });
+        await pc.setLocalDescription(offer);
+        socketRef.current?.emit('voice:offer', { to: socketId, offer: pc.localDescription });
       } catch (e) {
-        destroyPeer(targetSocketId);
+        destroyPeer(socketId);
       }
-    }, delay);
+    }, ICE_RESTART_DELAY * Math.pow(2, attempts));
   }
 
-  // v12: Clean destroy a single peer
-  function destroyPeer(socketId) {
-    const peer = peersRef.current.get(socketId);
-    if (peer) {
-      try { peer.pc.close(); } catch (e) {}
-      peersRef.current.delete(socketId);
-    }
-    // Remove associated audio element
-    const audio = remoteAudioMapRef.current.get(socketId);
-    if (audio) {
-      try { audio.srcObject = null; audio.remove(); } catch (e) {}
-      remoteAudioMapRef.current.delete(socketId);
-    }
-    // Clear connection timeout
-    const timer = peerTimeoutsRef.current.get(socketId);
-    if (timer) { clearTimeout(timer); peerTimeoutsRef.current.delete(socketId); }
-    iceRestartCountsRef.current.delete(socketId);
-  }
-
-  async function createOffer(targetSocketId, username, userId) {
-    if (!localStreamRef.current || !socketRef.current) return;
-    // v14: Skip if we already have a connected/connecting peer to avoid duplicate offers
-    const existing = peersRef.current.get(targetSocketId);
-    if (existing && existing.pc.connectionState !== 'failed' && existing.pc.connectionState !== 'closed') return;
-    // If old peer exists in failed/closed state, clean it up first
-    if (existing) destroyPeer(targetSocketId);
-    // Max peers cap
-    if (peersRef.current.size >= MAX_PEERS) return;
+  // ─── JOINER: Create offer to an existing peer ──────────────────
+  async function sendOffer(targetSocketId, username, userId) {
+    if (!localStream.current || !socketRef.current) return;
     try {
-      const pc = createPeerConnection(targetSocketId, userId, username);
-      localStreamRef.current.getTracks().forEach(t => pc.addTrack(t, localStreamRef.current));
+      const pc = await makePeerConnection(targetSocketId, userId, username);
+      if (!pc) return;
+      // Add our audio tracks to the connection
+      localStream.current.getTracks().forEach(t => {
+        pc.addTrack(t, localStream.current);
+      });
+      // Create and send offer
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      socketRef.current.emit('voice:offer', { to: targetSocketId, offer });
+      socketRef.current.emit('voice:offer', {
+        to: targetSocketId,
+        offer: pc.localDescription,
+      });
     } catch (err) {
-      console.error('[Voice] Create offer error:', err);
+      console.error('[Voice] sendOffer error:', err);
       destroyPeer(targetSocketId);
     }
   }
 
-  // v13: Audio element management — explicit play() call for autoplay policy compliance
-  function playRemoteAudio(stream, id) {
-    if (!stream) return;
-    let audio = remoteAudioMapRef.current.get(id);
-    if (!audio) {
-      audio = document.createElement('audio');
-      audio.id = `voice-audio-${id}`;
-      audio.autoplay = true;
-      audio.playsInline = true;
-      document.body.appendChild(audio);
-      remoteAudioMapRef.current.set(id, audio);
-    }
-    audio.srcObject = stream;
-    audio.muted = isDeafened;
-    // v13: Explicitly call play() to handle autoplay policy
-    const playPromise = audio.play();
-    if (playPromise !== undefined) {
-      playPromise.catch((err) => {
-        console.warn('[Voice] Autoplay blocked for remote audio:', err.message);
-        // Retry on next user interaction
-        const resumePlay = () => {
-          audio.play().catch(() => {});
-          document.removeEventListener('click', resumePlay);
-          document.removeEventListener('keydown', resumePlay);
-        };
-        document.addEventListener('click', resumePlay, { once: true });
-        document.addEventListener('keydown', resumePlay, { once: true });
-      });
-    }
-  }
+  // ─── Socket event handlers ─────────────────────────────────────
+  useEffect(() => {
+    if (!socket) return;
 
-  // v12: Reusable AudioContext — create once, reuse across join/leave cycles
-  function getOrCreateAudioContext() {
-    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-      // Resume if suspended
-      if (audioCtxRef.current.state === 'suspended') {
-        audioCtxRef.current.resume().catch(() => {});
+    // Joiner receives list of existing voice users → send offers to each
+    const onPeers = (peerList) => {
+      safe(() => setVoiceUsers(peerList.map(p => ({ userId: p.userId, username: p.username }))));
+      peerList.forEach(p => sendOffer(p.socketId, p.username, p.userId));
+    };
+
+    // A new user joined voice → update UI only, do NOT send offer
+    // (the new user will send us an offer via voice:peers → sendOffer)
+    const onUserJoined = (data) => {
+      safe(() => setVoiceUsers(prev => {
+        if (prev.find(u => u.userId === data.userId)) return prev;
+        return [...prev, { userId: data.userId, username: data.username }];
+      }));
+    };
+
+    // A user left voice → cleanup
+    const onUserLeft = (data) => {
+      safe(() => setVoiceUsers(prev => prev.filter(u => u.userId !== data.userId)));
+      for (const [sid, peer] of peers.current) {
+        if (peer.userId === data.userId) destroyPeer(sid);
       }
-      return audioCtxRef.current;
-    }
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    audioCtxRef.current = ctx;
-    return ctx;
-  }
+    };
 
+    // Incoming offer → we are the answerer
+    const onOffer = async (data) => {
+      if (!localStream.current) return;
+      try {
+        let peer = peers.current.get(data.from);
+        let pc;
+
+        if (peer) {
+          pc = peer.pc;
+          // Glare handling: both sent offers (e.g. ICE restart race)
+          if (pc.signalingState === 'have-local-offer') {
+            // Polite peer = higher socket ID → rolls back
+            const weArePolite = socket.id > data.from;
+            if (!weArePolite) return; // impolite → keep our offer, ignore theirs
+            await pc.setLocalDescription({ type: 'rollback' });
+          }
+        } else {
+          // First time receiving offer from this peer — create PC and add tracks
+          pc = await makePeerConnection(data.from, data.userId, data.username);
+          if (!pc) return;
+          localStream.current.getTracks().forEach(t => {
+            pc.addTrack(t, localStream.current);
+          });
+        }
+
+        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        await flushIceCandidates(data.from);
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socketRef.current?.emit('voice:answer', { to: data.from, answer: pc.localDescription });
+      } catch (err) {
+        console.error('[Voice] onOffer error:', err);
+        destroyPeer(data.from);
+      }
+    };
+
+    // Incoming answer → we are the offerer
+    const onAnswer = async (data) => {
+      const peer = peers.current.get(data.from);
+      if (!peer) return;
+      try {
+        if (peer.pc.signalingState === 'have-local-offer') {
+          await peer.pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          await flushIceCandidates(data.from);
+        }
+      } catch (err) {
+        console.error('[Voice] onAnswer error:', err);
+      }
+    };
+
+    // Incoming ICE candidate → queue if remote desc not set yet
+    const onIceCandidate = async (data) => {
+      const peer = peers.current.get(data.from);
+      if (!peer || !data.candidate) return;
+      if (peer.remoteDescSet) {
+        try { await peer.pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (e) {}
+      } else {
+        peer.iceCandidateQueue.push(data.candidate);
+      }
+    };
+
+    socket.on('voice:peers', onPeers);
+    socket.on('voice:user-joined', onUserJoined);
+    socket.on('voice:user-left', onUserLeft);
+    socket.on('voice:offer', onOffer);
+    socket.on('voice:answer', onAnswer);
+    socket.on('voice:ice-candidate', onIceCandidate);
+
+    return () => {
+      socket.off('voice:peers', onPeers);
+      socket.off('voice:user-joined', onUserJoined);
+      socket.off('voice:user-left', onUserLeft);
+      socket.off('voice:offer', onOffer);
+      socket.off('voice:answer', onAnswer);
+      socket.off('voice:ice-candidate', onIceCandidate);
+    };
+  }, [socket]);
+
+  // ─── Audio monitoring (visualizer) ─────────────────────────────
   function startAudioMonitor(stream) {
     try {
-      const ctx = getOrCreateAudioContext();
-      const src = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.5;
-      src.connect(analyser);
-      analyserRef.current = { analyser, src };
+      if (!audioCtx.current || audioCtx.current.state === 'closed') {
+        audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.current.state === 'suspended') {
+        audioCtx.current.resume().catch(() => {});
+      }
+      const src = audioCtx.current.createMediaStreamSource(stream);
+      const a = audioCtx.current.createAnalyser();
+      a.fftSize = 256;
+      a.smoothingTimeConstant = 0.5;
+      src.connect(a);
+      analyser.current = { analyser: a, src };
 
-      const data = new Uint8Array(analyser.frequencyBinCount);
+      const data = new Uint8Array(a.frequencyBinCount);
       const tick = () => {
-        if (!mountedRef.current) return; // v12: mounted guard in animation loop
-        analyser.getByteFrequencyData(data);
+        if (!mounted.current) return;
+        a.getByteFrequencyData(data);
         const avg = data.reduce((a, b) => a + b, 0) / data.length;
-        const level = Math.min(1, avg / 80);
-        setAudioLevel(level);
-
+        setAudioLevel(Math.min(1, avg / 80));
         const third = Math.floor(data.length / 3);
         const low = data.slice(0, third).reduce((a, b) => a + b, 0) / third / 128;
         const mid = data.slice(third, third * 2).reduce((a, b) => a + b, 0) / third / 128;
         const high = data.slice(third * 2).reduce((a, b) => a + b, 0) / third / 128;
         setAudioBars([Math.min(1, low), Math.min(1, mid), Math.min(1, high)]);
-
-        animFrameRef.current = requestAnimationFrame(tick);
+        animFrame.current = requestAnimationFrame(tick);
       };
       tick();
-    } catch (e) {
-      console.warn('[Voice] AudioContext not available:', e.message);
-    }
+    } catch (e) {}
   }
 
   function stopAudioMonitor() {
-    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; }
-    if (analyserRef.current?.src) {
-      try { analyserRef.current.src.disconnect(); } catch (e) {}
-    }
-    analyserRef.current = null;
-    // Don't close AudioContext — reuse it. Just suspend to save resources.
-    if (audioCtxRef.current && audioCtxRef.current.state === 'running') {
-      audioCtxRef.current.suspend().catch(() => {});
-    }
-    safeSetState(() => { setAudioLevel(0); setAudioBars([0, 0, 0]); });
+    if (animFrame.current) { cancelAnimationFrame(animFrame.current); animFrame.current = null; }
+    if (analyser.current?.src) { try { analyser.current.src.disconnect(); } catch (e) {} }
+    analyser.current = null;
+    if (audioCtx.current?.state === 'running') { audioCtx.current.suspend().catch(() => {}); }
+    safe(() => { setAudioLevel(0); setAudioBars([0, 0, 0]); });
   }
 
-  // v12: getUserMedia with timeout wrapper
-  async function getMediaStream() {
-    return Promise.race([
-      navigator.mediaDevices.getUserMedia({ audio: true, video: false }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Microphone request timed out')), 10000)),
-    ]);
-  }
-
+  // ─── Join / Leave ──────────────────────────────────────────────
   const joinVoice = useCallback(async () => {
-    if (!mountedRef.current) return;
-    safeSetState(() => { setError(''); setConnecting(true); });
+    if (!mounted.current || !socketRef.current) return;
+    safe(() => { setError(''); setConnecting(true); });
     try {
-      const stream = await getMediaStream();
-      if (!mountedRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
-      localStreamRef.current = stream;
-      safeSetState(() => { setIsInVoice(true); setConnecting(false); });
+      const stream = await Promise.race([
+        navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 48000,
+          },
+          video: false,
+        }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('MIC_TIMEOUT')), 10000)),
+      ]);
+      if (!mounted.current) { stream.getTracks().forEach(t => t.stop()); return; }
+
+      localStream.current = stream;
+      safe(() => { setIsInVoice(true); setConnecting(false); });
       startAudioMonitor(stream);
-      socketRef.current?.emit('voice:join');
+      socketRef.current.emit('voice:join');
     } catch (err) {
-      if (!mountedRef.current) return;
-      safeSetState(() => setConnecting(false));
-      if (err.name === 'NotAllowedError') {
-        safeSetState(() => setError('Microphone access denied. Check browser permissions.'));
-      } else if (err.name === 'NotFoundError') {
-        safeSetState(() => setError('No microphone found.'));
-      } else if (err.message === 'Microphone request timed out') {
-        safeSetState(() => setError('Microphone request timed out.'));
-      } else {
-        safeSetState(() => setError('Could not access microphone.'));
-      }
+      if (!mounted.current) return;
+      safe(() => setConnecting(false));
+      const msg =
+        err.name === 'NotAllowedError' ? 'Microphone access denied. Check browser permissions.' :
+        err.name === 'NotFoundError' ? 'No microphone found.' :
+        err.message === 'MIC_TIMEOUT' ? 'Microphone request timed out.' :
+        'Could not access microphone.';
+      safe(() => setError(msg));
     }
   }, []);
 
-  // v12: Stable leaveVoice via useCallback — uses refs to avoid stale closures
   const leaveVoice = useCallback(() => {
     stopAudioMonitor();
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(t => t.stop());
-      localStreamRef.current = null;
+    if (localStream.current) {
+      localStream.current.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+      localStream.current = null;
     }
-    peersRef.current.forEach(({ pc }) => { try { pc.close(); } catch (e) {} });
-    peersRef.current.clear();
-    // v12: Remove tracked audio elements via map
-    for (const [id, audio] of remoteAudioMapRef.current) {
-      try { audio.srcObject = null; audio.remove(); } catch (e) {}
-    }
-    remoteAudioMapRef.current.clear();
-    // Clear timeouts
-    for (const timer of peerTimeoutsRef.current.values()) clearTimeout(timer);
-    peerTimeoutsRef.current.clear();
-    iceRestartCountsRef.current.clear();
-
-    safeSetState(() => {
+    for (const [sid] of peers.current) destroyPeer(sid);
+    safe(() => {
       setIsInVoice(false);
       setIsMuted(false);
       setIsDeafened(false);
@@ -477,34 +544,26 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
   }, []);
 
   const toggleMute = useCallback(() => {
-    if (localStreamRef.current) {
-      const newMuted = !isMuted;
-      localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = !newMuted; });
-      setIsMuted(newMuted);
-    }
+    if (!localStream.current) return;
+    const newMuted = !isMuted;
+    localStream.current.getAudioTracks().forEach(t => { t.enabled = !newMuted; });
+    setIsMuted(newMuted);
   }, [isMuted]);
 
   const toggleDeafen = useCallback(() => {
-    const newDeafened = !isDeafened;
-    setIsDeafened(newDeafened);
-    // Mute/unmute all tracked remote audio elements
-    for (const audio of remoteAudioMapRef.current.values()) {
-      audio.muted = newDeafened;
-    }
-    // Auto-mute when deafening
-    if (newDeafened && !isMuted) {
-      if (localStreamRef.current) {
-        localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = false; });
-        setIsMuted(true);
-      }
-    } else if (!newDeafened && isMuted) {
-      if (localStreamRef.current) {
-        localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = true; });
-        setIsMuted(false);
-      }
+    const newDeaf = !isDeafened;
+    setIsDeafened(newDeaf);
+    for (const el of audioElements.current.values()) { el.muted = newDeaf; }
+    if (newDeaf && !isMuted) {
+      localStream.current?.getAudioTracks().forEach(t => { t.enabled = false; });
+      setIsMuted(true);
+    } else if (!newDeaf && isMuted) {
+      localStream.current?.getAudioTracks().forEach(t => { t.enabled = true; });
+      setIsMuted(false);
     }
   }, [isDeafened, isMuted]);
 
+  // ─── Render ────────────────────────────────────────────────────
   const totalInCall = voiceUsers.length + (isInVoice ? 1 : 0);
 
   return (
@@ -638,18 +697,6 @@ const VoiceChat = memo(function VoiceChat({ socket, currentUser }) {
           <button onClick={() => setError('')} className="text-[#666] hover:text-[#aaa] p-0.5">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
-        </div>
-      )}
-
-      {/* Voice users list */}
-      {isInVoice && voiceUsers.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1.5">
-          {voiceUsers.map(u => (
-            <span key={u.userId} className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 bg-[#5bd882]/6 text-[#5bd882] rounded-md font-mono border border-[#5bd882]/10">
-              <span className="w-1 h-1 rounded-full bg-[#5bd882] animate-pulse" />
-              {u.username}
-            </span>
-          ))}
         </div>
       )}
     </div>

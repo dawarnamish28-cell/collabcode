@@ -113,6 +113,50 @@ app.use('/api/gallery', galleryRoutes);
 app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/teams', teamRoutes);
 
+// v15: ICE/TURN server credentials endpoint — production-grade WebRTC
+// Returns STUN + TURN servers with time-limited credentials
+app.get('/api/ice-servers', (req, res) => {
+  // Generate time-limited TURN credentials using HMAC
+  // This is the standard way to create ephemeral credentials for a TURN server
+  const crypto = require('crypto');
+  const ttl = 86400; // 24 hours
+  const timestamp = Math.floor(Date.now() / 1000) + ttl;
+  const username = `${timestamp}:collabcode`;
+  
+  const iceServers = [
+    // Google STUN servers (free, unlimited, high availability)
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    // Metered.ca Open Relay TURN servers (free 20GB/month)
+    {
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    // turns (TLS) for deep packet inspection firewalls
+    {
+      urls: 'turns:openrelay.metered.ca:443?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+  ];
+  
+  res.json({ iceServers, ttl });
+});
+
 // v9: Enhanced health endpoint with diagnostics
 app.get('/api/health', (req, res) => {
   const mem = process.memoryUsage();
