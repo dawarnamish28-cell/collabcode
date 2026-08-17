@@ -45,6 +45,7 @@ import Extensions from '../../components/Extensions';
 import AccountSettings from '../../components/AccountSettings';
 import SettingsModal from '../../components/SettingsModal';
 import VideoChat from '../../components/VideoChat';
+import LibraryPanel from '../../components/LibraryPanel';
 
 const Editor = dynamic(() => import('../../components/Editor'), { ssr: false });
 
@@ -115,6 +116,7 @@ export default function RoomPage() {
   const [filesOpen, setFilesOpen] = useState(false);
 
   const [extensionsOpen, setExtensionsOpen] = useState(false);
+  const [librariesOpen, setLibrariesOpen] = useState(false);
   const [terminalTheme, setTerminalTheme] = useState('vs-dark');
   const [editorFontSize, setEditorFontSize] = useState(14);
   const [editorTabSize, setEditorTabSize] = useState(2);
@@ -555,6 +557,21 @@ export default function RoomPage() {
     handleRunCode(code, undefined);
   }, [handleRunCode]);
 
+  // ─── Library Import Insertion ─────────────────────────────────────
+  const handleInsertImport = useCallback((importStatement) => {
+    if (!ydocRef.current || !importStatement) return;
+    const ytext = ydocRef.current.getText('monaco');
+    const currentCode = ytext.toString();
+    // Check if import already exists (avoid duplicates)
+    if (currentCode.includes(importStatement.trim())) {
+      addToast('Import already exists in your code', 'info');
+      return;
+    }
+    // Insert at the top of the file
+    ytext.insert(0, importStatement + '\n');
+    addToast('Import added to editor', 'success');
+  }, []);
+
   // ─── File Operations ──────────────────────────────────────────────
   const handleSaveFile = useCallback(() => {
     if (!ydocRef.current) return;
@@ -756,7 +773,7 @@ export default function RoomPage() {
     );
   }
 
-  const leftPanelOpen = filesOpen || extensionsOpen;
+  const leftPanelOpen = filesOpen || extensionsOpen || librariesOpen;
   const leftPanelWidth = 200;
 
   return (
@@ -767,10 +784,12 @@ export default function RoomPage() {
         onToggleChat={toggleChat} onToggleOutput={toggleOutput} chatOpen={state.chatOpen} outputOpen={state.outputOpen}
         onSaveFile={handleSaveFile} onOpenFile={handleOpenFile}
         isPublic={isPublic} onTogglePublic={handleTogglePublic}
-        onToggleFiles={() => { setFilesOpen(!filesOpen); setExtensionsOpen(false); }}
+        onToggleFiles={() => { setFilesOpen(!filesOpen); setExtensionsOpen(false); setLibrariesOpen(false); }}
         filesOpen={filesOpen}
-        onToggleExtensions={() => { setExtensionsOpen(!extensionsOpen); setFilesOpen(false); }}
+        onToggleExtensions={() => { setExtensionsOpen(!extensionsOpen); setFilesOpen(false); setLibrariesOpen(false); }}
         extensionsOpen={extensionsOpen}
+        onToggleLibraries={() => { setLibrariesOpen(!librariesOpen); setFilesOpen(false); setExtensionsOpen(false); }}
+        librariesOpen={librariesOpen}
         currentUser={state.user}
         onOpenAccountSettings={() => setShowAccountSettings(true)}
         sessionTime={sessionTime}
@@ -807,6 +826,12 @@ export default function RoomPage() {
                 bracketColors={editorBracketColors} onBracketColorsToggle={() => setEditorBracketColors(!editorBracketColors)}
                 lineNumbers={editorLineNumbers} onLineNumbersToggle={() => setEditorLineNumbers(!editorLineNumbers)}
                 autoIndent={editorAutoIndent} onAutoIndentToggle={() => setEditorAutoIndent(!editorAutoIndent)}
+              />
+            )}
+            {librariesOpen && (
+              <LibraryPanel
+                language={state.language}
+                onInsertImport={handleInsertImport}
               />
             )}
           </div>
@@ -1135,12 +1160,13 @@ export default function RoomPage() {
           { label: 'Run Code', hint: 'Ctrl+Enter', icon: '\u25B6', cat: 'code', action: () => { setShowCommandPalette(false); handleMainRun(); } },
           { label: 'Save File', hint: 'Ctrl+S', icon: '\u2B07', cat: 'file', action: () => { setShowCommandPalette(false); handleSaveFile(); } },
           { label: 'Open File', hint: 'Ctrl+O', icon: '\u2B06', cat: 'file', action: () => { setShowCommandPalette(false); handleOpenFile(); } },
-          { label: 'Toggle File Explorer', hint: '', icon: '\uD83D\uDCC1', cat: 'panel', action: () => { setShowCommandPalette(false); setFilesOpen(!filesOpen); setExtensionsOpen(false); } },
+          { label: 'Toggle File Explorer', hint: '', icon: '\uD83D\uDCC1', cat: 'panel', action: () => { setShowCommandPalette(false); setFilesOpen(!filesOpen); setExtensionsOpen(false); setLibrariesOpen(false); } },
+          { label: 'Toggle Libraries', hint: '', icon: '\uD83D\uDCDA', cat: 'panel', action: () => { setShowCommandPalette(false); setLibrariesOpen(!librariesOpen); setFilesOpen(false); setExtensionsOpen(false); } },
           { label: 'Toggle Chat', hint: 'Ctrl+B', icon: '\uD83D\uDCAC', cat: 'panel', action: () => { setShowCommandPalette(false); toggleChat(); } },
           { label: 'Open Video Chat', hint: '', icon: '\uD83C\uDFA5', cat: 'panel', action: () => { setShowCommandPalette(false); if (!state.chatOpen) toggleChat(); } },
           { label: 'Toggle Terminal', hint: 'Ctrl+`', icon: '>_', cat: 'panel', action: () => { setShowCommandPalette(false); toggleOutput(); } },
           { label: 'Open Settings', hint: '', icon: '\u2699', cat: 'settings', action: () => { setShowCommandPalette(false); setShowSettingsModal(true); } },
-          { label: 'Editor Settings (Side Panel)', hint: '', icon: '\uD83C\uDFA8', cat: 'settings', action: () => { setShowCommandPalette(false); setExtensionsOpen(!extensionsOpen); setFilesOpen(false); } },
+          { label: 'Editor Settings (Side Panel)', hint: '', icon: '\uD83C\uDFA8', cat: 'settings', action: () => { setShowCommandPalette(false); setExtensionsOpen(!extensionsOpen); setFilesOpen(false); setLibrariesOpen(false); } },
           { label: 'Account Settings', hint: '', icon: '\uD83D\uDC64', cat: 'settings', action: () => { setShowCommandPalette(false); setShowAccountSettings(true); } },
           { label: 'Toggle Public/Private', hint: '', icon: isPublic ? '\uD83C\uDF10' : '\uD83D\uDD12', cat: 'room', action: () => { setShowCommandPalette(false); handleTogglePublic(); } },
           { label: 'Keyboard Shortcuts', hint: '?', icon: '\u2328', cat: 'help', action: () => { setShowCommandPalette(false); setShowShortcuts(true); } },

@@ -59,6 +59,7 @@ const Navbar = memo(function Navbar({
   isPublic, onTogglePublic,
   onToggleFiles, filesOpen,
   onToggleExtensions, extensionsOpen,
+  onToggleLibraries, librariesOpen,
   currentUser, onOpenAccountSettings,
   // v14 props
   sessionTime, notifications, onClearNotifications,
@@ -260,6 +261,13 @@ const Navbar = memo(function Navbar({
           className={`p-2 sm:p-1.5 rounded-md transition flex-shrink-0 active:scale-95 ${filesOpen ? 'bg-[#5e9eff]/10 text-[#5e9eff]' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}
           title="Files">
           <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+        </button>
+
+        {/* Libraries */}
+        <button onClick={onToggleLibraries}
+          className={`p-2 sm:p-1.5 rounded-md transition flex-shrink-0 active:scale-95 ${librariesOpen ? 'bg-[#5e9eff]/10 text-[#5e9eff]' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}
+          title="Libraries">
+          <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
         </button>
 
         <div className="w-px h-3.5 bg-[#282828] hidden sm:block flex-shrink-0" />
@@ -509,6 +517,13 @@ const Navbar = memo(function Navbar({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
                   </svg>
                   Editor Settings
+                </button>
+                <button onClick={() => { setUserMenuOpen(false); onToggleLibraries?.(); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-[#999] hover:text-[#ccc] hover:bg-[#222] transition">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  Libraries
                 </button>
               </div>
               <div className="border-t border-[#282828] py-1">

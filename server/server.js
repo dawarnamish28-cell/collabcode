@@ -112,6 +112,7 @@ app.use('/api/files', fileRoutes);
 app.use('/api/gallery', galleryRoutes);
 app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/teams', teamRoutes);
+app.use('/api/libraries', require('./routes/libraries'));
 
 // v15: ICE/TURN server credentials endpoint — production-grade WebRTC
 // Returns STUN + TURN servers with time-limited credentials
