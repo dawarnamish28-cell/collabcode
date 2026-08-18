@@ -91,6 +91,7 @@
         <button onclick="switchTab('rooms')" id="tab-rooms" class="pb-2 px-1 text-sm mono transition tab-inactive">Rooms & Users</button>
         <button onclick="switchTab('tools')" id="tab-tools" class="pb-2 px-1 text-sm mono transition tab-inactive">Admin Tools</button>
         <button onclick="switchTab('bans')" id="tab-bans" class="pb-2 px-1 text-sm mono transition tab-inactive">Bans</button>
+        <button onclick="switchTab('anticheat')" id="tab-anticheat" class="pb-2 px-1 text-sm mono transition tab-inactive">🛡 AntiCheat</button>
       </div>
     </div>
 
@@ -357,6 +358,114 @@
         </div>
       </div>
 
+      <!-- ═══ ANTICHEAT TAB ═══ -->
+      <div id="panel-anticheat" class="hidden space-y-4">
+
+        <!-- Master Toggle + Status -->
+        <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
+          <div class="px-5 py-3 border-b border-[#222] flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#5bd882]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+              <h3 class="text-sm font-semibold text-white">AntiCheat Engine</h3>
+              <span id="ac-status-badge" class="text-[10px] px-2 py-0.5 rounded-full bg-[#333] text-[#666] mono">INACTIVE</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="toggleAnticheat(true)" id="ac-enable-btn" class="btn text-xs bg-[#5bd882]/10 text-[#5bd882] hover:bg-[#5bd882]/20 px-3 py-1.5 rounded-lg mono transition">Enable</button>
+              <button onclick="toggleAnticheat(false)" id="ac-disable-btn" class="btn text-xs bg-[#ff6b6b]/10 text-[#ff6b6b] hover:bg-[#ff6b6b]/20 px-3 py-1.5 rounded-lg mono transition hidden">Disable</button>
+              <button onclick="resetAnticheat()" class="btn text-xs text-[#555] hover:text-[#aaa] mono transition">Reset</button>
+              <button onclick="refreshAnticheat()" class="btn text-xs text-[#555] hover:text-[#aaa] mono transition">Refresh</button>
+            </div>
+          </div>
+          <!-- Stats Row -->
+          <div class="grid grid-cols-4 gap-3 p-4">
+            <div class="bg-[#111] rounded-xl p-3 text-center">
+              <div id="ac-total-violations" class="text-lg font-bold text-white mono">0</div>
+              <div class="text-[10px] text-[#555] mono">Total Violations</div>
+            </div>
+            <div class="bg-[#111] rounded-xl p-3 text-center">
+              <div id="ac-total-users" class="text-lg font-bold text-white mono">0</div>
+              <div class="text-[10px] text-[#555] mono">Tracked Users</div>
+            </div>
+            <div class="bg-[#111] rounded-xl p-3 text-center">
+              <div id="ac-flagged-count" class="text-lg font-bold text-[#ff6b6b] mono">0</div>
+              <div class="text-[10px] text-[#555] mono">Flagged Users</div>
+            </div>
+            <div class="bg-[#111] rounded-xl p-3 text-center">
+              <div id="ac-uptime" class="text-lg font-bold text-[#5bd882] mono">—</div>
+              <div class="text-[10px] text-[#555] mono">Active Since</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings Panel -->
+        <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
+          <div class="px-5 py-3 border-b border-[#222] flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#5e9eff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              <h3 class="text-sm font-semibold text-white">Detection Settings</h3>
+            </div>
+            <button onclick="saveAcSettings()" class="btn text-xs bg-[#5e9eff]/10 text-[#5e9eff] hover:bg-[#5e9eff]/20 px-3 py-1.5 rounded-lg mono transition">Save Settings</button>
+          </div>
+          <div class="p-4 grid grid-cols-2 gap-3" id="ac-settings-grid">
+            <!-- Populated by JS -->
+          </div>
+          <div class="px-4 pb-4 flex items-center gap-4">
+            <label class="text-xs text-[#888] mono">Auto-Flag Threshold:
+              <input type="number" id="ac-flag-threshold" class="ml-2 w-16 bg-[#111] border border-[#333] rounded px-2 py-1 text-xs text-white mono" value="15" min="1" max="100">
+            </label>
+            <label class="text-xs text-[#888] mono">Auto-Ban Threshold:
+              <input type="number" id="ac-ban-threshold" class="ml-2 w-16 bg-[#111] border border-[#333] rounded px-2 py-1 text-xs text-white mono" value="30" min="1" max="200">
+            </label>
+            <label class="text-xs text-[#888] mono">Idle Timeout (sec):
+              <input type="number" id="ac-idle-timeout" class="ml-2 w-16 bg-[#111] border border-[#333] rounded px-2 py-1 text-xs text-white mono" value="120" min="30" max="600">
+            </label>
+          </div>
+        </div>
+
+        <!-- Flagged Users -->
+        <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
+          <div class="px-5 py-3 border-b border-[#222] flex items-center gap-2">
+            <svg class="w-4 h-4 text-[#ff6b6b]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"/></svg>
+            <h3 class="text-sm font-semibold text-white">Flagged & Suspicious Users</h3>
+            <span id="ac-flagged-badge" class="text-[10px] px-1.5 py-0.5 rounded-full bg-[#ff6b6b]/10 text-[#ff6b6b] mono">0</span>
+          </div>
+          <div id="ac-flagged-list" class="max-h-[400px] overflow-y-auto scrollbar-thin">
+            <div class="px-5 py-8 text-center">
+              <p class="text-sm text-[#444] mono">no flagged users</p>
+              <p class="text-xs text-[#333] mono mt-1">users exceeding violation threshold appear here</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- User Scores -->
+        <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
+          <div class="px-5 py-3 border-b border-[#222] flex items-center gap-2">
+            <svg class="w-4 h-4 text-[#fbbf24]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            <h3 class="text-sm font-semibold text-white">All User Scores</h3>
+          </div>
+          <div id="ac-scores-list" class="max-h-[400px] overflow-y-auto scrollbar-thin">
+            <div class="px-5 py-8 text-center">
+              <p class="text-sm text-[#444] mono">no data yet</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Violations Feed -->
+        <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
+          <div class="px-5 py-3 border-b border-[#222] flex items-center gap-2">
+            <svg class="w-4 h-4 text-[#c084fc]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+            <h3 class="text-sm font-semibold text-white">Live Violations Feed</h3>
+            <span id="ac-live-count" class="text-[10px] px-1.5 py-0.5 rounded-full bg-[#c084fc]/10 text-[#c084fc] mono">0</span>
+          </div>
+          <div id="ac-violations-feed" class="max-h-[500px] overflow-y-auto scrollbar-thin">
+            <div class="px-5 py-8 text-center">
+              <p class="text-sm text-[#444] mono">no violations recorded</p>
+              <p class="text-xs text-[#333] mono mt-1">violations appear here in real-time</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </main>
   </div>
 
@@ -380,7 +489,7 @@
 
     // ─── Tab Switching ────────────────────────────────────────────
     function switchTab(tab) {
-      ['overview', 'rooms', 'tools', 'bans'].forEach(t => {
+      ['overview', 'rooms', 'tools', 'bans', 'anticheat'].forEach(t => {
         document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
         document.getElementById(`tab-${t}`).className = t === tab
           ? 'pb-2 px-1 text-sm mono transition tab-active'
@@ -452,6 +561,8 @@
         updateRooms(roomsData.rooms);
         updateViolations(competition.fullscreenViolations);
         updateServerInfo(health);
+        // Refresh anticheat data (non-blocking — won't break if AC not enabled)
+        refreshAnticheat().catch(() => {});
       } catch (err) {
         if (err.message.includes('401') || err.message.includes('authentication')) {
           adminToken = null;
@@ -800,6 +911,242 @@
     document.getElementById('broadcast-msg')?.addEventListener('input', (e) => {
       document.getElementById('broadcast-chars').textContent = `${e.target.value.length}/500`;
     });
+
+    // ═══════════════════════════════════════════════════════════════
+    // ─── ANTICHEAT FUNCTIONS ──────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+
+    const AC_SETTINGS_MAP = {
+      detectTabSwitch:    { label: 'Tab/Window Switch', icon: '🔀' },
+      blockCopyPaste:     { label: 'Copy/Paste/Clipboard', icon: '📋' },
+      forceFullscreen:    { label: 'Fullscreen Enforcement', icon: '🖥️' },
+      blockDevTools:      { label: 'DevTools Detection', icon: '🔧' },
+      blockRightClick:    { label: 'Right-Click Block', icon: '🖱️' },
+      detectMultiMonitor: { label: 'Multi-Monitor Detection', icon: '📺' },
+      detectResize:       { label: 'Window Resize Detection', icon: '↔️' },
+      detectFocusLoss:    { label: 'Focus Loss Detection', icon: '👁️' },
+      detectScreenshot:   { label: 'Screenshot Detection', icon: '📸' },
+      detectExtensions:   { label: 'Extension Detection', icon: '🧩' },
+      detectIdle:         { label: 'Idle Timeout', icon: '⏰' },
+    };
+
+    const SEVERITY_COLORS = {
+      low: '#888', medium: '#fbbf24', high: '#ff6b6b', critical: '#ef4444',
+    };
+
+    let acSettings = {};
+
+    async function refreshAnticheat() {
+      try {
+        const report = await api('/anticheat/report');
+        renderAcStatus(report);
+        renderAcSettings(report.settings);
+        renderAcScores(report.userScores);
+        renderAcFlagged(report.userScores.filter(u => u.flagged));
+        renderAcViolations(report.recentViolations);
+      } catch (e) {
+        console.error('[AC] refresh error:', e);
+      }
+    }
+
+    function renderAcStatus(report) {
+      const badge = document.getElementById('ac-status-badge');
+      const enableBtn = document.getElementById('ac-enable-btn');
+      const disableBtn = document.getElementById('ac-disable-btn');
+
+      if (report.enabled) {
+        badge.textContent = 'ACTIVE';
+        badge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-[#5bd882]/15 text-[#5bd882] mono animate-pulse';
+        enableBtn.classList.add('hidden');
+        disableBtn.classList.remove('hidden');
+      } else {
+        badge.textContent = 'INACTIVE';
+        badge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-[#333] text-[#666] mono';
+        enableBtn.classList.remove('hidden');
+        disableBtn.classList.add('hidden');
+      }
+
+      document.getElementById('ac-total-violations').textContent = report.totalViolations || 0;
+      document.getElementById('ac-total-users').textContent = report.totalUsers || 0;
+      document.getElementById('ac-flagged-count').textContent = report.flaggedUsers || 0;
+
+      if (report.startedAt) {
+        const mins = Math.floor((Date.now() - report.startedAt) / 60000);
+        document.getElementById('ac-uptime').textContent = mins < 60 ? `${mins}m` : `${Math.floor(mins/60)}h${mins%60}m`;
+      } else {
+        document.getElementById('ac-uptime').textContent = '—';
+      }
+    }
+
+    function renderAcSettings(settings) {
+      acSettings = { ...settings };
+      const grid = document.getElementById('ac-settings-grid');
+      grid.innerHTML = Object.entries(AC_SETTINGS_MAP).map(([key, info]) => {
+        const checked = settings[key] !== false;
+        return `
+          <label class="flex items-center gap-2 p-2 rounded-lg bg-[#111] hover:bg-[#1a1a1a] cursor-pointer transition">
+            <input type="checkbox" id="ac-s-${key}" ${checked ? 'checked' : ''}
+              onchange="acSettings['${key}'] = this.checked"
+              class="w-4 h-4 rounded bg-[#222] border-[#444] text-[#5e9eff] focus:ring-[#5e9eff] focus:ring-offset-0">
+            <span class="text-xs mono">${info.icon}</span>
+            <span class="text-xs text-[#ccc] mono">${info.label}</span>
+          </label>
+        `;
+      }).join('');
+
+      document.getElementById('ac-flag-threshold').value = settings.autoFlagThreshold || 15;
+      document.getElementById('ac-ban-threshold').value = settings.autoBanThreshold || 30;
+      document.getElementById('ac-idle-timeout').value = settings.idleTimeoutSec || 120;
+    }
+
+    function renderAcScores(scores) {
+      const container = document.getElementById('ac-scores-list');
+      if (!scores || scores.length === 0) {
+        container.innerHTML = '<div class="px-5 py-8 text-center"><p class="text-sm text-[#444] mono">no data yet</p></div>';
+        return;
+      }
+      container.innerHTML = scores.map(u => {
+        const flagBadge = u.flagged ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-[#ff6b6b]/15 text-[#ff6b6b] mono">FLAGGED</span>' : '';
+        const banBadge = u.reachedBanThreshold ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-[#ef4444]/15 text-[#ef4444] mono">BAN?</span>' : '';
+        const weightColor = u.totalWeight >= 30 ? '#ef4444' : u.totalWeight >= 15 ? '#ff6b6b' : u.totalWeight >= 5 ? '#fbbf24' : '#5bd882';
+        const typeBreakdown = Object.entries(u.violationsByType || {}).map(([t, c]) => `${t}:${c}`).join(', ');
+        return `
+          <div class="flex items-center gap-3 px-4 py-2.5 border-b border-[#1a1a1a] hover:bg-[#111]/50 transition">
+            <div class="w-8 h-8 rounded-lg bg-[#222] flex items-center justify-center text-xs mono font-bold" style="color:${weightColor}">${u.totalWeight}</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-white mono font-medium truncate">${u.username || u.userId}</span>
+                ${flagBadge} ${banBadge}
+              </div>
+              <div class="text-[10px] text-[#555] mono truncate">${u.violationCount} violations \u2022 ${typeBreakdown || 'none'}</div>
+            </div>
+            <div class="flex items-center gap-1">
+              ${u.flagged ? `<button onclick="unflagUser('${u.userId}')" class="text-[10px] px-2 py-1 rounded bg-[#222] text-[#888] hover:text-white mono transition">unflag</button>` : ''}
+              ${u.reachedBanThreshold ? `<button onclick="autoBanUser('${u.userId}')" class="text-[10px] px-2 py-1 rounded bg-[#ff6b6b]/10 text-[#ff6b6b] hover:bg-[#ff6b6b]/20 mono transition">ban</button>` : ''}
+              <button onclick="clearUserAc('${u.userId}')" class="text-[10px] px-2 py-1 rounded bg-[#222] text-[#555] hover:text-white mono transition">clear</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderAcFlagged(flagged) {
+      document.getElementById('ac-flagged-badge').textContent = flagged.length;
+      const container = document.getElementById('ac-flagged-list');
+      if (!flagged || flagged.length === 0) {
+        container.innerHTML = '<div class="px-5 py-8 text-center"><p class="text-sm text-[#444] mono">no flagged users</p><p class="text-xs text-[#333] mono mt-1">users exceeding violation threshold appear here</p></div>';
+        return;
+      }
+      container.innerHTML = flagged.map(u => {
+        const weightColor = u.totalWeight >= 30 ? '#ef4444' : '#ff6b6b';
+        return `
+          <div class="flex items-center gap-3 px-4 py-3 border-b border-[#1a1a1a] bg-[#ff6b6b]/[0.02]">
+            <div class="w-2 h-2 rounded-full bg-[#ff6b6b] animate-pulse"></div>
+            <div class="w-8 h-8 rounded-lg bg-[#ff6b6b]/10 flex items-center justify-center text-xs mono font-bold text-[#ff6b6b]">${u.totalWeight}</div>
+            <div class="flex-1 min-w-0">
+              <span class="text-xs text-white mono font-medium">${u.username || u.userId}</span>
+              <div class="text-[10px] text-[#666] mono">${u.violationCount} violations \u2022 Score: ${u.totalWeight}</div>
+            </div>
+            <div class="flex items-center gap-1">
+              <button onclick="unflagUser('${u.userId}')" class="text-[10px] px-2 py-1 rounded bg-[#222] text-[#888] hover:text-white mono transition">unflag</button>
+              <button onclick="autoBanUser('${u.userId}')" class="text-[10px] px-2 py-1 rounded bg-[#ff6b6b]/10 text-[#ff6b6b] hover:bg-[#ff6b6b]/20 mono transition font-bold">BAN</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderAcViolations(violations) {
+      document.getElementById('ac-live-count').textContent = violations.length;
+      const container = document.getElementById('ac-violations-feed');
+      if (!violations || violations.length === 0) {
+        container.innerHTML = '<div class="px-5 py-8 text-center"><p class="text-sm text-[#444] mono">no violations recorded</p><p class="text-xs text-[#333] mono mt-1">violations appear here in real-time</p></div>';
+        return;
+      }
+      container.innerHTML = violations.map(v => {
+        const sColor = SEVERITY_COLORS[v.severity] || '#888';
+        const time = new Date(v.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        return `
+          <div class="flex items-start gap-2 px-4 py-2 border-b border-[#1a1a1a] hover:bg-[#111]/30 transition">
+            <div class="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style="background:${sColor}"></div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-white mono font-medium">${v.username || 'unknown'}</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded-full mono" style="background:${sColor}15;color:${sColor}">${v.severity}</span>
+                <span class="text-[10px] text-[#555] mono">${v.name}</span>
+              </div>
+              <div class="text-[10px] text-[#444] mono">${time} \u2022 weight: ${v.weight} \u2022 ${v.type}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function toggleAnticheat(enable) {
+      try {
+        if (enable) {
+          await api('/anticheat/enable', { method: 'POST', body: JSON.stringify({}) });
+          logAction('AntiCheat ENABLED');
+        } else {
+          await api('/anticheat/disable', { method: 'POST', body: JSON.stringify({}) });
+          logAction('AntiCheat DISABLED');
+        }
+        refreshAnticheat();
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+
+    async function resetAnticheat() {
+      if (!confirm('Reset all anticheat data? This clears all violations and scores.')) return;
+      try {
+        await api('/anticheat/reset', { method: 'POST', body: JSON.stringify({}) });
+        logAction('AntiCheat data RESET');
+        refreshAnticheat();
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+
+    async function saveAcSettings() {
+      try {
+        const settings = { ...acSettings };
+        settings.autoFlagThreshold = parseInt(document.getElementById('ac-flag-threshold').value) || 15;
+        settings.autoBanThreshold = parseInt(document.getElementById('ac-ban-threshold').value) || 30;
+        settings.idleTimeoutSec = parseInt(document.getElementById('ac-idle-timeout').value) || 120;
+        await api('/anticheat/settings', { method: 'POST', body: JSON.stringify({ settings }) });
+        logAction('AntiCheat settings updated');
+        refreshAnticheat();
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+
+    async function clearUserAc(userId) {
+      try {
+        await api(`/anticheat/clear/${userId}`, { method: 'POST', body: JSON.stringify({}) });
+        logAction(`Cleared AC data for ${userId}`);
+        refreshAnticheat();
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    async function unflagUser(userId) {
+      try {
+        await api(`/anticheat/unflag/${userId}`, { method: 'POST', body: JSON.stringify({}) });
+        logAction(`Unflagged user ${userId}`);
+        refreshAnticheat();
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    async function autoBanUser(userId) {
+      if (!confirm(`Ban this user via AntiCheat? They will be disconnected.`)) return;
+      try {
+        await api(`/anticheat/autoban/${userId}`, { method: 'POST', body: JSON.stringify({}) });
+        logAction(`AntiCheat AUTO-BANNED user ${userId}`);
+        refreshAnticheat();
+        refreshBans();
+      } catch (e) { alert('Error: ' + e.message); }
+    }
 
     // ─── Auto-login from stored token ──────────────────────────────
     (async function init() {

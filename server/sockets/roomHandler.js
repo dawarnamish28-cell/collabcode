@@ -244,7 +244,7 @@ function scheduleCleanup(roomId) {
 }
 
 // ─── Competition State (injected from admin routes) ──────────────────
-let competitionCtx = null; // { competitionState, addViolation }
+let competitionCtx = null; // { competitionState, addViolation, anticheat }
 
 // ─── Custom Room Names ───────────────────────────────────────────────
 const roomNames = new Map(); // roomId -> custom name
@@ -677,7 +677,68 @@ function initRoomHandler(io, ctx) {
         roomName: room?.roomName || currentRoomId || 'unknown',
       };
       competitionCtx.addViolation(violation);
+      // Also log to anticheat engine if enabled
+      if (competitionCtx.anticheat) {
+        const acViolation = competitionCtx.anticheat.addViolation(
+          socket.user.userId, socket.user.username, 'FULLSCREEN_EXIT',
+          { roomId: currentRoomId, source: 'legacy' }
+        );
+        if (acViolation) {
+          io.emit('anticheat:violation-logged', acViolation);
+        }
+      }
       console.log(`[Competition] Fullscreen violation: ${socket.user.username} in room ${currentRoomId}`);
+    });
+
+    // ─── v17: AntiCheat Violation Report (all 13 types) ────────
+    socket.on('anticheat:violation', (data) => {
+      if (!competitionCtx?.anticheat) return;
+      const { type, metadata } = data || {};
+      if (!type || typeof type !== 'string') return;
+
+      const violation = competitionCtx.anticheat.addViolation(
+        socket.user.userId,
+        socket.user.username,
+        type.toUpperCase(),
+        {
+          ...metadata,
+          roomId: currentRoomId || 'unknown',
+          socketId: socket.id,
+          ip: socket.handshake.headers['x-forwarded-for'] || socket.handshake.address,
+        }
+      );
+
+      if (violation) {
+        // Broadcast to all connected clients (admin dashboard picks this up)
+        io.emit('anticheat:violation-logged', violation);
+
+        // Check if user should be auto-flagged warning
+        const score = competitionCtx.anticheat.getUserScore(socket.user.userId);
+        if (score && score.flagged) {
+          io.emit('anticheat:user-flagged', {
+            userId: socket.user.userId,
+            username: socket.user.username,
+            totalWeight: score.totalWeight,
+            violationCount: score.violations.length,
+            timestamp: Date.now(),
+          });
+        }
+
+        // Notify the violating user that violation was recorded
+        socket.emit('anticheat:violation-ack', {
+          type: violation.type,
+          severity: violation.severity,
+          weight: violation.weight,
+          totalWeight: score?.totalWeight || violation.weight,
+          flagged: score?.flagged || false,
+        });
+      }
+    });
+
+    // AntiCheat heartbeat — client sends periodic heartbeat to prove presence
+    socket.on('anticheat:heartbeat', () => {
+      // Just acknowledge — used by client to detect if socket is alive
+      socket.emit('anticheat:heartbeat-ack', { timestamp: Date.now() });
     });
 
     // ─── Ping/Pong ──────────────────────────────────────────────

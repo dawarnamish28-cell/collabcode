@@ -16,6 +16,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const anticheat = require('../anticheat');
 const router = express.Router();
 
 const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'collabcode-admin-secret-key-2024';
@@ -377,6 +378,132 @@ function isBanned(userId) {
   return bannedUsers.has(userId);
 }
 
+// ─── v4: AntiCheat API Routes ─────────────────────────────────────────
+
+// Get anticheat status & settings
+router.get('/anticheat/status', adminAuthMiddleware, (req, res) => {
+  res.json(anticheat.getAnticheatStatus());
+});
+
+// Get full anticheat report (status + scores + violations)
+router.get('/anticheat/report', adminAuthMiddleware, (req, res) => {
+  res.json(anticheat.getFullReport());
+});
+
+// Enable anticheat (with optional settings override)
+router.post('/anticheat/enable', adminAuthMiddleware, (req, res) => {
+  const { settings } = req.body;
+  anticheat.enableAnticheat(settings || {});
+  const io = req.app.get('io');
+  if (io) {
+    io.emit('anticheat:state-change', {
+      enabled: true,
+      settings: anticheat.getSettings(),
+      timestamp: Date.now(),
+    });
+  }
+  console.log('[Admin] AntiCheat ENABLED');
+  res.json({ success: true, ...anticheat.getAnticheatStatus() });
+});
+
+// Disable anticheat
+router.post('/anticheat/disable', adminAuthMiddleware, (req, res) => {
+  anticheat.disableAnticheat();
+  const io = req.app.get('io');
+  if (io) {
+    io.emit('anticheat:state-change', {
+      enabled: false,
+      settings: anticheat.getSettings(),
+      timestamp: Date.now(),
+    });
+  }
+  console.log('[Admin] AntiCheat DISABLED');
+  res.json({ success: true, enabled: false });
+});
+
+// Update anticheat settings
+router.post('/anticheat/settings', adminAuthMiddleware, (req, res) => {
+  const { settings } = req.body;
+  if (!settings || typeof settings !== 'object') {
+    return res.status(400).json({ error: true, message: 'settings object required' });
+  }
+  const updated = anticheat.updateSettings(settings);
+  const io = req.app.get('io');
+  if (io) {
+    io.emit('anticheat:settings-update', {
+      settings: updated,
+      timestamp: Date.now(),
+    });
+  }
+  res.json({ success: true, settings: updated });
+});
+
+// Reset anticheat (clear all violations)
+router.post('/anticheat/reset', adminAuthMiddleware, (req, res) => {
+  anticheat.resetAnticheat();
+  console.log('[Admin] AntiCheat RESET');
+  res.json({ success: true });
+});
+
+// Get all user scores
+router.get('/anticheat/scores', adminAuthMiddleware, (req, res) => {
+  res.json({ scores: anticheat.getAllUserScores() });
+});
+
+// Get specific user score
+router.get('/anticheat/scores/:userId', adminAuthMiddleware, (req, res) => {
+  const score = anticheat.getUserScore(req.params.userId);
+  if (!score) return res.status(404).json({ error: true, message: 'User not found' });
+  res.json(score);
+});
+
+// Get recent violations
+router.get('/anticheat/violations', adminAuthMiddleware, (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  res.json({ violations: anticheat.getRecentViolations(limit) });
+});
+
+// Clear a specific user's violations
+router.post('/anticheat/clear/:userId', adminAuthMiddleware, (req, res) => {
+  anticheat.clearUserViolations(req.params.userId);
+  console.log(`[Admin] Cleared anticheat violations for user: ${req.params.userId}`);
+  res.json({ success: true });
+});
+
+// Unflag a user
+router.post('/anticheat/unflag/:userId', adminAuthMiddleware, (req, res) => {
+  anticheat.unflagUser(req.params.userId);
+  console.log(`[Admin] Unflagged user: ${req.params.userId}`);
+  res.json({ success: true });
+});
+
+// Auto-ban: ban user if they reach ban threshold
+router.post('/anticheat/autoban/:userId', adminAuthMiddleware, (req, res) => {
+  const { userId } = req.params;
+  const score = anticheat.getUserScore(userId);
+  if (!score) return res.status(404).json({ error: true, message: 'User not found in anticheat' });
+  
+  const reason = `Auto-banned by AntiCheat — violation score: ${score.totalWeight} (threshold: ${anticheat.getSettings().autoBanThreshold})`;
+  bannedUsers.set(userId, {
+    reason,
+    bannedAt: Date.now(),
+    bannedBy: 'AntiCheat System',
+  });
+  
+  const io = req.app.get('io');
+  if (io) {
+    io.sockets.sockets.forEach((s) => {
+      if (s.user?.userId === userId) {
+        s.emit('admin:banned', { message: reason, timestamp: Date.now() });
+        setTimeout(() => { try { s.disconnect(true); } catch (e) {} }, 3000);
+      }
+    });
+  }
+  
+  console.log(`[AntiCheat] Auto-banned user: ${userId} (score: ${score.totalWeight})`);
+  res.json({ success: true, userId, reason });
+});
+
 module.exports = {
   router,
   competitionState,
@@ -385,4 +512,5 @@ module.exports = {
   clearViolations,
   adminAuthMiddleware,
   isBanned,
+  anticheat,
 };

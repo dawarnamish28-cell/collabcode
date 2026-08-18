@@ -46,6 +46,7 @@ import AccountSettings from '../../components/AccountSettings';
 import SettingsModal from '../../components/SettingsModal';
 import VideoChat from '../../components/VideoChat';
 import LibraryPanel from '../../components/LibraryPanel';
+import { useAnticheat, AnticheatIndicator } from '../../components/AnticheatMonitor';
 
 const Editor = dynamic(() => import('../../components/Editor'), { ssr: false });
 
@@ -149,6 +150,12 @@ export default function RoomPage() {
   const [roomName, setRoomName] = useState(null); // custom room name
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fullscreenViolationSentRef = useRef(false); // prevent spam
+
+  // v17 (AC): AntiCheat state
+  const [anticheatEnabled, setAnticheatEnabled] = useState(false);
+  const [anticheatSettings, setAnticheatSettings] = useState({});
+  const [anticheatViolationCount, setAnticheatViolationCount] = useState(0);
+  const [anticheatFlagged, setAnticheatFlagged] = useState(false);
 
   const queryLang = router.query.lang;
   const queryPublic = router.query.public;
@@ -407,6 +414,28 @@ export default function RoomPage() {
       }
     });
 
+    // v17 (AC): AntiCheat events
+    socket.on('anticheat:state-change', (data) => {
+      setAnticheatEnabled(data.enabled);
+      setAnticheatSettings(data.settings || {});
+      if (data.enabled) {
+        addToast('🛡 AntiCheat system activated', 'error');
+        addNotification('AntiCheat proctoring is now active', 'error', 'competition');
+      } else {
+        addToast('AntiCheat system deactivated', 'info');
+        addNotification('AntiCheat proctoring disabled', 'info', 'competition');
+        setAnticheatViolationCount(0);
+        setAnticheatFlagged(false);
+      }
+    });
+    socket.on('anticheat:settings-update', (data) => {
+      setAnticheatSettings(data.settings || {});
+    });
+    socket.on('anticheat:violation-ack', (data) => {
+      setAnticheatViolationCount(prev => prev + 1);
+      if (data.flagged) setAnticheatFlagged(true);
+    });
+
     // v22: Graceful exit helper — shows toast, waits, then redirects
     // Replaces alert() which blocked the thread and caused abrupt exits
     const gracefulExit = (message, type = 'error') => {
@@ -449,7 +478,7 @@ export default function RoomPage() {
 
     return () => {
       provider.destroy();
-      ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change','room:visibility-changed','competition:lock-change','competition:mode-change','competition:kicked','admin:broadcast','admin:force-disconnect','admin:banned'].forEach(e => socket.off(e));
+      ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change','room:visibility-changed','competition:lock-change','competition:mode-change','competition:kicked','admin:broadcast','admin:force-disconnect','admin:banned','anticheat:state-change','anticheat:settings-update','anticheat:violation-ack'].forEach(e => socket.off(e));
       disconnectSocket();
       ydoc.destroy();
     };
@@ -571,6 +600,18 @@ export default function RoomPage() {
     ytext.insert(0, importStatement + '\n');
     addToast('Import added to editor', 'success');
   }, []);
+
+  // ─── v17 (AC): AntiCheat Monitor Hook ────────────────────────────
+  const handleAnticheatViolation = useCallback((type, metadata) => {
+    // Local feedback for certain violation types
+    if (type === 'DEVTOOLS') {
+      addToast('⚠ DevTools detection — violation recorded', 'error');
+    } else if (type === 'TAB_SWITCH' || type === 'FOCUS_LOSS') {
+      addToast('⚠ Tab switch detected — stay focused!', 'error');
+    }
+  }, [addToast]);
+
+  useAnticheat(socketRef, anticheatEnabled, anticheatSettings, handleAnticheatViolation);
 
   // ─── File Operations ──────────────────────────────────────────────
   const handleSaveFile = useCallback(() => {
@@ -1093,6 +1134,9 @@ export default function RoomPage() {
           </>
         )}
       </div>
+
+      {/* AntiCheat Indicator */}
+      <AnticheatIndicator enabled={anticheatEnabled} violationCount={anticheatViolationCount} flagged={anticheatFlagged} />
 
       {/* Toast Notifications */}
       <div className="room-toasts fixed top-12 right-3 flex flex-col gap-1.5">

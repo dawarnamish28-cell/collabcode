@@ -40,7 +40,7 @@ const fileRoutes = require('./routes/files');
 const galleryRoutes = require('./routes/gallery');
 const workspaceRoutes = require('./routes/workspaces');
 const teamRoutes = require('./routes/teams');
-const { router: adminRoutes, competitionState, addViolation, isBanned } = require('./routes/admin');
+const { router: adminRoutes, competitionState, addViolation, isBanned, anticheat } = require('./routes/admin');
 const { getExecutionStats } = require('./controllers/executionController');
 const cookieParser = require('cookie-parser');
 const path = require('path');
@@ -91,7 +91,7 @@ app.use(cors({
   origin: function(origin, callback) { callback(null, true); },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-session-id', 'x-username', 'x-user-color', 'x-tab-id'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-session-id', 'x-username', 'x-user-color', 'x-tab-id', 'x-admin-token'],
 }));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -270,7 +270,7 @@ app.set('getExecStats', () => {
   };
 });
 
-initRoomHandler(io, { competitionState, addViolation });
+initRoomHandler(io, { competitionState, addViolation, anticheat });
 
 // ─── v9: Memory Monitoring ────────────────────────────────────────────
 const memoryMonitorInterval = setInterval(() => {
