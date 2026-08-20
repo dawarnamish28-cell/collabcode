@@ -161,6 +161,29 @@ router.post('/competition/mode', adminAuthMiddleware, (req, res) => {
     clearViolations();
   }
 
+  // v17 (AC): Auto-enable anticheat when competition mode starts, disable when normal
+  if (mode === 'competition' && !anticheat.anticheatState.enabled) {
+    anticheat.enableAnticheat();
+    if (io) {
+      io.emit('anticheat:state-change', {
+        enabled: true,
+        settings: anticheat.getSettings(),
+        timestamp: Date.now(),
+      });
+    }
+    console.log('[Admin] AntiCheat auto-enabled with competition mode');
+  } else if (mode === 'normal' && anticheat.anticheatState.enabled) {
+    anticheat.disableAnticheat();
+    if (io) {
+      io.emit('anticheat:state-change', {
+        enabled: false,
+        settings: anticheat.getSettings(),
+        timestamp: Date.now(),
+      });
+    }
+    console.log('[Admin] AntiCheat auto-disabled with normal mode');
+  }
+
   // Broadcast to ALL connected clients
   if (io) {
     io.emit('competition:mode-change', {

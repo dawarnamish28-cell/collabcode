@@ -375,6 +375,7 @@ function initRoomHandler(io, ctx) {
       const stateUpdate = Y.encodeStateAsUpdate(room.ydoc);
       // v11: Include competition state and room name in room:state
       const compState = competitionCtx ? competitionCtx.competitionState : null;
+      const acState = competitionCtx?.anticheat ? competitionCtx.anticheat.getAnticheatStatus() : null;
       socket.emit('room:state', {
         update: Array.from(stateUpdate),
         users: Array.from(room.users.values()),
@@ -385,6 +386,10 @@ function initRoomHandler(io, ctx) {
         competition: compState ? {
           mode: compState.mode,
           roomsLocked: compState.roomsLocked,
+        } : null,
+        anticheat: acState ? {
+          enabled: acState.enabled,
+          settings: acState.settings,
         } : null,
       });
 

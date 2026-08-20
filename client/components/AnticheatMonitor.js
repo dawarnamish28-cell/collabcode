@@ -1,422 +1,294 @@
 /**
- * AnticheatMonitor v1.0 — Client-Side Proctoring Engine
+ * AnticheatMonitor v2.0 — Client-Side Proctoring Engine (Production-Ready)
  * 
- * Detects 13 types of violations and reports to server via Socket.IO:
- *  1. Tab/window switch (visibilitychange)
- *  2. Copy (Ctrl+C / context menu)
- *  3. Paste (Ctrl+V / context menu)
- *  4. Fullscreen exit
- *  5. DevTools detection (resize heuristic + shortcut keys)
- *  6. Right-click (context menu block)
- *  7. Multiple monitors detection
- *  8. Suspicious window resize
- *  9. Focus loss (window blur)
- * 10. Clipboard API access
- * 11. Screenshot attempt (PrintScreen)
- * 12. Browser extension injection
- * 13. Idle timeout
+ * 5 rock-solid detections that actually work and report to server:
+ *  1. Tab/window switch (visibilitychange + blur/focus)
+ *  2. Copy/Paste interception (document copy/paste events)
+ *  3. DevTools detection (keyboard shortcuts + outer/inner size heuristic)
+ *  4. Right-click block (contextmenu prevention)
+ *  5. Focus loss / window blur detection
  * 
- * Controlled by server — only activates when anticheat:state-change
- * event with enabled=true is received. All settings respect server config.
+ * Plus secondary detections:
+ *  6. Fullscreen exit (fullscreenchange)
+ *  7. Screenshot key (PrintScreen, Cmd+Shift+3/4/5)
+ *  8. Idle timeout (no input for N seconds)
+ * 
+ * All controlled by server. Activates when anticheat:state-change
+ * fires with enabled=true OR when room:state includes anticheat.enabled.
+ * 
+ * v2.0 fixes:
+ *  - Stable refs prevent hook teardown loops
+ *  - SSR-safe throughout
+ *  - console.log traces for debugging
  * 
  * made with <3 by Namish
  */
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 
 // ─── Anticheat Hook ──────────────────────────────────────────────────────
 export function useAnticheat(socketRef, enabled, settings, onViolation) {
+  // All mutable state in refs to avoid re-triggering useEffect
   const settingsRef = useRef(settings || {});
   const enabledRef = useRef(enabled);
+  const onViolationRef = useRef(onViolation);
+  const socketRefRef = useRef(socketRef);
   const lastActivityRef = useRef(Date.now());
-  const idleTimerRef = useRef(null);
-  const devtoolsCheckRef = useRef(null);
   const cleanupFnsRef = useRef([]);
-  const windowSizeRef = useRef({ w: typeof window !== 'undefined' ? window.innerWidth : 1920, h: typeof window !== 'undefined' ? window.innerHeight : 1080 });
-  const violationCountRef = useRef({});
+  const windowSizeRef = useRef(null); // Lazy-init in useEffect
+  const rateLimitMapRef = useRef({});
+  const devtoolsWasOpenRef = useRef(false);
+  const setupDoneRef = useRef(false);
 
-  // Update refs when props change
+  // Keep refs in sync — these never cause the effect to re-run
+  useEffect(() => { settingsRef.current = settings || {}; }, [settings]);
+  useEffect(() => { enabledRef.current = enabled; }, [enabled]);
+  useEffect(() => { onViolationRef.current = onViolation; }, [onViolation]);
+  useEffect(() => { socketRefRef.current = socketRef; }, [socketRef]);
+
+  // ─── Main effect: keyed only on `enabled` boolean ─────────────────
   useEffect(() => {
-    settingsRef.current = settings || {};
-    enabledRef.current = enabled;
-  }, [settings, enabled]);
+    // SSR guard
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-  // Rate limiter — max 1 report per type per 4 seconds (client side)
-  const canReport = useCallback((type) => {
-    const now = Date.now();
-    const last = violationCountRef.current[type] || 0;
-    if (now - last < 4000) return false;
-    violationCountRef.current[type] = now;
-    return true;
-  }, []);
+    // Teardown previous listeners if any
+    cleanupFnsRef.current.forEach(fn => { try { fn(); } catch(e){} });
+    cleanupFnsRef.current = [];
 
-  // Send violation to server
-  const reportViolation = useCallback((type, metadata = {}) => {
-    if (!enabledRef.current) return;
-    if (!canReport(type)) return;
-
-    const socket = socketRef?.current;
-    if (socket?.connected) {
-      socket.emit('anticheat:violation', {
-        type,
-        metadata: {
-          ...metadata,
-          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
-          timestamp: Date.now(),
-          screenRes: typeof screen !== 'undefined' ? `${screen.width}x${screen.height}` : 'unknown',
-          windowRes: typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : 'unknown',
-        },
-      });
-    }
-
-    // Notify parent component
-    if (onViolation) {
-      onViolation(type, metadata);
-    }
-  }, [socketRef, canReport, onViolation]);
-
-  useEffect(() => {
     if (!enabled) {
-      // Cleanup everything if disabled
-      cleanupFnsRef.current.forEach(fn => fn());
-      cleanupFnsRef.current = [];
-      if (idleTimerRef.current) clearInterval(idleTimerRef.current);
-      if (devtoolsCheckRef.current) clearInterval(devtoolsCheckRef.current);
+      console.log('[AntiCheat] Disabled — all monitors stopped');
+      setupDoneRef.current = false;
       return;
     }
 
-    // SSR guard — all detections require browser APIs
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    console.log('[AntiCheat] ENABLED — setting up monitors');
+    setupDoneRef.current = true;
+    windowSizeRef.current = { w: window.innerWidth, h: window.innerHeight };
+    lastActivityRef.current = Date.now();
+    rateLimitMapRef.current = {};
 
-    const s = settingsRef.current;
     const cleanups = [];
+    const s = settingsRef.current;
 
-    // ─── 1. Tab/Window Switch Detection ─────────────────────────
+    // ─── Rate-limited report function (stable, no deps) ─────────
+    function report(type, metadata) {
+      if (!enabledRef.current) return;
+      // Client-side rate limit: 1 per type per 5 seconds
+      const now = Date.now();
+      if (rateLimitMapRef.current[type] && now - rateLimitMapRef.current[type] < 5000) return;
+      rateLimitMapRef.current[type] = now;
+
+      console.log(`[AntiCheat] VIOLATION: ${type}`, metadata);
+
+      const sock = socketRefRef.current?.current;
+      if (sock?.connected) {
+        sock.emit('anticheat:violation', {
+          type,
+          metadata: {
+            ...metadata,
+            userAgent: navigator.userAgent || '',
+            timestamp: now,
+            screenRes: `${screen.width}x${screen.height}`,
+            windowRes: `${window.innerWidth}x${window.innerHeight}`,
+          },
+        });
+      } else {
+        console.warn('[AntiCheat] Socket not connected, violation not sent:', type);
+      }
+
+      // Notify parent (e.g. show toast)
+      const cb = onViolationRef.current;
+      if (cb) cb(type, metadata);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 1. TAB/WINDOW SWITCH — visibilitychange is the most reliable
+    // ═══════════════════════════════════════════════════════════════
     if (s.detectTabSwitch !== false) {
-      const handleVisibilityChange = () => {
-        if (document.hidden) {
-          reportViolation('TAB_SWITCH', { hidden: true });
+      const onVisChange = () => {
+        if (document.hidden || document.visibilityState === 'hidden') {
+          report('TAB_SWITCH', { method: 'visibilitychange', hidden: true });
         }
       };
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-      cleanups.push(() => document.removeEventListener('visibilitychange', handleVisibilityChange));
+      document.addEventListener('visibilitychange', onVisChange);
+      cleanups.push(() => document.removeEventListener('visibilitychange', onVisChange));
+      console.log('[AntiCheat] ✓ Tab switch detection active');
     }
 
-    // ─── 2 & 3. Copy / Paste Detection ──────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // 2. COPY / PASTE — capture phase to catch even Monaco events
+    // ═══════════════════════════════════════════════════════════════
     if (s.blockCopyPaste !== false) {
-      const handleCopy = (e) => {
-        reportViolation('COPY', { selection: window.getSelection()?.toString()?.slice(0, 100) || '' });
-        // Optionally block the copy
-        // e.preventDefault();
+      const onCopy = () => {
+        const sel = window.getSelection?.()?.toString?.()?.slice(0, 100) || '';
+        report('COPY', { selectionPreview: sel });
       };
-      const handlePaste = (e) => {
-        reportViolation('PASTE', {});
-        // Optionally block the paste
-        // e.preventDefault();
+      const onPaste = () => {
+        report('PASTE', { target: document.activeElement?.tagName || 'unknown' });
       };
-      document.addEventListener('copy', handleCopy, true);
-      document.addEventListener('paste', handlePaste, true);
+      // Capture phase = true, so we catch it before any element prevents it
+      document.addEventListener('copy', onCopy, true);
+      document.addEventListener('paste', onPaste, true);
       cleanups.push(() => {
-        document.removeEventListener('copy', handleCopy, true);
-        document.removeEventListener('paste', handlePaste, true);
+        document.removeEventListener('copy', onCopy, true);
+        document.removeEventListener('paste', onPaste, true);
       });
+      console.log('[AntiCheat] ✓ Copy/paste detection active');
     }
 
-    // ─── 4. Fullscreen Exit Detection ───────────────────────────
-    if (s.forceFullscreen !== false) {
-      const handleFullscreenChange = () => {
-        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-          reportViolation('FULLSCREEN_EXIT', {});
-        }
-      };
-      document.addEventListener('fullscreenchange', handleFullscreenChange);
-      document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-      cleanups.push(() => {
-        document.removeEventListener('fullscreenchange', handleFullscreenChange);
-        document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      });
-    }
-
-    // ─── 5. DevTools Detection ──────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // 3. DEVTOOLS — keyboard shortcuts + outer-inner size heuristic
+    // ═══════════════════════════════════════════════════════════════
     if (s.blockDevTools !== false) {
-      // Method 1: Key shortcuts
-      const handleDevToolsKeys = (e) => {
-        // F12
-        if (e.key === 'F12') {
+      // 3a. Keyboard shortcut interception
+      const onKeyDown = (e) => {
+        let detected = null;
+        if (e.key === 'F12') detected = 'F12';
+        else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'I' || e.key === 'i')) detected = 'Ctrl+Shift+I';
+        else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'J' || e.key === 'j')) detected = 'Ctrl+Shift+J';
+        else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'C' || e.key === 'c')) detected = 'Ctrl+Shift+C';
+        else if ((e.ctrlKey || e.metaKey) && (e.key === 'u' || e.key === 'U')) detected = 'Ctrl+U';
+
+        if (detected) {
           e.preventDefault();
-          reportViolation('DEVTOOLS', { method: 'F12' });
-          return;
-        }
-        // Ctrl+Shift+I / Cmd+Opt+I (Inspector)
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'I') {
-          e.preventDefault();
-          reportViolation('DEVTOOLS', { method: 'Ctrl+Shift+I' });
-          return;
-        }
-        // Ctrl+Shift+J / Cmd+Opt+J (Console)
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'J') {
-          e.preventDefault();
-          reportViolation('DEVTOOLS', { method: 'Ctrl+Shift+J' });
-          return;
-        }
-        // Ctrl+Shift+C (Element picker)
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
-          e.preventDefault();
-          reportViolation('DEVTOOLS', { method: 'Ctrl+Shift+C' });
-          return;
-        }
-        // Ctrl+U (View Source)
-        if ((e.ctrlKey || e.metaKey) && e.key === 'u') {
-          e.preventDefault();
-          reportViolation('DEVTOOLS', { method: 'Ctrl+U' });
-          return;
+          e.stopPropagation();
+          report('DEVTOOLS', { method: detected });
         }
       };
-      document.addEventListener('keydown', handleDevToolsKeys, true);
-      cleanups.push(() => document.removeEventListener('keydown', handleDevToolsKeys, true));
+      // Capture phase to intercept before page scripts
+      document.addEventListener('keydown', onKeyDown, true);
+      cleanups.push(() => document.removeEventListener('keydown', onKeyDown, true));
 
-      // Method 2: Window size heuristic (devtools panel changes outer-inner diff)
-      let devtoolsOpen = false;
-      devtoolsCheckRef.current = setInterval(() => {
-        const widthThreshold = window.outerWidth - window.innerWidth > 160;
-        const heightThreshold = window.outerHeight - window.innerHeight > 160;
-        const nowOpen = widthThreshold || heightThreshold;
-        if (nowOpen && !devtoolsOpen) {
-          devtoolsOpen = true;
-          reportViolation('DEVTOOLS', { method: 'resize_heuristic', outer: `${window.outerWidth}x${window.outerHeight}`, inner: `${window.innerWidth}x${window.innerHeight}` });
-        } else if (!nowOpen) {
-          devtoolsOpen = false;
+      // 3b. Periodic outer-inner window size check (docked devtools changes this)
+      devtoolsWasOpenRef.current = false;
+      const checkInterval = setInterval(() => {
+        const dw = window.outerWidth - window.innerWidth;
+        const dh = window.outerHeight - window.innerHeight;
+        // Threshold: 160px difference suggests devtools panel
+        const isOpen = dw > 160 || dh > 160;
+        if (isOpen && !devtoolsWasOpenRef.current) {
+          devtoolsWasOpenRef.current = true;
+          report('DEVTOOLS', {
+            method: 'size_heuristic',
+            outerW: window.outerWidth, innerW: window.innerWidth,
+            outerH: window.outerHeight, innerH: window.innerHeight,
+          });
+        } else if (!isOpen) {
+          devtoolsWasOpenRef.current = false;
         }
-      }, 2000);
-      cleanups.push(() => {
-        if (devtoolsCheckRef.current) clearInterval(devtoolsCheckRef.current);
-      });
+      }, 1500);
+      cleanups.push(() => clearInterval(checkInterval));
+      console.log('[AntiCheat] ✓ DevTools detection active');
     }
 
-    // ─── 6. Right-Click Detection ───────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // 4. RIGHT-CLICK — block context menu
+    // ═══════════════════════════════════════════════════════════════
     if (s.blockRightClick !== false) {
-      const handleContextMenu = (e) => {
+      const onCtxMenu = (e) => {
         e.preventDefault();
-        reportViolation('RIGHT_CLICK', { target: e.target?.tagName || 'unknown' });
+        report('RIGHT_CLICK', { target: e.target?.tagName || 'unknown', x: e.clientX, y: e.clientY });
         return false;
       };
-      document.addEventListener('contextmenu', handleContextMenu, true);
-      cleanups.push(() => document.removeEventListener('contextmenu', handleContextMenu, true));
+      document.addEventListener('contextmenu', onCtxMenu, true);
+      cleanups.push(() => document.removeEventListener('contextmenu', onCtxMenu, true));
+      console.log('[AntiCheat] ✓ Right-click block active');
     }
 
-    // ─── 7. Multiple Monitor Detection ──────────────────────────
-    if (s.detectMultiMonitor !== false) {
-      // Check screen count API (Chrome 100+)
-      const checkMultiMonitor = async () => {
-        try {
-          if (window.screen?.isExtended) {
-            reportViolation('MULTI_MONITOR', { isExtended: true, screens: 'multiple' });
-          }
-          // Also check if window.screenX is outside primary screen bounds
-          if (window.screenX < 0 || window.screenX > screen.width) {
-            reportViolation('MULTI_MONITOR', { screenX: window.screenX, screenWidth: screen.width });
-          }
-        } catch (e) {}
-      };
-
-      // Check on screen change events
-      if (window.screen?.addEventListener) {
-        const handleScreenChange = () => checkMultiMonitor();
-        window.screen.addEventListener('change', handleScreenChange);
-        cleanups.push(() => window.screen.removeEventListener('change', handleScreenChange));
-      }
-
-      // Initial check
-      checkMultiMonitor();
-
-      // Periodic check
-      const multiMonitorInterval = setInterval(checkMultiMonitor, 15000);
-      cleanups.push(() => clearInterval(multiMonitorInterval));
-    }
-
-    // ─── 8. Suspicious Window Resize ────────────────────────────
-    if (s.detectResize !== false) {
-      const handleResize = () => {
-        const newW = window.innerWidth;
-        const newH = window.innerHeight;
-        const dW = Math.abs(newW - windowSizeRef.current.w);
-        const dH = Math.abs(newH - windowSizeRef.current.h);
-        // Only flag significant resizes (> 200px change)
-        if (dW > 200 || dH > 200) {
-          reportViolation('WINDOW_RESIZE', {
-            from: `${windowSizeRef.current.w}x${windowSizeRef.current.h}`,
-            to: `${newW}x${newH}`,
-            delta: `${dW}x${dH}`,
-          });
-        }
-        windowSizeRef.current = { w: newW, h: newH };
-      };
-      window.addEventListener('resize', handleResize);
-      cleanups.push(() => window.removeEventListener('resize', handleResize));
-    }
-
-    // ─── 9. Focus Loss Detection ────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // 5. FOCUS LOSS — window.blur fires when user clicks outside browser
+    // ═══════════════════════════════════════════════════════════════
     if (s.detectFocusLoss !== false) {
-      const handleBlur = () => {
-        reportViolation('FOCUS_LOSS', { activeElement: document.activeElement?.tagName || 'none' });
-      };
-      window.addEventListener('blur', handleBlur);
-      cleanups.push(() => window.removeEventListener('blur', handleBlur));
-    }
-
-    // ─── 10. Clipboard API Access ───────────────────────────────
-    if (s.blockCopyPaste !== false) {
-      // Intercept clipboard read/write API
-      const origRead = navigator.clipboard?.readText;
-      const origWrite = navigator.clipboard?.writeText;
-      if (navigator.clipboard) {
-        try {
-          navigator.clipboard.readText = async function() {
-            reportViolation('CLIPBOARD_API', { action: 'read' });
-            return origRead ? origRead.call(navigator.clipboard) : '';
-          };
-          navigator.clipboard.writeText = async function(text) {
-            reportViolation('CLIPBOARD_API', { action: 'write', length: text?.length || 0 });
-            return origWrite ? origWrite.call(navigator.clipboard, text) : undefined;
-          };
-          cleanups.push(() => {
-            if (origRead) navigator.clipboard.readText = origRead;
-            if (origWrite) navigator.clipboard.writeText = origWrite;
-          });
-        } catch (e) {
-          // Some browsers won't allow reassignment
-        }
-      }
-    }
-
-    // ─── 11. Screenshot Detection ───────────────────────────────
-    if (s.detectScreenshot !== false) {
-      const handleScreenshot = (e) => {
-        if (e.key === 'PrintScreen' || e.key === 'Snapshot') {
-          e.preventDefault();
-          reportViolation('SCREENSHOT', { method: 'PrintScreen' });
-        }
-        // Windows Snipping Tool: Win+Shift+S
-        if (e.metaKey && e.shiftKey && e.key === 'S') {
-          e.preventDefault();
-          reportViolation('SCREENSHOT', { method: 'Win+Shift+S' });
-        }
-        // Mac: Cmd+Shift+3 or Cmd+Shift+4
-        if (e.metaKey && e.shiftKey && (e.key === '3' || e.key === '4' || e.key === '5')) {
-          e.preventDefault();
-          reportViolation('SCREENSHOT', { method: `Cmd+Shift+${e.key}` });
+      const onBlur = () => {
+        // Don't double-report with tab switch (visibilitychange is more accurate)
+        // Only report blur if document is NOT hidden (that means click outside, not tab switch)
+        if (!document.hidden) {
+          report('FOCUS_LOSS', { activeElement: document.activeElement?.tagName || 'none' });
         }
       };
-      document.addEventListener('keyup', handleScreenshot, true);
-      document.addEventListener('keydown', handleScreenshot, true);
+      window.addEventListener('blur', onBlur);
+      cleanups.push(() => window.removeEventListener('blur', onBlur));
+      console.log('[AntiCheat] ✓ Focus loss detection active');
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 6. FULLSCREEN EXIT
+    // ═══════════════════════════════════════════════════════════════
+    if (s.forceFullscreen !== false) {
+      const onFsChange = () => {
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+          report('FULLSCREEN_EXIT', {});
+        }
+      };
+      document.addEventListener('fullscreenchange', onFsChange);
+      document.addEventListener('webkitfullscreenchange', onFsChange);
       cleanups.push(() => {
-        document.removeEventListener('keyup', handleScreenshot, true);
-        document.removeEventListener('keydown', handleScreenshot, true);
+        document.removeEventListener('fullscreenchange', onFsChange);
+        document.removeEventListener('webkitfullscreenchange', onFsChange);
       });
+      console.log('[AntiCheat] ✓ Fullscreen exit detection active');
     }
 
-    // ─── 12. Browser Extension Detection ────────────────────────
-    if (s.detectExtensions !== false) {
-      const checkExtensions = () => {
-        // Check for injected DOM elements by extensions
-        const allScripts = document.querySelectorAll('script[src]');
-        for (const script of allScripts) {
-          const src = script.getAttribute('src') || '';
-          if (src.startsWith('chrome-extension://') || src.startsWith('moz-extension://') || src.startsWith('ms-browser-extension://')) {
-            reportViolation('EXTENSION_INJECT', { extensionUrl: src.slice(0, 80) });
-            break;
-          }
-        }
-        // Check for injected style elements
-        const allStyles = document.querySelectorAll('link[href]');
-        for (const style of allStyles) {
-          const href = style.getAttribute('href') || '';
-          if (href.startsWith('chrome-extension://') || href.startsWith('moz-extension://')) {
-            reportViolation('EXTENSION_INJECT', { extensionUrl: href.slice(0, 80) });
-            break;
-          }
-        }
-        // Check for mutation observer patterns (content scripts often add data attributes)
-        const bodyAttrs = document.body?.attributes;
-        if (bodyAttrs) {
-          for (let i = 0; i < bodyAttrs.length; i++) {
-            const name = bodyAttrs[i].name;
-            if (name.startsWith('data-') && !['data-theme', 'data-page', 'data-reactroot'].includes(name)) {
-              // Could be extension-injected, but let's be careful about false positives
-              // Only report if clearly extension-like
-              if (name.includes('extension') || name.includes('grammarly') || name.includes('lastpass') || name.includes('honey')) {
-                reportViolation('EXTENSION_INJECT', { attribute: name });
-                break;
-              }
-            }
-          }
+    // ═══════════════════════════════════════════════════════════════
+    // 7. SCREENSHOT KEY — PrintScreen, Win+Shift+S, Cmd+Shift+3/4/5
+    // ═══════════════════════════════════════════════════════════════
+    if (s.detectScreenshot !== false) {
+      const onScreenshotKey = (e) => {
+        let method = null;
+        if (e.key === 'PrintScreen' || e.key === 'Snapshot') method = 'PrintScreen';
+        else if (e.metaKey && e.shiftKey && e.key === 'S') method = 'Win+Shift+S';
+        else if (e.metaKey && e.shiftKey && ['3', '4', '5'].includes(e.key)) method = `Cmd+Shift+${e.key}`;
+
+        if (method) {
+          e.preventDefault();
+          report('SCREENSHOT', { method });
         }
       };
-
-      // Check periodically
-      const extCheckInterval = setInterval(checkExtensions, 20000);
-      checkExtensions(); // Initial check
-      cleanups.push(() => clearInterval(extCheckInterval));
+      // keyup for PrintScreen (some browsers only fire keyup for it)
+      document.addEventListener('keyup', onScreenshotKey, true);
+      document.addEventListener('keydown', onScreenshotKey, true);
+      cleanups.push(() => {
+        document.removeEventListener('keyup', onScreenshotKey, true);
+        document.removeEventListener('keydown', onScreenshotKey, true);
+      });
+      console.log('[AntiCheat] ✓ Screenshot detection active');
     }
 
-    // ─── 13. Idle Timeout Detection ─────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // 8. IDLE TIMEOUT — no mouse/keyboard/touch for N seconds
+    // ═══════════════════════════════════════════════════════════════
     if (s.detectIdle !== false) {
-      const idleTimeout = (s.idleTimeoutSec || 120) * 1000;
+      const timeout = (s.idleTimeoutSec || 120) * 1000;
+      const markActive = () => { lastActivityRef.current = Date.now(); };
+      const events = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
+      events.forEach(ev => document.addEventListener(ev, markActive, { passive: true }));
 
-      // Track activity
-      const markActive = () => {
-        lastActivityRef.current = Date.now();
-      };
-      document.addEventListener('mousemove', markActive, { passive: true });
-      document.addEventListener('keydown', markActive, { passive: true });
-      document.addEventListener('mousedown', markActive, { passive: true });
-      document.addEventListener('touchstart', markActive, { passive: true });
-      document.addEventListener('scroll', markActive, { passive: true });
-
-      idleTimerRef.current = setInterval(() => {
-        const idleDuration = Date.now() - lastActivityRef.current;
-        if (idleDuration >= idleTimeout) {
-          reportViolation('IDLE_TIMEOUT', { idleSec: Math.floor(idleDuration / 1000) });
-          // Reset to avoid spamming
-          lastActivityRef.current = Date.now();
+      const idleInterval = setInterval(() => {
+        const idle = Date.now() - lastActivityRef.current;
+        if (idle >= timeout) {
+          report('IDLE_TIMEOUT', { idleSec: Math.floor(idle / 1000) });
+          lastActivityRef.current = Date.now(); // reset to avoid spamming
         }
       }, 10000);
 
       cleanups.push(() => {
-        document.removeEventListener('mousemove', markActive);
-        document.removeEventListener('keydown', markActive);
-        document.removeEventListener('mousedown', markActive);
-        document.removeEventListener('touchstart', markActive);
-        document.removeEventListener('scroll', markActive);
-        if (idleTimerRef.current) clearInterval(idleTimerRef.current);
+        events.forEach(ev => document.removeEventListener(ev, markActive));
+        clearInterval(idleInterval);
       });
+      console.log(`[AntiCheat] ✓ Idle detection active (${s.idleTimeoutSec || 120}s)`);
     }
 
-    // ─── Additional: Prevent text selection during anticheat ────
-    // CSS-based selection block (optional, controlled by setting)
-    if (s.blockCopyPaste !== false) {
-      const style = document.createElement('style');
-      style.id = 'anticheat-nocopy-style';
-      style.textContent = `
-        /* Allow selection in Monaco editor but monitor it */
-        .anticheat-active { user-select: auto !important; -webkit-user-select: auto !important; }
-      `;
-      document.head.appendChild(style);
-      document.body.classList.add('anticheat-active');
-      cleanups.push(() => {
-        document.body.classList.remove('anticheat-active');
-        const el = document.getElementById('anticheat-nocopy-style');
-        if (el) el.remove();
-      });
-    }
-
+    console.log(`[AntiCheat] All ${cleanups.length} monitors installed`);
     cleanupFnsRef.current = cleanups;
 
+    // Cleanup on disable or unmount
     return () => {
-      cleanups.forEach(fn => fn());
+      console.log('[AntiCheat] Tearing down monitors');
+      cleanups.forEach(fn => { try { fn(); } catch(e){} });
       cleanupFnsRef.current = [];
+      setupDoneRef.current = false;
     };
-  }, [enabled, reportViolation]);
+  }, [enabled]); // ONLY re-run when enabled changes — everything else is via refs
 }
 
 // ─── Anticheat Status Indicator Component ────────────────────────────────
@@ -454,7 +326,7 @@ export function AnticheatIndicator({ enabled, violationCount, flagged }) {
           animation: 'anticheat-pulse 2s infinite',
         }}
       />
-      <span>{flagged ? '⚠ FLAGGED' : '🛡 PROCTORED'}</span>
+      <span>{flagged ? '\u26a0 FLAGGED' : '\ud83d\udee1 PROCTORED'}</span>
       {violationCount > 0 && (
         <span style={{
           background: flagged ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.1)',

@@ -374,6 +374,11 @@ export default function RoomPage() {
         setCompetitionMode(data.competition.mode || 'normal');
         setRoomsLocked(!!data.competition.roomsLocked);
       }
+      // v17 (AC): AntiCheat state from server (for late joiners)
+      if (data.anticheat) {
+        setAnticheatEnabled(!!data.anticheat.enabled);
+        if (data.anticheat.settings) setAnticheatSettings(data.anticheat.settings);
+      }
       if (data.roomName) setRoomName(data.roomName);
       setRoom({ roomId });
       setReady(true);
