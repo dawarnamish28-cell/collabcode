@@ -31,6 +31,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import dynamic from 'next/dynamic';
+import Head from 'next/head';
 import { useAppContext } from '../../context/AppContext';
 import { getSocket, disconnectSocket } from '../../utils/socket';
 import { createYjsDoc, SocketIOProvider } from '../../utils/yjsProvider';
@@ -143,6 +144,8 @@ export default function RoomPage() {
   const [cmdPaletteQuery, setCmdPaletteQuery] = useState(''); // v15: command palette search
   const [cmdPaletteFocusIdx, setCmdPaletteFocusIdx] = useState(0); // v15: keyboard nav index
   const [notifSoundEnabled, setNotifSoundEnabled] = useState(true); // v15: notification sounds
+  const [showSharePopup, setShowSharePopup] = useState(false); // v18: share room popup
+  const [execStats, setExecStats] = useState({ runs: 0, successes: 0, errors: 0, totalTime: 0 }); // v18: execution stats
 
   // v19: Competition mode state
   const [competitionMode, setCompetitionMode] = useState('normal'); // 'normal' | 'competition'
@@ -569,10 +572,13 @@ export default function RoomPage() {
 
       if (data.error && !data.success && !data.output) {
         setOutput({ type: 'error', content: '', error: data.message || 'Execution failed', status: 'Error', ...base });
+        setExecStats(prev => ({ ...prev, runs: prev.runs + 1, errors: prev.errors + 1 }));
       } else if (data.success) {
         setOutput({ type: 'success', content: data.output || '', error: data.error || '', status: data.status, ...base });
+        setExecStats(prev => ({ ...prev, runs: prev.runs + 1, successes: prev.successes + 1, totalTime: prev.totalTime + (data.executionTime || 0) }));
       } else {
         setOutput({ type: 'error', content: data.output || '', error: data.error || data.message || 'Failed', status: data.status, ...base });
+        setExecStats(prev => ({ ...prev, runs: prev.runs + 1, errors: prev.errors + 1 }));
       }
     } catch (err) {
       // v17: Don't show error for intentional aborts (unmount/new request)
@@ -824,6 +830,9 @@ export default function RoomPage() {
 
   return (
     <div className="room-workspace h-screen w-screen flex flex-col overflow-hidden bg-[#1a1b1e]" style={{ userSelect: isResizing ? 'none' : 'auto' }}>
+      <Head>
+        <title>{roomName || roomId} — CollabCode</title>
+      </Head>
       <Navbar
         roomId={roomId} language={state.language} onLanguageChange={handleLanguageChange}
         connectionStatus={state.connectionStatus} users={state.users}
@@ -1116,6 +1125,27 @@ export default function RoomPage() {
         {/* Language indicator */}
         <div className="w-px h-2.5 bg-[#333]" />
         <span style={{ color: LANGUAGES_MAP[state.language] || '#5e9eff' }}>{state.language}</span>
+        {/* v18: Execution stats */}
+        {execStats.runs > 0 && (
+          <>
+            <div className="w-px h-2.5 bg-[#333]" />
+            <span className="hidden sm:inline text-[#888]" title={`${execStats.successes} passed, ${execStats.errors} failed, avg ${execStats.runs > 0 ? Math.round(execStats.totalTime / Math.max(execStats.successes, 1)) : 0}ms`}>
+              <span className="text-[#5bd882]">{execStats.successes}✓</span>
+              {execStats.errors > 0 && <span className="text-[#ff6b6b] ml-1">{execStats.errors}✗</span>}
+              <span className="text-[#555] ml-1">({execStats.runs} runs)</span>
+            </span>
+          </>
+        )}
+        {/* Session timer */}
+        <div className="w-px h-2.5 bg-[#333]" />
+        <span className="hidden sm:inline text-[#555]" title="Session time">{sessionTime}</span>
+        {/* v18: Share room button */}
+        <div className="flex-1" />
+        <button onClick={() => setShowSharePopup(true)}
+          className="flex items-center gap-1 text-[#555] hover:text-[#aaa] transition px-1.5 py-0.5 rounded hover:bg-[#222] active:scale-95">
+          <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+          <span className="hidden sm:inline">share</span>
+        </button>
         {/* v19: Competition indicators */}
         {roomsLocked && (
           <>
@@ -1132,13 +1162,66 @@ export default function RoomPage() {
             <span className="text-[#c4b5fd]">competition</span>
           </>
         )}
-        {roomName && (
-          <>
-            <div className="w-px h-2.5 bg-[#333]" />
-            <span className="text-[#888]" title="Room name">{roomName}</span>
-          </>
-        )}
       </div>
+
+      {/* v18: Share Room Popup */}
+      {showSharePopup && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowSharePopup(false)}>
+          <div className="modal-enter bg-[#1a1b1e] border border-[#333] rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[15px] font-display font-semibold text-white">Share Room</h3>
+              <button onClick={() => setShowSharePopup(false)} className="p-1.5 text-[#666] hover:text-white transition rounded-lg hover:bg-[#222]">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            {/* Room code */}
+            <div className="mb-4">
+              <label className="text-[10px] text-[#666] font-mono uppercase tracking-wider mb-1 block">Room Code</label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 px-3 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white font-mono text-lg text-center tracking-wider">{roomId}</div>
+                <button onClick={() => { navigator.clipboard.writeText(roomId).catch(()=>{}); addToast('Room code copied!', 'info'); }}
+                  className="p-2.5 bg-[#222] border border-[#333] rounded-xl text-[#888] hover:text-white hover:bg-[#2a2b30] transition active:scale-95">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                </button>
+              </div>
+            </div>
+            {/* Full URL */}
+            <div className="mb-4">
+              <label className="text-[10px] text-[#666] font-mono uppercase tracking-wider mb-1 block">Share Link</label>
+              <div className="flex items-center gap-2">
+                <input readOnly value={typeof window !== 'undefined' ? `${window.location.origin}/room/${roomId}` : ''}
+                  className="flex-1 px-3 py-2 bg-[#111] border border-[#282828] rounded-xl text-[#aaa] font-mono text-[11px] truncate" />
+                <button onClick={() => {
+                  const url = `${window.location.origin}/room/${roomId}`;
+                  navigator.clipboard.writeText(url).catch(()=>{});
+                  addToast('Link copied!', 'info');
+                }}
+                  className="p-2.5 bg-[#5e9eff] text-[#0a0a0a] rounded-xl hover:bg-[#7ab3ff] transition active:scale-95 font-semibold text-[11px]">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                </button>
+              </div>
+            </div>
+            {/* Room info */}
+            <div className="bg-[#111] rounded-xl border border-[#222] p-3 space-y-1.5 text-[11px] font-mono">
+              <div className="flex justify-between"><span className="text-[#666]">Language</span><span style={{ color: LANGUAGES_MAP[state.language] || '#5e9eff' }}>{state.language}</span></div>
+              <div className="flex justify-between"><span className="text-[#666]">Users</span><span className="text-[#aaa]">{state.users?.length || 1} online</span></div>
+              <div className="flex justify-between"><span className="text-[#666]">Visibility</span><span className={isPublic ? 'text-[#5bd882]' : 'text-[#ffb347]'}>{isPublic ? 'Public' : 'Private'}</span></div>
+              {roomName && <div className="flex justify-between"><span className="text-[#666]">Name</span><span className="text-[#aaa]">{roomName}</span></div>}
+              <div className="flex justify-between"><span className="text-[#666]">Session</span><span className="text-[#aaa]">{sessionTime}</span></div>
+            </div>
+            {/* Native share (mobile) */}
+            {typeof navigator !== 'undefined' && navigator.share && (
+              <button onClick={() => {
+                navigator.share({ title: `CollabCode — ${roomName || roomId}`, text: `Join my coding room on CollabCode!`, url: `${window.location.origin}/room/${roomId}` }).catch(()=>{});
+              }}
+                className="w-full mt-3 py-2.5 bg-[#222] text-[#aaa] rounded-xl hover:bg-[#2a2b30] transition text-[12px] font-mono border border-[#333] flex items-center justify-center gap-2">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                Share via device...
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* AntiCheat Indicator */}
       <AnticheatIndicator enabled={anticheatEnabled} violationCount={anticheatViolationCount} flagged={anticheatFlagged} />
@@ -1223,6 +1306,8 @@ export default function RoomPage() {
           { label: 'Copy Room Code', hint: '', icon: '\uD83D\uDCCB', cat: 'room', action: () => { setShowCommandPalette(false); navigator.clipboard.writeText(roomId).catch(() => {}); addToast('Room code copied', 'info'); } },
           { label: 'Clear Terminal', hint: 'Ctrl+L', icon: '\uD83D\uDDD1', cat: 'code', action: () => { setShowCommandPalette(false); outputConsoleRef.current?.clear?.(); } },
           { label: 'Clear Notifications', hint: '', icon: '\uD83D\uDD14', cat: 'settings', action: () => { setShowCommandPalette(false); clearNotifications(); } },
+          { label: 'Share Room', hint: '', icon: '\uD83D\uDD17', cat: 'room', action: () => { setShowCommandPalette(false); setShowSharePopup(true); } },
+          { label: 'Copy Room URL', hint: '', icon: '\uD83C\uDF10', cat: 'room', action: () => { setShowCommandPalette(false); navigator.clipboard.writeText(`${window.location.origin}/room/${roomId}`).catch(()=>{}); addToast('Room URL copied!', 'info'); } },
         ];
         // Fuzzy filter
         const q = cmdPaletteQuery.toLowerCase();
