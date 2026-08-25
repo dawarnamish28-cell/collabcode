@@ -1,5 +1,5 @@
 /**
- * Landing Page v15.0 — Phase 3 Fixes
+ * Landing Page v20.0 — Niche Features & Polish
  * 
  * Changes in v14:
  *  - Custom room naming input in create room section
@@ -430,6 +430,44 @@ function useScrollReveal() {
   }, []);
 }
 
+// ─── Konami Code Easter Egg ─────────────────────────────────────
+function useKonamiCode(callback) {
+  useEffect(() => {
+    const KONAMI = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+    let idx = 0;
+    const handler = (e) => {
+      if (e.key === KONAMI[idx]) {
+        idx++;
+        if (idx === KONAMI.length) {
+          idx = 0;
+          callback();
+        }
+      } else {
+        idx = 0;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [callback]);
+}
+
+// ─── Random Pro Tip ────────────────────────────────────────────
+const PRO_TIPS = [
+  'Ctrl+K opens the command palette from anywhere',
+  'Ctrl+Shift+Z toggles Zen Mode — pure coding, zero distractions',
+  'Press ? to see all keyboard shortcuts in any room',
+  'You can export code with metadata headers for attribution',
+  'CRDT sync means zero merge conflicts, even with 10+ users',
+  'The room code is only 6 characters — easy to share verbally',
+  'Voice chat uses peer-to-peer WebRTC — no server relay lag',
+  'You can run code in 20 languages directly in the browser',
+  'Competition mode includes anticheat with 13 detection types',
+  'The command palette supports fuzzy search — just start typing',
+  'Ctrl+B toggles the chat panel, Ctrl+` toggles the terminal',
+  'Your editor settings persist across sessions via localStorage',
+  'The gallery lets you share and discover code snippets publicly',
+];
+
 // ─── Password Strength ──────────────────────────────────────────
 function getPasswordStrength(pw) {
   if (!pw) return { score: 0, label: '', color: '#333' };
@@ -476,11 +514,20 @@ export default function Home() {
   const [selectedSnippet, setSelectedSnippet] = useState(null);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [easterEggActive, setEasterEggActive] = useState(false);
+  const [proTip] = useState(() => PRO_TIPS[Math.floor(Math.random() * PRO_TIPS.length)]);
 
   const { cursorRef, dotRef, hovering, clicking } = useCustomCursor();
   const userMenuRef = useRef(null);
   const { toasts, show: showToast, dismiss: dismissToast } = useToast();
   useScrollReveal();
+
+  // v20: Konami code easter egg — spawns confetti
+  useKonamiCode(useCallback(() => {
+    setEasterEggActive(true);
+    showToast('🎮 Konami Code activated! You found the easter egg!', { icon: '🎉', color: '#c4b5fd', duration: 5000 });
+    setTimeout(() => setEasterEggActive(false), 4000);
+  }, [showToast]));
 
   useEffect(() => { fetchPublicRooms(); fetchLanguages(); fetchGallery(); }, []);
 
@@ -589,6 +636,31 @@ export default function Home() {
 
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* v20: Konami Code Confetti Easter Egg */}
+      {easterEggActive && (
+        <div className="fixed inset-0 pointer-events-none z-[9999]" aria-hidden="true">
+          {Array.from({ length: 60 }).map((_, i) => (
+            <div key={i} className="absolute" style={{
+              left: `${Math.random() * 100}%`,
+              top: '-10px',
+              width: `${6 + Math.random() * 8}px`,
+              height: `${6 + Math.random() * 8}px`,
+              background: ['#5e9eff', '#5bd882', '#ffb347', '#c4b5fd', '#ff6b6b', '#f7df1e'][i % 6],
+              borderRadius: Math.random() > 0.5 ? '50%' : '2px',
+              animation: `confettiFall ${2 + Math.random() * 2}s ease-in forwards`,
+              animationDelay: `${Math.random() * 0.8}s`,
+              transform: `rotate(${Math.random() * 360}deg)`,
+            }} />
+          ))}
+          <style jsx>{`
+            @keyframes confettiFall {
+              0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+              100% { transform: translateY(100vh) rotate(${720}deg); opacity: 0; }
+            }
+          `}</style>
+        </div>
+      )}
 
       {/* ── Header ─────────────────────────────────────────────── */}
       <header className="border-b border-[#222] sticky top-0 z-40 bg-[#131416]/80 backdrop-blur-md">
@@ -862,7 +934,7 @@ export default function Home() {
           {/* ── Features (fun cards) ─────────────────────────────── */}
           <div className="reveal mb-10 sm:mb-16">
             <h3 className="text-[11px] text-[#555] font-mono mb-5 uppercase tracking-wider">what you get</h3>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 stagger-in">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 stagger-in">
               {[
                 { label: 'CRDT Sync', detail: 'Yjs-powered, no conflicts ever. Type freely.', color: '#5e9eff',
                   icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
@@ -873,7 +945,16 @@ export default function Home() {
                 { label: '20 Languages', detail: 'From Python to Assembly. All run server-side.', color: '#ffb347',
                   icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
                 },
-                { label: 'Themes & More', detail: '6 terminal themes, minimap, font control.', color: '#c4b5fd',
+                { label: 'Zen Mode', detail: 'Ctrl+Shift+Z — pure editor, zero distractions.', color: '#c4b5fd',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                },
+                { label: 'Anticheat', detail: '13 detection types for competition integrity.', color: '#ff6b6b',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                },
+                { label: 'Code Export', detail: 'Download with metadata headers or copy raw.', color: '#e4cc98',
+                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                },
+                { label: 'Themes & More', detail: '6 terminal themes, minimap, font control.', color: '#89e051',
                   icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
                 },
               ].map((feat, i) => (
@@ -1218,6 +1299,17 @@ export default function Home() {
         isAuthenticated={state.isAuthenticated}
       />
 
+      {/* ── Pro Tip Bar ────────────────────────────────────── */}
+      <div className="reveal border-t border-[#1e1e1e] py-3 px-5">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-[#1a1b1e] border border-[#282828] rounded-xl">
+            <span className="text-[10px] font-mono text-[#ffb347] font-semibold uppercase tracking-wider flex-shrink-0">💡 pro tip</span>
+            <div className="w-px h-3 bg-[#282828]" />
+            <span className="text-[11px] font-mono text-[#666]">{proTip}</span>
+          </div>
+        </div>
+      </div>
+
       {/* ── Footer ──────────────────────────────────────────── */}
       <footer className="border-t border-[#1e1e1e] py-6 px-5">
         <div className="max-w-6xl mx-auto">
@@ -1243,7 +1335,7 @@ export default function Home() {
               </a>
               <div className="w-px h-3 bg-[#282828]" />
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-[#333] font-mono">v18</span>
+                <span className="text-[10px] text-[#333] font-mono">v20</span>
                 <div className="w-1 h-1 rounded-full bg-[#5bd882] breathe" />
               </div>
             </div>

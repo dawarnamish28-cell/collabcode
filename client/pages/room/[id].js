@@ -1,5 +1,5 @@
 /**
- * Room Workspace v21.0 — Phase 4: WebRTC Fix, Language Fix, Admin Features
+ * Room Workspace v22.0 — Phase 5: Niche Features & Zen Mode
  * 
  * New in v16:
  *  - Video collaboration: WebRTC video chat & screen sharing
@@ -146,6 +146,12 @@ export default function RoomPage() {
   const [notifSoundEnabled, setNotifSoundEnabled] = useState(true); // v15: notification sounds
   const [showSharePopup, setShowSharePopup] = useState(false); // v18: share room popup
   const [execStats, setExecStats] = useState({ runs: 0, successes: 0, errors: 0, totalTime: 0 }); // v18: execution stats
+
+  // v20: Niche features
+  const [zenMode, setZenMode] = useState(false); // hide all UI except editor
+  const [lineInfo, setLineInfo] = useState({ lines: 0, chars: 0 }); // line/char count
+  const [lastEditTime, setLastEditTime] = useState(null); // last edit timestamp
+  const [showExportMenu, setShowExportMenu] = useState(false); // export dropdown
 
   // v19: Competition mode state
   const [competitionMode, setCompetitionMode] = useState('normal'); // 'normal' | 'competition'
@@ -341,6 +347,57 @@ export default function RoomPage() {
     s.on('pong', onPong);
     return () => { clearInterval(interval); s.off('pong', onPong); };
   }, [ready]);
+
+  // v20: Line/char counter + last edit time tracker
+  useEffect(() => {
+    if (!ydocRef.current || !ready) return;
+    const ytext = ydocRef.current.getText('monaco');
+    const update = () => {
+      const text = ytext.toString();
+      setLineInfo({ lines: text.split('\n').length, chars: text.length });
+      setLastEditTime(new Date());
+    };
+    update(); // initial count
+    ytext.observe(update);
+    return () => ytext.unobserve(update);
+  }, [ready]);
+
+  // v20: Export code with metadata header
+  const handleExportSnippet = useCallback((format) => {
+    if (!ydocRef.current) return;
+    const code = ydocRef.current.getText('monaco').toString();
+    const ext = EXT_MAP[state.language] || '.txt';
+    const now = new Date();
+    const timestamp = now.toISOString().replace('T', ' ').slice(0, 19);
+    const commentChar = ['python', 'ruby', 'perl', 'r', 'bash', 'shell', 'awk'].includes(state.language) ? '#' : '//';
+    const header = format === 'with-header' ? [
+      `${commentChar} ──────────────────────────────────────────`,
+      `${commentChar}  CollabCode Export`,
+      `${commentChar}  Room: ${roomName || roomId}`,
+      `${commentChar}  Language: ${state.language}`,
+      `${commentChar}  Date: ${timestamp}`,
+      `${commentChar}  Lines: ${lineInfo.lines} | Chars: ${lineInfo.chars}`,
+      `${commentChar}  Users: ${state.users?.length || 1}`,
+      `${commentChar} ──────────────────────────────────────────`,
+      '', ''
+    ].join('\n') : '';
+    const content = header + code;
+    if (format === 'clipboard') {
+      navigator.clipboard.writeText(content).catch(() => {});
+      addToast('Code copied to clipboard!', 'success');
+      setShowExportMenu(false);
+      return;
+    }
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = format === 'with-header' ? `collabcode-${roomId}${ext}` : `main${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast(`Exported as ${a.download}`, 'success');
+    setShowExportMenu(false);
+  }, [state.language, roomId, roomName, lineInfo, state.users, addToast]);
 
   // ─── Initialize Connection ──────────────────────────────────────
   useEffect(() => {
@@ -764,15 +821,19 @@ export default function RoomPage() {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSaveFile(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); handleOpenFile(); }
       if ((e.ctrlKey || e.metaKey) && e.key === ',') { e.preventDefault(); setShowSettingsModal(prev => !prev); }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Z') { e.preventDefault(); setZenMode(prev => !prev); }
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
         e.preventDefault();
         setShowShortcuts(prev => !prev);
       }
-      if (e.key === 'Escape') { setShowShortcuts(false); setShowCommandPalette(false); setShowSettingsModal(false); }
+      if (e.key === 'Escape') {
+        if (zenMode) { setZenMode(false); return; }
+        setShowShortcuts(false); setShowCommandPalette(false); setShowSettingsModal(false); setShowExportMenu(false);
+      }
     };
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
-  }, [handleMainRun, toggleChat, toggleOutput, handleSaveFile, handleOpenFile]);
+  }, [handleMainRun, toggleChat, toggleOutput, handleSaveFile, handleOpenFile, zenMode]);
 
   if (!state.user || !roomId) {
     return (
@@ -833,7 +894,13 @@ export default function RoomPage() {
       <Head>
         <title>{roomName || roomId} — CollabCode</title>
       </Head>
-      <Navbar
+      {/* v20: Zen Mode — floating exit hint */}
+      {zenMode && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 px-3 py-1 bg-[#222]/80 backdrop-blur-sm border border-[#333] rounded-full text-[9px] font-mono text-[#666] opacity-0 hover:opacity-100 transition-opacity duration-300" style={{ pointerEvents: 'auto' }}>
+          Press <span className="text-[#c4b5fd]">Esc</span> or <span className="text-[#c4b5fd]">Ctrl+Shift+Z</span> to exit zen mode
+        </div>
+      )}
+      {!zenMode && <Navbar
         roomId={roomId} language={state.language} onLanguageChange={handleLanguageChange}
         connectionStatus={state.connectionStatus} users={state.users}
         onToggleChat={toggleChat} onToggleOutput={toggleOutput} chatOpen={state.chatOpen} outputOpen={state.outputOpen}
@@ -855,11 +922,11 @@ export default function RoomPage() {
         notifSoundEnabled={notifSoundEnabled}
         onToggleNotifSound={() => setNotifSoundEnabled(prev => !prev)}
         onOpenSettings={() => setShowSettingsModal(true)}
-      />
+      />}
 
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Left Panel */}
-        {leftPanelOpen && (
+        {leftPanelOpen && !zenMode && (
           <div style={{ width: leftPanelWidth }} className="flex-shrink-0 hidden sm:block panel-slide-in">
             {filesOpen && (
               <FileExplorer
@@ -895,7 +962,7 @@ export default function RoomPage() {
         {/* Main Editor Area */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* v15: Enhanced Breadcrumb Bar — interactive segments, copy path, icons */}
-          <div className="flex items-center gap-0.5 px-3 py-1 bg-[#19191c] border-b border-[#222] text-[10px] font-mono text-[#555] flex-shrink-0 overflow-hidden group/breadcrumb">
+          {!zenMode && <div className="flex items-center gap-0.5 px-3 py-1 bg-[#19191c] border-b border-[#222] text-[10px] font-mono text-[#555] flex-shrink-0 overflow-hidden group/breadcrumb">
             <button className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[#222] text-[#555] hover:text-[#aaa] transition active:scale-95" onClick={() => router.push('/')} title="Back to home">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
               <span className="hidden sm:inline">home</span>
@@ -940,10 +1007,10 @@ export default function RoomPage() {
               <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
               <span>Ctrl+K</span>
             </button>
-          </div>
+          </div>}
 
           {/* File Tabs */}
-          {files.length > 0 && (
+          {files.length > 0 && !zenMode && (
             <div className="flex items-center bg-[#19191c] border-b border-[#222] overflow-x-auto flex-shrink-0 scrollbar-none">
               {files.map(file => (
                 <button key={file.id}
@@ -1044,7 +1111,7 @@ export default function RoomPage() {
         </div>
 
         {/* Chat Sidebar — desktop: side panel, mobile: fullscreen overlay */}
-        {state.chatOpen && (
+        {state.chatOpen && !zenMode && (
           <>
             {/* Desktop: resizable side panel */}
             <div
@@ -1084,7 +1151,7 @@ export default function RoomPage() {
       </div>
 
       {/* v19: Competition Mode Banner */}
-      {competitionMode === 'competition' && (
+      {competitionMode === 'competition' && !zenMode && (
         <div className="flex items-center gap-2 px-3 py-1.5 bg-[#c4b5fd]/10 border-t border-[#c4b5fd]/20 text-[10px] font-mono flex-shrink-0">
           <svg className="w-3 h-3 text-[#c4b5fd]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
           <span className="text-[#c4b5fd]">Competition Mode Active</span>
@@ -1098,7 +1165,7 @@ export default function RoomPage() {
       )}
 
       {/* Status Bar */}
-      <div className="room-status-bar flex items-center gap-2 px-3 py-1 bg-[#19191c] border-t border-[#222] text-[9px] font-mono text-[#555]">
+      {!zenMode && <div className="room-status-bar flex items-center gap-2 px-3 py-1 bg-[#19191c] border-t border-[#222] text-[9px] font-mono text-[#555]">
         {/* Auto-save indicator */}
         {autoSaveStatus && (
           <>
@@ -1136,11 +1203,57 @@ export default function RoomPage() {
             </span>
           </>
         )}
+        {/* v20: Line/char count */}
+        {lineInfo.chars > 0 && (
+          <>
+            <div className="w-px h-2.5 bg-[#333]" />
+            <span className="hidden sm:inline text-[#555]" title={`${lineInfo.chars} characters`}>
+              Ln {lineInfo.lines}, Col {lineInfo.chars}
+            </span>
+          </>
+        )}
+        {/* v20: Last edit time */}
+        {lastEditTime && (
+          <>
+            <div className="w-px h-2.5 bg-[#333]" />
+            <span className="hidden lg:inline text-[#444]" title={lastEditTime.toLocaleString()}>
+              edited {lastEditTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </>
+        )}
         {/* Session timer */}
         <div className="w-px h-2.5 bg-[#333]" />
         <span className="hidden sm:inline text-[#555]" title="Session time">{sessionTime}</span>
-        {/* v18: Share room button */}
+        {/* Spacer */}
         <div className="flex-1" />
+        {/* v20: Zen mode toggle */}
+        <button onClick={() => setZenMode(prev => !prev)} title="Zen Mode (Ctrl+Shift+Z)"
+          className={`flex items-center gap-1 transition px-1.5 py-0.5 rounded active:scale-95 ${zenMode ? 'text-[#c4b5fd] bg-[#c4b5fd]/10' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}>
+          <span className="text-[10px]">🧘</span>
+          <span className="hidden sm:inline">{zenMode ? 'zen' : 'zen'}</span>
+        </button>
+        {/* v20: Export menu */}
+        <div className="relative">
+          <button onClick={() => setShowExportMenu(prev => !prev)}
+            className="flex items-center gap-1 text-[#555] hover:text-[#aaa] transition px-1.5 py-0.5 rounded hover:bg-[#222] active:scale-95">
+            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            <span className="hidden sm:inline">export</span>
+          </button>
+          {showExportMenu && (
+            <div className="absolute bottom-full right-0 mb-1 bg-[#1a1b1e] border border-[#333] rounded-lg shadow-xl py-1 min-w-[160px] z-50">
+              <button onClick={() => handleExportSnippet('raw')} className="w-full text-left px-3 py-1.5 text-[11px] text-[#aaa] hover:bg-[#222] hover:text-white transition">
+                💾 Download raw
+              </button>
+              <button onClick={() => handleExportSnippet('with-header')} className="w-full text-left px-3 py-1.5 text-[11px] text-[#aaa] hover:bg-[#222] hover:text-white transition">
+                📤 Download with header
+              </button>
+              <button onClick={() => handleExportSnippet('clipboard')} className="w-full text-left px-3 py-1.5 text-[11px] text-[#aaa] hover:bg-[#222] hover:text-white transition">
+                📋 Copy to clipboard
+              </button>
+            </div>
+          )}
+        </div>
+        {/* Share button */}
         <button onClick={() => setShowSharePopup(true)}
           className="flex items-center gap-1 text-[#555] hover:text-[#aaa] transition px-1.5 py-0.5 rounded hover:bg-[#222] active:scale-95">
           <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
@@ -1162,7 +1275,7 @@ export default function RoomPage() {
             <span className="text-[#c4b5fd]">competition</span>
           </>
         )}
-      </div>
+      </div>}
 
       {/* v18: Share Room Popup */}
       {showSharePopup && (
@@ -1265,6 +1378,7 @@ export default function RoomPage() {
                 { keys: ['Ctrl', 'O'], desc: 'Open file from disk' },
                 { keys: ['Ctrl', ','], desc: 'Open settings' },
                 { keys: ['Ctrl', 'L'], desc: 'Clear terminal' },
+                { keys: ['Ctrl', 'Shift', 'Z'], desc: 'Toggle zen mode' },
                 { keys: ['?'], desc: 'Show this shortcuts panel' },
                 { keys: ['Esc'], desc: 'Close modals/overlays' },
               ].map((shortcut, i) => (
@@ -1308,6 +1422,10 @@ export default function RoomPage() {
           { label: 'Clear Notifications', hint: '', icon: '\uD83D\uDD14', cat: 'settings', action: () => { setShowCommandPalette(false); clearNotifications(); } },
           { label: 'Share Room', hint: '', icon: '\uD83D\uDD17', cat: 'room', action: () => { setShowCommandPalette(false); setShowSharePopup(true); } },
           { label: 'Copy Room URL', hint: '', icon: '\uD83C\uDF10', cat: 'room', action: () => { setShowCommandPalette(false); navigator.clipboard.writeText(`${window.location.origin}/room/${roomId}`).catch(()=>{}); addToast('Room URL copied!', 'info'); } },
+          { label: 'Zen Mode', hint: 'Ctrl+Shift+Z', icon: '\uD83E\uDDD8', cat: 'panel', action: () => { setShowCommandPalette(false); setZenMode(prev => !prev); } },
+          { label: 'Export Code (with header)', hint: '', icon: '\uD83D\uDCE4', cat: 'file', action: () => { setShowCommandPalette(false); handleExportSnippet('with-header'); } },
+          { label: 'Export Code (raw)', hint: '', icon: '\uD83D\uDCBE', cat: 'file', action: () => { setShowCommandPalette(false); handleExportSnippet('raw'); } },
+          { label: 'Copy Code to Clipboard', hint: '', icon: '\uD83D\uDCCB', cat: 'code', action: () => { setShowCommandPalette(false); handleExportSnippet('clipboard'); } },
         ];
         // Fuzzy filter
         const q = cmdPaletteQuery.toLowerCase();
