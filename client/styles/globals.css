@@ -1838,9 +1838,266 @@ select:focus-visible {
   .video-grid-container {
     max-height: 35vh;
   }
-  /* Larger touch targets for video controls */
   .video-controls button {
     min-width: 44px;
     min-height: 44px;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   v20: Rich Animations & Niche Effects
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ─── Animated Gradient Text ────────────────────────────────────── */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.gradient-text-animate {
+  background: linear-gradient(135deg, #5e9eff, #c4b5fd, #5bd882, #ffb347, #5e9eff);
+  background-size: 300% 300%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradientShift 6s ease-in-out infinite;
+}
+
+/* ─── Aurora Background ─────────────────────────────────────────── */
+@keyframes auroraMove {
+  0% { transform: translate(-30%, -30%) rotate(0deg); }
+  33% { transform: translate(10%, -20%) rotate(120deg); }
+  66% { transform: translate(-20%, 10%) rotate(240deg); }
+  100% { transform: translate(-30%, -30%) rotate(360deg); }
+}
+.aurora-bg {
+  position: relative;
+  overflow: hidden;
+}
+.aurora-bg::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(ellipse at 30% 50%, rgba(94, 158, 255, 0.04) 0%, transparent 50%),
+              radial-gradient(ellipse at 70% 50%, rgba(196, 181, 253, 0.03) 0%, transparent 50%),
+              radial-gradient(ellipse at 50% 80%, rgba(91, 216, 130, 0.03) 0%, transparent 50%);
+  animation: auroraMove 25s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── Scroll Progress Bar ───────────────────────────────────────── */
+.scroll-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #5e9eff, #c4b5fd, #5bd882);
+  z-index: 9999;
+  transition: width 0.1s linear;
+  box-shadow: 0 0 8px rgba(94, 158, 255, 0.4);
+}
+
+/* ─── Neon Card Glow on Hover ──────────────────────────────────── */
+.neon-card {
+  position: relative;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s;
+}
+.neon-card::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, transparent, rgba(94, 158, 255, 0.15), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+  z-index: -1;
+  pointer-events: none;
+}
+.neon-card:hover::after {
+  opacity: 1;
+}
+.neon-card:hover {
+  box-shadow: 0 0 20px -5px rgba(94, 158, 255, 0.15), 0 20px 40px -10px rgba(0, 0, 0, 0.4);
+}
+
+/* ─── 3D Perspective Card Tilt (mouse-driven via JS) ─────────── */
+.tilt-3d {
+  transition: transform 0.15s ease-out;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.tilt-3d:hover {
+  z-index: 2;
+}
+
+/* ─── Typing Sound Indicator ────────────────────────────────────── */
+@keyframes soundWave {
+  0%, 100% { height: 3px; }
+  50% { height: 10px; }
+}
+.sound-wave-bar {
+  display: inline-block;
+  width: 2px;
+  background: #5e9eff;
+  border-radius: 1px;
+  animation: soundWave 0.6s ease-in-out infinite;
+}
+.sound-wave-bar:nth-child(2) { animation-delay: 0.1s; }
+.sound-wave-bar:nth-child(3) { animation-delay: 0.2s; }
+.sound-wave-bar:nth-child(4) { animation-delay: 0.3s; }
+
+/* ─── Sparkline Glow ────────────────────────────────────────────── */
+@keyframes sparklineGlow {
+  0%, 100% { filter: drop-shadow(0 0 1px rgba(94, 158, 255, 0.3)); }
+  50% { filter: drop-shadow(0 0 4px rgba(94, 158, 255, 0.6)); }
+}
+.sparkline-svg {
+  animation: sparklineGlow 3s ease-in-out infinite;
+}
+
+/* ─── Ambient Pulse Ring ────────────────────────────────────────── */
+@keyframes pulseRing {
+  0% { transform: scale(0.8); opacity: 0.8; }
+  100% { transform: scale(2); opacity: 0; }
+}
+.pulse-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  animation: pulseRing 2s ease-out infinite;
+  pointer-events: none;
+}
+
+/* ─── Glitch Text Effect ────────────────────────────────────────── */
+@keyframes glitch1 {
+  0%, 100% { clip-path: inset(0 0 0 0); transform: translate(0); }
+  20% { clip-path: inset(20% 0 30% 0); transform: translate(-2px, 1px); }
+  40% { clip-path: inset(40% 0 10% 0); transform: translate(2px, -1px); }
+  60% { clip-path: inset(10% 0 50% 0); transform: translate(-1px, 2px); }
+  80% { clip-path: inset(60% 0 5% 0); transform: translate(1px, -2px); }
+}
+.glitch-text {
+  position: relative;
+}
+.glitch-text::before,
+.glitch-text::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.glitch-text::before {
+  color: #ff6b6b;
+  animation: glitch1 3s infinite linear;
+  opacity: 0.05;
+}
+.glitch-text::after {
+  color: #5e9eff;
+  animation: glitch1 3s infinite linear reverse;
+  opacity: 0.05;
+}
+.glitch-text:hover::before { opacity: 0.15; }
+.glitch-text:hover::after { opacity: 0.15; }
+
+/* ─── Floating Action Particles ─────────────────────────────────── */
+@keyframes floatParticle {
+  0% { transform: translateY(0) scale(1); opacity: 0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.6; }
+  100% { transform: translateY(-60px) scale(0.3); opacity: 0; }
+}
+
+/* ─── Matrix Code Rain Canvas ───────────────────────────────────── */
+.matrix-rain-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  z-index: 0;
+}
+
+/* ─── Enhanced Stagger with Scale ───────────────────────────────── */
+.stagger-in > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-in > *:nth-child(2) { animation-delay: 60ms; }
+.stagger-in > *:nth-child(3) { animation-delay: 120ms; }
+.stagger-in > *:nth-child(4) { animation-delay: 180ms; }
+.stagger-in > *:nth-child(5) { animation-delay: 240ms; }
+.stagger-in > *:nth-child(6) { animation-delay: 300ms; }
+.stagger-in > *:nth-child(7) { animation-delay: 360ms; }
+
+/* ─── Feature Card Pop on Reveal ────────────────────────────────── */
+@keyframes cardPop {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.card-pop {
+  animation: cardPop 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ─── Zen Mode Transition ───────────────────────────────────────── */
+@keyframes zenFadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.zen-hint {
+  animation: zenFadeIn 0.3s ease-out;
+}
+
+/* ─── Word Count Tooltip Pop ────────────────────────────────────── */
+@keyframes tooltipPop {
+  from { opacity: 0; transform: translateY(4px) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.tooltip-pop {
+  animation: tooltipPop 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ─── Live Clock Tick ───────────────────────────────────────────── */
+@keyframes clockTick {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.clock-separator {
+  animation: clockTick 1s step-end infinite;
+}
+
+/* ─── Activity Dot Pulse ────────────────────────────────────────── */
+@keyframes activityPulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.8); opacity: 0.4; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.activity-dot {
+  animation: activityPulse 2s ease-in-out infinite;
+}
+
+/* ─── Smooth Number Counter Transition ──────────────────────────── */
+.tabular-counter {
+  font-variant-numeric: tabular-nums;
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ─── Enhanced Toast with Slide + Scale ─────────────────────────── */
+@keyframes toastEnhanced {
+  0% { opacity: 0; transform: translateY(16px) scale(0.9); filter: blur(4px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+.toast-enhanced {
+  animation: toastEnhanced 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ─── Status Bar Item Slide In ──────────────────────────────────── */
+@keyframes statusSlideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.status-item-enter {
+  animation: statusSlideIn 0.3s ease-out;
 }

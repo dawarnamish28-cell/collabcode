@@ -430,6 +430,107 @@ function useScrollReveal() {
   }, []);
 }
 
+// ─── Scroll Progress Bar ───────────────────────────────────────
+function ScrollProgress() {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const main = document.querySelector('main');
+    if (!main) return;
+    const handleScroll = () => {
+      const scrollTop = main.scrollTop;
+      const scrollHeight = main.scrollHeight - main.clientHeight;
+      setWidth(scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0);
+    };
+    main.addEventListener('scroll', handleScroll, { passive: true });
+    return () => main.removeEventListener('scroll', handleScroll);
+  }, []);
+  return <div className="scroll-progress" style={{ width: `${width}%` }} />;
+}
+
+// ─── Live Clock ────────────────────────────────────────────────
+function LiveClock() {
+  const [time, setTime] = useState('');
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }));
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, []);
+  const parts = time.split(':');
+  return (
+    <span className="font-mono text-[10px] text-[#444] tabular-counter">
+      {parts[0]}<span className="clock-separator">:</span>{parts[1]}<span className="clock-separator">:</span>{parts[2]}
+    </span>
+  );
+}
+
+// ─── Matrix Rain Background ───────────────────────────────────
+function MatrixRain() {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let w, h, columns, drops;
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789{}[]()<>=/+*&|!?.,:;';
+    const fontSize = 12;
+
+    const resize = () => {
+      w = canvas.width = canvas.offsetWidth;
+      h = canvas.height = canvas.offsetHeight;
+      columns = Math.floor(w / fontSize);
+      drops = Array(columns).fill(1);
+    };
+    resize();
+
+    let raf;
+    const draw = () => {
+      ctx.fillStyle = 'rgba(19, 20, 22, 0.06)';
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#5e9eff';
+      ctx.font = `${fontSize}px monospace`;
+      for (let i = 0; i < drops.length; i++) {
+        const text = chars[Math.floor(Math.random() * chars.length)];
+        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+        if (drops[i] * fontSize > h && Math.random() > 0.975) {
+          drops[i] = 0;
+        }
+        drops[i]++;
+      }
+    };
+
+    const interval = setInterval(draw, 60);
+    window.addEventListener('resize', resize);
+    return () => { clearInterval(interval); window.removeEventListener('resize', resize); };
+  }, []);
+  return <canvas ref={canvasRef} className="matrix-rain-canvas" />;
+}
+
+// ─── 3D Tilt Card Hook ─────────────────────────────────────────
+function use3DTilt(ref) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const handleMove = (e) => {
+      const rect = el.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width;
+      const y = (e.clientY - rect.top) / rect.height;
+      const rotateX = (y - 0.5) * -8;
+      const rotateY = (x - 0.5) * 8;
+      el.style.transform = `perspective(800px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.02)`;
+    };
+    const handleLeave = () => {
+      el.style.transform = 'perspective(800px) rotateX(0) rotateY(0) scale(1)';
+    };
+    el.addEventListener('mousemove', handleMove);
+    el.addEventListener('mouseleave', handleLeave);
+    return () => { el.removeEventListener('mousemove', handleMove); el.removeEventListener('mouseleave', handleLeave); };
+  }, [ref]);
+}
+
 // ─── Konami Code Easter Egg ─────────────────────────────────────
 function useKonamiCode(callback) {
   useEffect(() => {
@@ -629,6 +730,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#131416] flex flex-col grain landing-cursor-hide">
+      {/* v20: Scroll Progress Bar */}
+      <ScrollProgress />
+
       {/* Custom Cursor */}
       <div ref={cursorRef}
         className={`custom-cursor hidden md:block ${hovering ? 'hovering' : ''} ${clicking ? 'clicking' : ''}`} />
@@ -675,6 +779,9 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-2.5">
+            {/* v20: Live Clock */}
+            <div className="hidden sm:block"><LiveClock /></div>
+            <div className="hidden sm:block w-px h-3 bg-[#282828]" />
             {state.user && (
               <div className="relative" ref={userMenuRef}>
                 <button onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -741,6 +848,7 @@ export default function Home() {
             <div className="gradient-orb w-[300px] h-[300px] bg-[#5bd882] top-[50px] right-[-100px]" style={{ animationDelay: '-7s' }} />
             <div className="gradient-orb w-[200px] h-[200px] bg-[#c4b5fd] bottom-[0] left-[30%]" style={{ animationDelay: '-14s' }} />
             <ParticleBackground />
+            <MatrixRain />
 
             <div className="relative z-10 grid md:grid-cols-[1.1fr_1fr] gap-8 items-center">
               {/* Left: Text */}
@@ -756,9 +864,9 @@ export default function Home() {
                 <h2 className="text-[32px] sm:text-[48px] font-display font-bold text-white leading-[1.05] tracking-tight max-w-lg fade-up" style={{ animationDelay: '100ms' }}>
                   Your code.{' '}
                   <br className="hidden sm:block" />
-                  <span className="shimmer-text">Their code.</span>{' '}
+                  <span className="gradient-text-animate">Their code.</span>{' '}
                   <br className="hidden sm:block" />
-                  <span className="text-[#555]">Same editor.</span>
+                  <span className="text-[#555] glitch-text" data-text="Same editor.">Same editor.</span>
                 </h2>
 
                 <p className="text-[13px] sm:text-[15px] text-[#666] mt-5 max-w-lg leading-relaxed fade-up" style={{ animationDelay: '200ms' }}>
@@ -958,7 +1066,7 @@ export default function Home() {
                   icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
                 },
               ].map((feat, i) => (
-                <div key={i} className="hover-lift p-4 bg-[#1a1b1e] rounded-xl border border-[#222] hover:border-[#333] transition-all group gradient-border-card"
+                <div key={i} className="hover-lift neon-card card-pop p-4 bg-[#1a1b1e] rounded-xl border border-[#222] hover:border-[#333] transition-all group gradient-border-card"
                   style={{ animationDelay: `${i * 80}ms` }}>
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
@@ -975,11 +1083,11 @@ export default function Home() {
 
           {/* ── Stats Counter ──────────────────────────────────── */}
           <div className="reveal mb-10 sm:mb-16">
-            <div className="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 sm:p-8">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
+            <div className="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 sm:p-8 aurora-bg overflow-hidden">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center relative z-10">
                 {[
                   { target: 20, suffix: '+', label: 'Languages', color: '#ffb347' },
-                  { target: 6, suffix: '', label: 'Themes', color: '#c4b5fd' },
+                  { target: 13, suffix: '', label: 'Anticheat Types', color: '#ff6b6b' },
                   { target: 0, suffix: 'ms', label: 'Latency', color: '#5bd882', prefix: '~' },
                   { target: '<1', suffix: 's', label: 'Setup time', color: '#5e9eff' },
                 ].map((stat, i) => (

@@ -152,6 +152,10 @@ export default function RoomPage() {
   const [lineInfo, setLineInfo] = useState({ lines: 0, chars: 0 }); // line/char count
   const [lastEditTime, setLastEditTime] = useState(null); // last edit timestamp
   const [showExportMenu, setShowExportMenu] = useState(false); // export dropdown
+  const [typingSounds, setTypingSounds] = useState(false); // ambient key sounds
+  const [wordCount, setWordCount] = useState(0); // word count
+  const [activityHistory, setActivityHistory] = useState([]); // last 20 edit timestamps for sparkline
+  const typingSoundCtxRef = useRef(null); // audio context for typing sounds
 
   // v19: Competition mode state
   const [competitionMode, setCompetitionMode] = useState('normal'); // 'normal' | 'competition'
@@ -348,19 +352,54 @@ export default function RoomPage() {
     return () => { clearInterval(interval); s.off('pong', onPong); };
   }, [ready]);
 
-  // v20: Line/char counter + last edit time tracker
+  // v20: Line/char/word counter + last edit time + activity sparkline
   useEffect(() => {
     if (!ydocRef.current || !ready) return;
     const ytext = ydocRef.current.getText('monaco');
     const update = () => {
       const text = ytext.toString();
       setLineInfo({ lines: text.split('\n').length, chars: text.length });
+      setWordCount(text.trim() ? text.trim().split(/\s+/).length : 0);
       setLastEditTime(new Date());
+      setActivityHistory(prev => {
+        const now = Date.now();
+        const updated = [...prev, now].slice(-20);
+        return updated;
+      });
     };
-    update(); // initial count
+    update();
     ytext.observe(update);
     return () => ytext.unobserve(update);
   }, [ready]);
+
+  // v20: Ambient typing sounds (tiny click per keystroke via Yjs)
+  useEffect(() => {
+    if (!ydocRef.current || !ready || !typingSounds) return;
+    const ytext = ydocRef.current.getText('monaco');
+    const playClick = () => {
+      try {
+        if (!typingSoundCtxRef.current || typingSoundCtxRef.current.state === 'closed') {
+          typingSoundCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const ctx = typingSoundCtxRef.current;
+        if (ctx.state === 'suspended') ctx.resume();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        // Subtle mechanical key click: short burst, randomized pitch
+        const freq = 800 + Math.random() * 400;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.5, ctx.currentTime + 0.03);
+        gain.gain.setValueAtTime(0.015, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.04);
+      } catch (e) {}
+    };
+    ytext.observe(playClick);
+    return () => ytext.unobserve(playClick);
+  }, [ready, typingSounds]);
 
   // v20: Export code with metadata header
   const handleExportSnippet = useCallback((format) => {
@@ -1207,9 +1246,40 @@ export default function RoomPage() {
         {lineInfo.chars > 0 && (
           <>
             <div className="w-px h-2.5 bg-[#333]" />
-            <span className="hidden sm:inline text-[#555]" title={`${lineInfo.chars} characters`}>
-              Ln {lineInfo.lines}, Col {lineInfo.chars}
+            <span className="hidden sm:inline text-[#555] status-item-enter" title={`${lineInfo.chars} characters, ${wordCount} words`}>
+              Ln {lineInfo.lines} · {wordCount}w
             </span>
+          </>
+        )}
+        {/* v20: Activity sparkline */}
+        {activityHistory.length > 3 && (
+          <>
+            <div className="w-px h-2.5 bg-[#333]" />
+            <svg className="sparkline-svg hidden sm:inline-block" width="40" height="12" viewBox="0 0 40 12" title="Recent edit activity">
+              <polyline
+                fill="none"
+                stroke="#5e9eff"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                points={(() => {
+                  const hist = activityHistory.slice(-20);
+                  if (hist.length < 2) return '0,6 40,6';
+                  const minT = hist[0];
+                  const maxT = hist[hist.length - 1];
+                  const range = maxT - minT || 1;
+                  // Create density bins
+                  const bins = 10;
+                  const counts = Array(bins).fill(0);
+                  hist.forEach(t => {
+                    const idx = Math.min(Math.floor(((t - minT) / range) * bins), bins - 1);
+                    counts[idx]++;
+                  });
+                  const maxCount = Math.max(...counts, 1);
+                  return counts.map((c, i) => `${(i / (bins - 1)) * 40},${12 - (c / maxCount) * 10}`).join(' ');
+                })()}
+              />
+            </svg>
           </>
         )}
         {/* v20: Last edit time */}
@@ -1226,6 +1296,21 @@ export default function RoomPage() {
         <span className="hidden sm:inline text-[#555]" title="Session time">{sessionTime}</span>
         {/* Spacer */}
         <div className="flex-1" />
+        {/* v20: Typing sounds toggle */}
+        <button onClick={() => setTypingSounds(prev => !prev)} title="Ambient typing sounds"
+          className={`flex items-center gap-1 transition px-1.5 py-0.5 rounded active:scale-95 ${typingSounds ? 'text-[#5e9eff] bg-[#5e9eff]/10' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}>
+          {typingSounds ? (
+            <span className="flex items-end gap-[1px] h-[10px]">
+              <span className="sound-wave-bar" style={{ height: '3px' }} />
+              <span className="sound-wave-bar" style={{ height: '7px' }} />
+              <span className="sound-wave-bar" style={{ height: '5px' }} />
+              <span className="sound-wave-bar" style={{ height: '9px' }} />
+            </span>
+          ) : (
+            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
+          )}
+          <span className="hidden sm:inline">{typingSounds ? 'sound' : 'mute'}</span>
+        </button>
         {/* v20: Zen mode toggle */}
         <button onClick={() => setZenMode(prev => !prev)} title="Zen Mode (Ctrl+Shift+Z)"
           className={`flex items-center gap-1 transition px-1.5 py-0.5 rounded active:scale-95 ${zenMode ? 'text-[#c4b5fd] bg-[#c4b5fd]/10' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}>
@@ -1426,6 +1511,7 @@ export default function RoomPage() {
           { label: 'Export Code (with header)', hint: '', icon: '\uD83D\uDCE4', cat: 'file', action: () => { setShowCommandPalette(false); handleExportSnippet('with-header'); } },
           { label: 'Export Code (raw)', hint: '', icon: '\uD83D\uDCBE', cat: 'file', action: () => { setShowCommandPalette(false); handleExportSnippet('raw'); } },
           { label: 'Copy Code to Clipboard', hint: '', icon: '\uD83D\uDCCB', cat: 'code', action: () => { setShowCommandPalette(false); handleExportSnippet('clipboard'); } },
+          { label: 'Toggle Typing Sounds', hint: '', icon: '\uD83D\uDD0A', cat: 'settings', action: () => { setShowCommandPalette(false); setTypingSounds(prev => !prev); addToast(typingSounds ? 'Typing sounds off' : 'Typing sounds on', 'info'); } },
         ];
         // Fuzzy filter
         const q = cmdPaletteQuery.toLowerCase();
