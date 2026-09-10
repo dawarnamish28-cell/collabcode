@@ -17,47 +17,47 @@ import { useState, useEffect, useRef, useCallback, memo } from 'react';
 
 import { SERVER_URL } from '../utils/config';
 
-// Category icons mapping
-const CATEGORY_ICONS = {
-  'Data Science':     '📊',
-  'Machine Learning': '🤖',
-  'Visualization':    '📈',
-  'Image Processing': '🖼️',
-  'Web & HTTP':       '🌐',
-  'NLP':              '💬',
-  'Graphs':           '🔗',
-  'Utilities':        '🔧',
-  'Security':         '🔒',
-  'Testing':          '🧪',
-  'Std Library':      '📦',
-  'Global API':       '🌍',
-  'I/O':              '📁',
-  'Containers':       '🗃️',
-  'Algorithms':       '⚡',
-  'Math':             '🔢',
-  'Strings':          '📝',
-  'Characters':       '🔤',
-  'Types':            '🏷️',
-  'Debug':            '🐛',
-  'Error':            '⚠️',
-  'Time':             '⏰',
-  'Date/Time':        '📅',
-  'Concurrency':      '🔀',
-  'Memory':           '💾',
-  'Functional':       'λ',
-  'Networking':       '🌐',
-  'Encoding':         '🔄',
-  'System':           '💻',
-  'Runtime':          '⚙️',
-  'Formatting':       '✏️',
-  'Iterators':        '🔁',
-  'Collections':      '📋',
-  'Streams':          '🌊',
-  'Text':             '📝',
-  'Data':             '📊',
-  'Templates':        '📄',
-  'CLI':              '💻',
-  'Database':         '🗄️',
+// Category color tint mapping
+const CATEGORY_COLORS = {
+  'Data Science':     '#5e9eff',
+  'Machine Learning': '#c4b5fd',
+  'Visualization':    '#5bd882',
+  'Image Processing': '#ffb347',
+  'Web & HTTP':       '#4bc772',
+  'NLP':              '#a78bfa',
+  'Graphs':           '#38bdf8',
+  'Utilities':        '#94a3b8',
+  'Security':         '#f87171',
+  'Testing':          '#fbbf24',
+  'Std Library':      '#818cf8',
+  'Global API':       '#2dd4bf',
+  'I/O':              '#60a5fa',
+  'Containers':       '#c084fc',
+  'Algorithms':       '#f472b6',
+  'Math':             '#34d399',
+  'Strings':          '#facc15',
+  'Characters':       '#e879f9',
+  'Types':            '#a3e635',
+  'Debug':            '#fb923c',
+  'Error':            '#f87171',
+  'Time':             '#38bdf8',
+  'Date/Time':        '#6ee7b7',
+  'Concurrency':      '#ec4899',
+  'Memory':           '#93c5fd',
+  'Functional':       '#d8b4fe',
+  'Networking':       '#22d3ee',
+  'Encoding':         '#fdba74',
+  'System':           '#cbd5e1',
+  'Runtime':          '#94a3b8',
+  'Formatting':       '#fde047',
+  'Iterators':        '#86efac',
+  'Collections':      '#93c5fd',
+  'Streams':          '#67e8f9',
+  'Text':             '#fbcfe8',
+  'Data':             '#bfdbfe',
+  'Templates':        '#e2e8f0',
+  'CLI':              '#a5b4fc',
+  'Database':         '#fed7aa',
 };
 
 const LibraryPanel = memo(function LibraryPanel({ language, onInsertImport }) {
@@ -178,7 +178,9 @@ const LibraryPanel = memo(function LibraryPanel({ language, onInsertImport }) {
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[#222] flex-shrink-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-sm">📚</span>
+          <svg className="w-3.5 h-3.5 text-[#5e9eff]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          </svg>
           <span className="font-semibold text-[11px] uppercase tracking-wider text-[#888]">Libraries</span>
         </div>
         <span className="text-[10px] text-[#555] font-mono px-1.5 py-0.5 bg-[#1a1a1d] rounded">
@@ -216,7 +218,9 @@ const LibraryPanel = memo(function LibraryPanel({ language, onInsertImport }) {
       {/* Note for unsupported languages */}
       {note && libraries.length === 0 && (
         <div className="px-3 py-4 text-center">
-          <div className="text-2xl mb-2">📦</div>
+          <svg className="w-8 h-8 text-[#555] mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
           <p className="text-[11px] text-[#777] leading-relaxed">{note}</p>
         </div>
       )}
@@ -233,23 +237,23 @@ const LibraryPanel = memo(function LibraryPanel({ language, onInsertImport }) {
         {orderedCategories.map(cat => {
           const isCollapsed = collapsedCats.has(cat);
           const libs = grouped[cat];
-          const icon = CATEGORY_ICONS[cat] || '📁';
+          const color = CATEGORY_COLORS[cat] || '#888';
 
           return (
             <div key={cat} className="border-b border-[#1a1a1d]">
               {/* Category header */}
               <button
                 onClick={() => toggleCategory(cat)}
-                className="w-full flex items-center gap-1.5 px-3 py-1.5 bg-[#19191c] hover:bg-[#1e1e22] transition text-left"
+                className="w-full flex items-center gap-2 px-3 py-1.5 bg-[#19191c] hover:bg-[#1e1e22] transition text-left"
               >
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
                 <svg
                   className={`w-3 h-3 text-[#555] flex-shrink-0 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
                   fill="none" stroke="currentColor" viewBox="0 0 24 24"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
-                <span className="text-xs flex-shrink-0">{icon}</span>
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#777] flex-1">{cat}</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#aaa] flex-1">{cat}</span>
                 <span className="text-[9px] text-[#444] font-mono">{libs.length}</span>
               </button>
 
@@ -322,7 +326,9 @@ const LibraryPanel = memo(function LibraryPanel({ language, onInsertImport }) {
         {/* Empty state */}
         {filtered.length === 0 && libraries.length > 0 && (
           <div className="px-3 py-8 text-center">
-            <div className="text-2xl mb-2">🔍</div>
+            <svg className="w-8 h-8 text-[#444] mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
             <p className="text-[11px] text-[#555]">No libraries matching &quot;{search}&quot;</p>
             <button onClick={() => setSearch('')} className="text-[10px] text-[#5e9eff] hover:underline mt-1">
               Clear search
@@ -332,9 +338,9 @@ const LibraryPanel = memo(function LibraryPanel({ language, onInsertImport }) {
       </div>
 
       {/* Footer with keyboard hint */}
-      <div className="px-3 py-1.5 border-t border-[#222] flex-shrink-0 text-[9px] text-[#444] flex items-center justify-between">
-        <span>↑ Insert import • 📋 Copy to clipboard</span>
-        <span className="font-mono">{language}</span>
+      <div className="px-3 py-1.5 border-t border-[#222] flex-shrink-0 text-[9px] text-[#444] flex items-center justify-between font-mono">
+        <span>Insert import or copy to clipboard</span>
+        <span>{language}</span>
       </div>
     </div>
   );

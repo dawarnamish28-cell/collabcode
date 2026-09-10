@@ -917,24 +917,30 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setMobileAction('create')}
-              className={`flex-1 py-2 text-center text-xs font-mono font-medium rounded-lg transition ${
+              className={`flex-1 py-2 flex items-center justify-center gap-1.5 text-center text-xs font-mono font-medium rounded-lg transition ${
                 mobileAction === 'create'
                   ? 'bg-[#5e9eff] text-[#0a0a0a] font-semibold shadow'
                   : 'text-[#888] hover:text-white'
               }`}
             >
-              ✨ New Room
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <span>New Room</span>
             </button>
             <button
               type="button"
               onClick={() => setMobileAction('join')}
-              className={`flex-1 py-2 text-center text-xs font-mono font-medium rounded-lg transition ${
+              className={`flex-1 py-2 flex items-center justify-center gap-1.5 text-center text-xs font-mono font-medium rounded-lg transition ${
                 mobileAction === 'join'
                   ? 'bg-[#ffb347] text-[#0a0a0a] font-semibold shadow'
                   : 'text-[#888] hover:text-white'
               }`}
             >
-              🔑 Join Room
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+              </svg>
+              <span>Join Room</span>
             </button>
           </div>
 
@@ -1440,7 +1446,7 @@ export default function Home() {
       <div className="reveal border-t border-[#1e1e1e] py-3 px-5">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center gap-3 px-4 py-2.5 bg-[#1a1b1e] border border-[#282828] rounded-xl">
-            <span className="text-[10px] font-mono text-[#ffb347] font-semibold uppercase tracking-wider flex-shrink-0">💡 pro tip</span>
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-[#ffb347]/15 text-[#ffb347] border border-[#ffb347]/30 uppercase tracking-wider flex-shrink-0">PRO TIP</span>
             <div className="w-px h-3 bg-[#282828]" />
             <span className="text-[11px] font-mono text-[#666]">{proTip}</span>
           </div>

@@ -51,6 +51,10 @@ import { useAnticheat, AnticheatIndicator } from '../../components/AnticheatMoni
 import { canRunInBrowser, runInBrowser } from '../../utils/browserExecution';
 
 const Editor = dynamic(() => import('../../components/Editor'), { ssr: false });
+const CodeShotModal = dynamic(() => import('../../components/CodeShotModal'), { ssr: false });
+const LiveWebPreview = dynamic(() => import('../../components/LiveWebPreview'), { ssr: false });
+const TimeMachineModal = dynamic(() => import('../../components/TimeMachineModal'), { ssr: false });
+const DevToolsModal = dynamic(() => import('../../components/DevToolsModal'), { ssr: false });
 
 import { SERVER_URL } from '../../utils/config';
 
@@ -138,7 +142,11 @@ export default function RoomPage() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false); // v15: full settings modal
-    const [autoSaveStatus, setAutoSaveStatus] = useState(null); // null | 'saving' | 'saved'
+  const [showCodeShot, setShowCodeShot] = useState(false); // Niche: Ray.so/Carbon image card
+  const [showPreview, setShowPreview] = useState(false); // Niche: live web/md preview
+  const [showTimeMachine, setShowTimeMachine] = useState(false); // Niche: checkpoints and diffs
+  const [showDevTools, setShowDevTools] = useState(false); // Niche: regex & scratchpad
+  const [autoSaveStatus, setAutoSaveStatus] = useState(null); // null | 'saving' | 'saved'
   const [connectionQuality, setConnectionQuality] = useState('good'); // 'good' | 'fair' | 'poor'
   const [sessionStart] = useState(Date.now());
   const [sessionTime, setSessionTime] = useState('0:00');
@@ -549,7 +557,7 @@ export default function RoomPage() {
       setAnticheatEnabled(data.enabled);
       setAnticheatSettings(data.settings || {});
       if (data.enabled) {
-        addToast('🛡 AntiCheat system activated', 'error');
+        addToast('AntiCheat system activated', 'error');
         addNotification('AntiCheat proctoring is now active', 'error', 'competition');
       } else {
         addToast('AntiCheat system deactivated', 'info');
@@ -587,7 +595,7 @@ export default function RoomPage() {
     // v21: Handle admin broadcast messages
     socket.on('admin:broadcast', (data) => {
       const typeMap = { warning: 'error', success: 'join', info: 'info' };
-      addToast(`📢 ${data.message}`, typeMap[data.type] || 'info');
+      addToast(data.message || 'Admin announcement', typeMap[data.type] || 'info');
       addNotification(`Admin: ${data.message}`, typeMap[data.type] || 'info', 'admin');
     });
 
@@ -751,9 +759,9 @@ export default function RoomPage() {
   const handleAnticheatViolation = useCallback((type, metadata) => {
     // Local feedback for certain violation types
     if (type === 'DEVTOOLS') {
-      addToast('⚠ DevTools detection — violation recorded', 'error');
+      addToast('DevTools detection — violation recorded', 'error');
     } else if (type === 'TAB_SWITCH' || type === 'FOCUS_LOSS') {
-      addToast('⚠ Tab switch detected — stay focused!', 'error');
+      addToast('Tab switch detected — stay focused!', 'error');
     }
   }, [addToast]);
 
@@ -821,6 +829,29 @@ export default function RoomPage() {
       }
     }
   }, [activeFileId, files, handleLanguageChange]);
+
+  const getCurrentCode = useCallback(() => {
+    return ydocRef.current ? ydocRef.current.getText('monaco').toString() : '';
+  }, []);
+
+  const handleRestoreCode = useCallback((restoredCode) => {
+    if (!ydocRef.current) return;
+    const ytext = ydocRef.current.getText('monaco');
+    ydocRef.current.transact(() => {
+      ytext.delete(0, ytext.length);
+      ytext.insert(0, restoredCode);
+    });
+    addToast('Code restored from checkpoint', 'success');
+  }, [addToast]);
+
+  const handleInsertToEditor = useCallback((textToInsert) => {
+    if (!ydocRef.current || !textToInsert) return;
+    const ytext = ydocRef.current.getText('monaco');
+    ydocRef.current.transact(() => {
+      ytext.insert(ytext.length, textToInsert);
+    });
+    addToast('Snippet inserted into code', 'success');
+  }, [addToast]);
 
   const handleRemoveFile = useCallback((fileId) => {
     setFiles(prev => {
@@ -1000,6 +1031,10 @@ export default function RoomPage() {
         notifSoundEnabled={notifSoundEnabled}
         onToggleNotifSound={() => setNotifSoundEnabled(prev => !prev)}
         onOpenSettings={() => setShowSettingsModal(true)}
+        onOpenCodeShot={() => setShowCodeShot(true)}
+        onOpenPreview={() => setShowPreview(true)}
+        onOpenTimeMachine={() => setShowTimeMachine(true)}
+        onOpenDevTools={() => setShowDevTools(true)}
       />}
 
       <div className="flex-1 flex overflow-hidden min-h-0">
@@ -1121,6 +1156,41 @@ export default function RoomPage() {
               <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
             </button>
             <div className="flex-1" />
+            {/* Quick Pro Tools */}
+            <div className="hidden sm:flex items-center gap-1 mr-2">
+              <button
+                onClick={() => setShowPreview(true)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[#555] hover:text-[#5bd882] hover:bg-[#222] transition text-[10px]"
+                title="Live Sandbox / Markdown Preview"
+              >
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                <span>preview</span>
+              </button>
+              <button
+                onClick={() => setShowCodeShot(true)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[#555] hover:text-[#5e9eff] hover:bg-[#222] transition text-[10px]"
+                title="Export CodeShot Card"
+              >
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                <span>codeshot</span>
+              </button>
+              <button
+                onClick={() => setShowTimeMachine(true)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[#555] hover:text-[#ffb347] hover:bg-[#222] transition text-[10px]"
+                title="Time Machine (Diffs & Snapshots)"
+              >
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span>diffs</span>
+              </button>
+              <button
+                onClick={() => setShowDevTools(true)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[#555] hover:text-[#c4b5fd] hover:bg-[#222] transition text-[10px]"
+                title="Dev Tools (Regex & Scratchpad)"
+              >
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                <span>tools</span>
+              </button>
+            </div>
             {/* Auto-save status in breadcrumb */}
             {autoSaveStatus && (
               <span className="flex items-center gap-1 mr-2" style={{ color: autoSaveStatus === 'saving' ? '#ffb347' : '#5bd882' }}>
@@ -1166,14 +1236,18 @@ export default function RoomPage() {
             {/* v23: Polite notification when backend is waking up (Render cold-start) */}
             {wakingServer && (
               <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-[#181a20]/95 border border-[#5e9eff]/40 shadow-xl backdrop-blur text-[11px] font-mono text-[#adcbfb] pointer-events-auto select-none transition-all">
-                <span className="w-2 h-2 rounded-full bg-[#5e9eff] animate-ping inline-block flex-shrink-0" />
-                <span>☁️ Cloud server waking up (~25s)... Offline editing & in-browser execution are ready!</span>
+                <svg className="w-3.5 h-3.5 text-[#5e9eff] flex-shrink-0 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z" />
+                </svg>
+                <span>Cloud server waking up (~25s)... Offline editing & in-browser execution are ready!</span>
                 <button
                   type="button"
                   onClick={() => setWakingServer(false)}
                   className="ml-1 text-[#666] hover:text-white text-xs px-1 rounded transition"
                   title="Dismiss"
-                >✕</button>
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
               </div>
             )}
             {ready && ydocRef.current ? (
@@ -1427,7 +1501,9 @@ export default function RoomPage() {
         {/* v20: Zen mode toggle */}
         <button onClick={() => setZenMode(prev => !prev)} title="Zen Mode (Ctrl+Shift+Z)"
           className={`flex items-center gap-1 transition px-1.5 py-0.5 rounded active:scale-95 ${zenMode ? 'text-[#c4b5fd] bg-[#c4b5fd]/10' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}>
-          <span className="text-[10px]">🧘</span>
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+          </svg>
           <span className="hidden sm:inline">{zenMode ? 'zen' : 'zen'}</span>
         </button>
         {/* v20: Export menu */}
@@ -1438,15 +1514,18 @@ export default function RoomPage() {
             <span className="hidden sm:inline">export</span>
           </button>
           {showExportMenu && (
-            <div className="absolute bottom-full right-0 mb-1 bg-[#1a1b1e] border border-[#333] rounded-lg shadow-xl py-1 min-w-[160px] z-50">
-              <button onClick={() => handleExportSnippet('raw')} className="w-full text-left px-3 py-1.5 text-[11px] text-[#aaa] hover:bg-[#222] hover:text-white transition">
-                💾 Download raw
+            <div className="absolute bottom-full right-0 mb-1 bg-[#1a1b1e] border border-[#333] rounded-lg shadow-xl py-1 min-w-[170px] z-50">
+              <button onClick={() => handleExportSnippet('raw')} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-[#aaa] hover:bg-[#222] hover:text-white transition">
+                <svg className="w-3.5 h-3.5 text-[#5e9eff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                <span>Download raw</span>
               </button>
-              <button onClick={() => handleExportSnippet('with-header')} className="w-full text-left px-3 py-1.5 text-[11px] text-[#aaa] hover:bg-[#222] hover:text-white transition">
-                📤 Download with header
+              <button onClick={() => handleExportSnippet('with-header')} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-[#aaa] hover:bg-[#222] hover:text-white transition">
+                <svg className="w-3.5 h-3.5 text-[#ffb347]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                <span>Download with header</span>
               </button>
-              <button onClick={() => handleExportSnippet('clipboard')} className="w-full text-left px-3 py-1.5 text-[11px] text-[#aaa] hover:bg-[#222] hover:text-white transition">
-                📋 Copy to clipboard
+              <button onClick={() => handleExportSnippet('clipboard')} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-[#aaa] hover:bg-[#222] hover:text-white transition">
+                <svg className="w-3.5 h-3.5 text-[#5bd882]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                <span>Copy to clipboard</span>
               </button>
             </div>
           )}
@@ -1852,6 +1931,35 @@ export default function RoomPage() {
         user={state.user}
         onUpdateUser={handleUpdateUser}
         isAuthenticated={state.isAuthenticated}
+      />
+
+      {/* Niche Pro Modals */}
+      <CodeShotModal
+        isOpen={showCodeShot}
+        onClose={() => setShowCodeShot(false)}
+        code={getCurrentCode()}
+        language={state.language}
+        roomId={roomId}
+      />
+      <LiveWebPreview
+        isOpen={showPreview}
+        onClose={() => setShowPreview(false)}
+        code={getCurrentCode()}
+        language={state.language}
+        filename={activeFileId ? files.find(f => f.id === activeFileId)?.name : `${state.language}-buffer`}
+      />
+      <TimeMachineModal
+        isOpen={showTimeMachine}
+        onClose={() => setShowTimeMachine(false)}
+        currentCode={getCurrentCode()}
+        roomId={roomId}
+        onRestoreCode={handleRestoreCode}
+      />
+      <DevToolsModal
+        isOpen={showDevTools}
+        onClose={() => setShowDevTools(false)}
+        roomId={roomId}
+        onInsertToEditor={handleInsertToEditor}
       />
     </div>
   );

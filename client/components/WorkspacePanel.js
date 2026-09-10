@@ -152,7 +152,11 @@ const WorkspacePanel = memo(function WorkspacePanel({ isOpen, onClose, user, lan
                 <div className="py-12 text-center"><div className="spinner mx-auto mb-2" /><p className="text-[11px] text-[#555] font-mono">loading...</p></div>
               ) : workspaces.length === 0 ? (
                 <div className="py-12 text-center">
-                  <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-[#1e1f22] border border-[#282828] flex items-center justify-center text-[20px]">💾</div>
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-[#1e1f22] border border-[#282828] flex items-center justify-center text-[#555]">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                    </svg>
+                  </div>
                   <p className="text-[#555] text-[12px]">no saved workspaces</p>
                   <p className="text-[#444] text-[10px] mt-1 font-mono">save your current code to pick up later</p>
                 </div>
@@ -188,7 +192,11 @@ const WorkspacePanel = memo(function WorkspacePanel({ isOpen, onClose, user, lan
               ) : templates.map(tmpl => (
                 <button key={tmpl.id} onClick={() => handleLoadTemplate(tmpl.id)}
                   className="w-full flex items-start gap-3 p-3 bg-[#1e1f22] rounded-xl border border-[#282828] hover:border-[#5bd882]/30 transition text-left group">
-                  <div className="text-[20px] flex-shrink-0 mt-0.5">{tmpl.icon || '📄'}</div>
+                  <div className="w-7 h-7 rounded-lg bg-[#25262c] border border-[#333] flex items-center justify-center text-[#5bd882] flex-shrink-0 mt-0.5">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[12px] text-[#ccc] font-medium group-hover:text-white transition">{tmpl.name}</p>
                     <p className="text-[10px] text-[#555] mt-0.5 line-clamp-2">{tmpl.description}</p>
