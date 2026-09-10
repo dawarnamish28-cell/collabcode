@@ -486,7 +486,7 @@ const VideoChat = memo(function VideoChat({ socket, currentUser, users = [] }) {
       setConnecting(false);
       setExpanded(true);
 
-      socket.emit('video:join', { userId: currentUser.userId, username: currentUser.username });
+      socket.emit('video:join', { userId: currentUser?.userId, username: currentUser?.username || 'User' });
     } catch (err) {
       if (!mounted.current) return;
       setConnecting(false);

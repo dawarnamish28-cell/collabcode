@@ -119,6 +119,7 @@ export default function RoomPage() {
   const [activeFileId, setActiveFileId] = useState(null);
   const [filesOpen, setFilesOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState('editor'); // 'editor' | 'terminal' | 'chat'
+  const [socketInstance, setSocketInstance] = useState(null);
 
   const [extensionsOpen, setExtensionsOpen] = useState(false);
   const [librariesOpen, setLibrariesOpen] = useState(false);
@@ -458,6 +459,7 @@ export default function RoomPage() {
       color: state.user.color, token: state.user.token, tabId: state.user.tabId,
     });
     socketRef.current = socket;
+    setSocketInstance(socket);
 
     const provider = new SocketIOProvider(ydoc, socket, roomId);
     providerRef.current = provider;
@@ -609,6 +611,7 @@ export default function RoomPage() {
       provider.destroy();
       ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change','room:visibility-changed','competition:lock-change','competition:mode-change','competition:kicked','admin:broadcast','admin:force-disconnect','admin:banned','anticheat:state-change','anticheat:settings-update','anticheat:violation-ack'].forEach(e => socket.off(e));
       disconnectSocket();
+      setSocketInstance(null);
       ydoc.destroy();
     };
   }, [roomId, state.user?.userId]);
@@ -1258,26 +1261,26 @@ export default function RoomPage() {
         {/* Chat Sidebar — desktop: side panel, mobile: fullscreen overlay */}
         {(state.chatOpen || mobileTab === 'chat') && !zenMode && (
           <>
-            {/* Desktop: resizable side panel */}
+            {/* Desktop: resizable divider */}
             {state.chatOpen && (
-              <>
-                <div
-                  className={`resizer w-[3px] flex-shrink-0 hidden sm:block ${isResizing && resizeType === 'sidebar' ? 'active' : ''}`}
-                  onMouseDown={handleMouseDown('sidebar')}
-                  onTouchStart={handleMouseDown('sidebar')}
-                />
-                <div style={{ width: panelWidth }} className="room-sidebar flex-shrink-0 border-l border-[#282828] flex-col hidden sm:flex">
-                  <VideoChat socket={socketRef.current} currentUser={state.user} users={state.users} />
-                  <VoiceChat socket={socketRef.current} currentUser={state.user} />
-                  <div className="flex-1 min-h-0">
-                    <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketRef.current} />
-                  </div>
-                </div>
-              </>
+              <div
+                className={`resizer w-[3px] flex-shrink-0 hidden sm:block ${isResizing && resizeType === 'sidebar' ? 'active' : ''}`}
+                onMouseDown={handleMouseDown('sidebar')}
+                onTouchStart={handleMouseDown('sidebar')}
+              />
             )}
-            {/* Mobile: fullscreen overlay */}
-            <div className={`room-mobile-overlay fixed inset-0 bg-[#1a1b1e] flex-col sm:hidden z-40 ${mobileTab === 'chat' || state.chatOpen ? 'flex' : 'hidden'}`} style={{ animation: 'slideInRight 0.2s cubic-bezier(0.22, 1, 0.36, 1)' }}>
-              <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#282828] bg-[#19191c] flex-shrink-0 safe-top">
+
+            {/* Single Unified Chat & Media Container (Never duplicated) */}
+            <div
+              style={typeof window !== 'undefined' && window.innerWidth >= 640 ? { width: panelWidth } : undefined}
+              className={`room-sidebar flex-col bg-[#1a1b1e] ${
+                mobileTab === 'chat' || state.chatOpen ? 'fixed inset-0 z-40 flex' : 'hidden'
+              } ${
+                state.chatOpen ? 'sm:relative sm:inset-auto sm:z-auto sm:flex sm:border-l sm:border-[#282828] sm:flex-shrink-0' : 'sm:hidden'
+              }`}
+            >
+              {/* Mobile-only header with close button */}
+              <div className="flex sm:hidden items-center justify-between px-3 py-2.5 border-b border-[#282828] bg-[#19191c] flex-shrink-0 safe-top">
                 <div className="flex items-center gap-2">
                   <svg className="w-4 h-4 text-[#5e9eff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                   <span className="text-[12px] font-mono text-[#888]">chat & voice</span>
@@ -1288,10 +1291,11 @@ export default function RoomPage() {
                   </button>
                 </div>
               </div>
-              <VideoChat socket={socketRef.current} currentUser={state.user} users={state.users} />
-              <VoiceChat socket={socketRef.current} currentUser={state.user} />
+
+              <VideoChat socket={socketInstance || socketRef.current} currentUser={state.user} users={state.users} />
+              <VoiceChat socket={socketInstance || socketRef.current} currentUser={state.user} />
               <div className="flex-1 min-h-0">
-                <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketRef.current} />
+                <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketInstance || socketRef.current} />
               </div>
             </div>
           </>
