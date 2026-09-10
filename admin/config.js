@@ -12,7 +12,7 @@
 window.COLLAB_ADMIN_CONFIG = {
   // Backend API Base URL (Express + Socket.io Server)
   API_BASE: (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
-    ? 'https://collabcode-v9b6.onrender.com'
+    ? 'https://collabcode-vc6p.onrender.com'
     : 'http://localhost:4000',
 
   // Main Coding App URL
