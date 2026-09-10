@@ -468,6 +468,30 @@ router.post('/anticheat/settings', adminAuthMiddleware, (req, res) => {
   res.json({ success: true, settings: updated });
 });
 
+// Set Vanguard Sensitivity Profile (STANDARD, STRICT, VANGUARD_PARANOIA)
+router.post('/anticheat/profile', adminAuthMiddleware, (req, res) => {
+  const { profile } = req.body;
+  if (!profile || !anticheat.SENSITIVITY_PROFILES[profile]) {
+    return res.status(400).json({ error: true, message: 'Invalid profile. Choose STANDARD, STRICT, or VANGUARD_PARANOIA' });
+  }
+  const updated = anticheat.updateSettings({ profile });
+  const io = req.app.get('io');
+  if (io) {
+    io.emit('anticheat:settings-update', {
+      settings: updated,
+      timestamp: Date.now(),
+    });
+  }
+  console.log(`[Admin] Vanguard sensitivity profile switched to: ${profile}`);
+  res.json({ success: true, profile, settings: updated });
+});
+
+// Get all users' environmental hardware fingerprints
+router.get('/anticheat/telemetry', adminAuthMiddleware, (req, res) => {
+  const telemetryList = Array.from(anticheat.anticheatState.userTelemetry.values());
+  res.json({ telemetry: telemetryList, total: telemetryList.length });
+});
+
 // Reset anticheat (clear all violations)
 router.post('/anticheat/reset', adminAuthMiddleware, (req, res) => {
   anticheat.resetAnticheat();

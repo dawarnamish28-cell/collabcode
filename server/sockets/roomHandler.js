@@ -695,13 +695,13 @@ function initRoomHandler(io, ctx) {
       console.log(`[Competition] Fullscreen violation: ${socket.user.username} in room ${currentRoomId}`);
     });
 
-    // ─── v17: AntiCheat Violation Report (all 13 types) ────────
+    // ─── v17/v5.0: AntiCheat Violation Report (Vanguard 28 Criterion) ────────
     socket.on('anticheat:violation', (data) => {
       if (!competitionCtx?.anticheat) return;
       const { type, metadata } = data || {};
       if (!type || typeof type !== 'string') return;
 
-      const violation = competitionCtx.anticheat.addViolation(
+      const result = competitionCtx.anticheat.addViolation(
         socket.user.userId,
         socket.user.username,
         type.toUpperCase(),
@@ -713,7 +713,8 @@ function initRoomHandler(io, ctx) {
         }
       );
 
-      if (violation) {
+      if (result) {
+        const { violation, trustFactor } = result;
         // Broadcast to all connected clients (admin dashboard picks this up)
         io.emit('anticheat:violation-logged', violation);
 
@@ -724,26 +725,49 @@ function initRoomHandler(io, ctx) {
             userId: socket.user.userId,
             username: socket.user.username,
             totalWeight: score.totalWeight,
+            trustScore: score.trustScore,
+            tier: score.tier,
             violationCount: score.violations.length,
             timestamp: Date.now(),
           });
         }
 
-        // Notify the violating user that violation was recorded
+        // Notify the violating user with Vanguard Trust Factor telemetry
         socket.emit('anticheat:violation-ack', {
           type: violation.type,
           severity: violation.severity,
           weight: violation.weight,
           totalWeight: score?.totalWeight || violation.weight,
+          trustScore: trustFactor?.score ?? score?.trustScore ?? 100,
+          tier: trustFactor?.tier ?? score?.tier ?? 'SECURE',
           flagged: score?.flagged || false,
         });
       }
     });
 
+    // Vanguard Environmental Telemetry Fingerprint
+    socket.on('anticheat:telemetry', (data) => {
+      if (!competitionCtx?.anticheat || !data) return;
+      const recorded = competitionCtx.anticheat.recordTelemetry(socket.user.userId, socket.user.username, {
+        ...data,
+        ip: socket.handshake.headers['x-forwarded-for'] || socket.handshake.address,
+      });
+      socket.emit('anticheat:telemetry-ack', {
+        registered: true,
+        trustScore: competitionCtx.anticheat.getUserScore(socket.user.userId)?.trustScore || 100,
+      });
+      io.emit('anticheat:telemetry-updated', recorded);
+    });
+
     // AntiCheat heartbeat — client sends periodic heartbeat to prove presence
-    socket.on('anticheat:heartbeat', () => {
-      // Just acknowledge — used by client to detect if socket is alive
-      socket.emit('anticheat:heartbeat-ack', { timestamp: Date.now() });
+    socket.on('anticheat:heartbeat', (payload) => {
+      const score = competitionCtx?.anticheat?.getUserScore(socket.user.userId);
+      socket.emit('anticheat:heartbeat-ack', {
+        timestamp: Date.now(),
+        trustScore: score?.trustScore ?? 100,
+        tier: score?.tier ?? 'SECURE',
+        flagged: score?.flagged || false,
+      });
     });
 
     // ─── Ping/Pong ──────────────────────────────────────────────

@@ -363,11 +363,18 @@
 
         <!-- Master Toggle + Status -->
         <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
-          <div class="px-5 py-3 border-b border-[#222] flex items-center justify-between">
+          <div class="px-5 py-3 border-b border-[#222] flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-2">
-              <svg class="w-4 h-4 text-[#5bd882]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-              <h3 class="text-sm font-semibold text-white">AntiCheat Engine</h3>
-              <span id="ac-status-badge" class="text-[10px] px-2 py-0.5 rounded-full bg-[#333] text-[#666] mono">INACTIVE</span>
+              <svg class="w-4 h-4 text-[#ef4444]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+              <h3 class="text-sm font-semibold text-white">Vanguard Engine v5.0</h3>
+              <span id="ac-status-badge" class="text-[10px] px-2 py-0.5 rounded-full bg-[#333] text-[#666] mono font-bold">INACTIVE</span>
+            </div>
+            <!-- Profile Switcher -->
+            <div class="flex items-center gap-1 bg-[#111] p-1 rounded-xl border border-[#222]">
+              <span class="text-[10px] text-[#666] mono px-1.5 font-semibold">PROFILE:</span>
+              <button onclick="setAcProfile('STANDARD')" id="ac-prof-standard" class="text-[10px] px-2.5 py-1 rounded bg-[#222] text-[#888] hover:text-white mono transition">STANDARD</button>
+              <button onclick="setAcProfile('STRICT')" id="ac-prof-strict" class="text-[10px] px-2.5 py-1 rounded bg-[#222] text-[#888] hover:text-white mono transition">STRICT</button>
+              <button onclick="setAcProfile('VANGUARD_PARANOIA')" id="ac-prof-vanguard_paranoia" class="text-[10px] px-2.5 py-1 rounded bg-[#222] text-[#888] hover:text-white mono transition flex items-center gap-1">⚡ PARANOIA</button>
             </div>
             <div class="flex items-center gap-2">
               <button onclick="toggleAnticheat(true)" id="ac-enable-btn" class="btn text-xs bg-[#5bd882]/10 text-[#5bd882] hover:bg-[#5bd882]/20 px-3 py-1.5 rounded-lg mono transition">Enable</button>
@@ -377,7 +384,7 @@
             </div>
           </div>
           <!-- Stats Row -->
-          <div class="grid grid-cols-4 gap-3 p-4">
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 p-4">
             <div class="bg-[#111] rounded-xl p-3 text-center">
               <div id="ac-total-violations" class="text-lg font-bold text-white mono">0</div>
               <div class="text-[10px] text-[#555] mono">Total Violations</div>
@@ -391,6 +398,10 @@
               <div class="text-[10px] text-[#555] mono">Flagged Users</div>
             </div>
             <div class="bg-[#111] rounded-xl p-3 text-center">
+              <div id="ac-telemetry-count" class="text-lg font-bold text-[#38bdf8] mono">0</div>
+              <div class="text-[10px] text-[#555] mono">Device Telemetry</div>
+            </div>
+            <div class="bg-[#111] rounded-xl p-3 text-center">
               <div id="ac-uptime" class="text-lg font-bold text-[#5bd882] mono">—</div>
               <div class="text-[10px] text-[#555] mono">Active Since</div>
             </div>
@@ -402,14 +413,14 @@
           <div class="px-5 py-3 border-b border-[#222] flex items-center justify-between">
             <div class="flex items-center gap-2">
               <svg class="w-4 h-4 text-[#5e9eff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-              <h3 class="text-sm font-semibold text-white">Detection Settings</h3>
+              <h3 class="text-sm font-semibold text-white">Detection Criteria & Defense Matrix (26 Vectors)</h3>
             </div>
-            <button onclick="saveAcSettings()" class="btn text-xs bg-[#5e9eff]/10 text-[#5e9eff] hover:bg-[#5e9eff]/20 px-3 py-1.5 rounded-lg mono transition">Save Settings</button>
+            <button onclick="saveAcSettings()" class="btn text-xs bg-[#5e9eff]/10 text-[#5e9eff] hover:bg-[#5e9eff]/20 px-3 py-1.5 rounded-lg mono transition font-medium">Save Settings</button>
           </div>
-          <div class="p-4 grid grid-cols-2 gap-3" id="ac-settings-grid">
+          <div class="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5" id="ac-settings-grid">
             <!-- Populated by JS -->
           </div>
-          <div class="px-4 pb-4 flex items-center gap-4">
+          <div class="px-4 pb-4 flex flex-wrap items-center gap-4 border-t border-[#1a1a1a] pt-3">
             <label class="text-xs text-[#888] mono">Auto-Flag Threshold:
               <input type="number" id="ac-flag-threshold" class="ml-2 w-16 bg-[#111] border border-[#333] rounded px-2 py-1 text-xs text-white mono" value="15" min="1" max="100">
             </label>
@@ -437,15 +448,35 @@
           </div>
         </div>
 
-        <!-- User Scores -->
+        <!-- User Scores & Vanguard Trust Factor -->
         <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
-          <div class="px-5 py-3 border-b border-[#222] flex items-center gap-2">
-            <svg class="w-4 h-4 text-[#fbbf24]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-            <h3 class="text-sm font-semibold text-white">All User Scores</h3>
+          <div class="px-5 py-3 border-b border-[#222] flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#fbbf24]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+              <h3 class="text-sm font-semibold text-white">User Trust Factor & Proctor Scores</h3>
+            </div>
+            <span class="text-[10px] text-[#777] mono">TRUST METRIC: 0-100% SCALE</span>
           </div>
           <div id="ac-scores-list" class="max-h-[400px] overflow-y-auto scrollbar-thin">
             <div class="px-5 py-8 text-center">
               <p class="text-sm text-[#444] mono">no data yet</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hardware & Environment Telemetry Radar -->
+        <div class="bg-[#1a1b1e] border border-[#282828] rounded-2xl overflow-hidden">
+          <div class="px-5 py-3 border-b border-[#222] flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#38bdf8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>
+              <h3 class="text-sm font-semibold text-white">Hardware & Environment Telemetry Radar</h3>
+              <span id="ac-telemetry-badge" class="text-[10px] px-1.5 py-0.5 rounded-full bg-[#38bdf8]/10 text-[#38bdf8] mono">0 devices</span>
+            </div>
+            <button onclick="refreshTelemetryRadar()" class="text-xs text-[#38bdf8] hover:underline mono flex items-center gap-1">↻ Refresh Radar</button>
+          </div>
+          <div id="ac-telemetry-list" class="max-h-[350px] overflow-y-auto scrollbar-thin">
+            <div class="px-5 py-6 text-center">
+              <p class="text-xs text-[#444] mono">No hardware telemetry collected yet</p>
             </div>
           </div>
         </div>
@@ -918,17 +949,37 @@
     // ═══════════════════════════════════════════════════════════════
 
     const AC_SETTINGS_MAP = {
-      detectTabSwitch:    { label: 'Tab/Window Switch', icon: '🔀' },
-      blockCopyPaste:     { label: 'Copy/Paste/Clipboard', icon: '📋' },
-      forceFullscreen:    { label: 'Fullscreen Enforcement', icon: '🖥️' },
-      blockDevTools:      { label: 'DevTools Detection', icon: '🔧' },
-      blockRightClick:    { label: 'Right-Click Block', icon: '🖱️' },
-      detectMultiMonitor: { label: 'Multi-Monitor Detection', icon: '📺' },
-      detectResize:       { label: 'Window Resize Detection', icon: '↔️' },
-      detectFocusLoss:    { label: 'Focus Loss Detection', icon: '👁️' },
-      detectScreenshot:   { label: 'Screenshot Detection', icon: '📸' },
-      detectExtensions:   { label: 'Extension Detection', icon: '🧩' },
-      detectIdle:         { label: 'Idle Timeout', icon: '⏰' },
+      // Vanguard Kernel & Environment
+      detectNativeTamper:     { label: 'Native API Anti-Tamper', icon: '🛡️', cat: 'Kernel' },
+      detectAutomation:       { label: 'Headless / Bot / WebDriver', icon: '🤖', cat: 'Kernel' },
+      detectVirtualMachine:   { label: 'Virtual Machine / SwiftShader GPU', icon: '💻', cat: 'Kernel' },
+      detectSyntheticEvents:  { label: 'Synthetic Event Detection', icon: '⚡', cat: 'Kernel' },
+      detectExtensions:       { label: 'Extension & UserScript Trap', icon: '🧩', cat: 'Kernel' },
+      // Behavioral & Heuristics
+      detectMacroTyping:      { label: 'Macro & Autotyper Detection', icon: '⌨️', cat: 'Behavior' },
+      detectAIAssistants:     { label: 'AI Assistant DOM Injection Trap', icon: '🧠', cat: 'Behavior' },
+      detectDragDropInject:   { label: 'Drag & Drop Code Injection Guard', icon: '📥', cat: 'Behavior' },
+      // Display & Focus
+      detectTabSwitch:        { label: 'Tab / Window Switch', icon: '🔀', cat: 'Focus' },
+      detectFocusLoss:        { label: 'Focus Loss / Blur Detection', icon: '👁️', cat: 'Focus' },
+      forceFullscreen:        { label: 'Fullscreen Enforcement', icon: '🖥️', cat: 'Focus' },
+      detectMultiMonitor:     { label: 'Multi-Monitor Radar', icon: '📺', cat: 'Focus' },
+      detectResize:           { label: 'Window Resize / DevDocking', icon: '↔️', cat: 'Focus' },
+      detectPictureInPicture: { label: 'Picture-in-Picture Detection', icon: '🪟', cat: 'Focus' },
+      detectScreenCapture:    { label: 'Screen Capture Stream Intercept', icon: '🎥', cat: 'Focus' },
+      detectScreenshot:       { label: 'Screenshot Shortcut Trap', icon: '📸', cat: 'Focus' },
+      // Controls & DevTools
+      blockDevTools:          { label: 'DevTools & Debugger Lock', icon: '🔧', cat: 'Controls' },
+      blockCopyPaste:         { label: 'Clipboard Anti-Exfiltration', icon: '📋', cat: 'Controls' },
+      blockRightClick:        { label: 'Context Menu Intercept', icon: '🖱️', cat: 'Controls' },
+      detectIdle:             { label: 'Absence / Idle Timeout', icon: '⏰', cat: 'Controls' },
+    };
+
+    const TRUST_TIER_STYLES = {
+      SECURE:        { color: '#5bd882', bg: '#5bd88218', border: '#5bd88240', text: 'SECURE' },
+      ELEVATED_RISK: { color: '#fbbf24', bg: '#fbbf2418', border: '#fbbf2440', text: 'ELEVATED RISK' },
+      SUSPICIOUS:    { color: '#f97316', bg: '#f9731618', border: '#f9731640', text: 'SUSPICIOUS' },
+      COMPROMISED:   { color: '#ef4444', bg: '#ef444418', border: '#ef444440', text: 'COMPROMISED' },
     };
 
     const SEVERITY_COLORS = {
@@ -936,6 +987,16 @@
     };
 
     let acSettings = {};
+
+    async function setAcProfile(profile) {
+      try {
+        await api('/anticheat/profile', { method: 'POST', body: JSON.stringify({ profile }) });
+        logAction(`AntiCheat profile switched to ${profile}`);
+        refreshAnticheat();
+      } catch (e) {
+        alert('Error setting profile: ' + e.message);
+      }
+    }
 
     async function refreshAnticheat() {
       try {
@@ -945,8 +1006,65 @@
         renderAcScores(report.userScores);
         renderAcFlagged(report.userScores.filter(u => u.flagged));
         renderAcViolations(report.recentViolations);
+        refreshTelemetryRadar();
       } catch (e) {
         console.error('[AC] refresh error:', e);
+      }
+    }
+
+    async function refreshTelemetryRadar() {
+      const container = document.getElementById('ac-telemetry-list');
+      const badge = document.getElementById('ac-telemetry-badge');
+      if (!container) return;
+      try {
+        const res = await api('/anticheat/telemetry');
+        const list = res.telemetry || [];
+        if (badge) badge.textContent = `${list.length} device${list.length === 1 ? '' : 's'}`;
+        if (!list || list.length === 0) {
+          container.innerHTML = '<div class="px-5 py-6 text-center"><p class="text-xs text-[#444] mono">No hardware telemetry collected yet</p></div>';
+          return;
+        }
+        container.innerHTML = `
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs mono">
+              <thead class="text-[10px] text-[#666] bg-[#111] border-b border-[#222]">
+                <tr>
+                  <th class="px-3 py-2">USER</th>
+                  <th class="px-3 py-2">HARDWARE CORES</th>
+                  <th class="px-3 py-2">RENDERER / GPU</th>
+                  <th class="px-3 py-2">TAMPER CHECK</th>
+                  <th class="px-3 py-2">AUTOMATION</th>
+                  <th class="px-3 py-2">LAST SEEN</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-[#1a1a1a]">
+                ${list.map(t => {
+                  const isSwiftShader = (t.gpu && t.gpu.toLowerCase().includes('swiftshader')) || false;
+                  const tamperPill = t.tamperDetected 
+                    ? '<span class="px-1.5 py-0.5 rounded bg-[#ef4444]/20 text-[#ef4444] font-bold">TAMPERED</span>'
+                    : '<span class="px-1.5 py-0.5 rounded bg-[#5bd882]/20 text-[#5bd882]">CLEAN</span>';
+                  const autoPill = t.isHeadless
+                    ? '<span class="px-1.5 py-0.5 rounded bg-[#ef4444]/20 text-[#ef4444] font-bold">HEADLESS</span>'
+                    : '<span class="text-[#666]">LEGITIMATE</span>';
+                  const gpuClass = isSwiftShader ? 'text-[#ef4444] font-bold' : 'text-[#aaa]';
+                  const time = new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                  return `
+                    <tr class="hover:bg-[#111]/40 transition">
+                      <td class="px-3 py-2 text-white font-medium">${t.username || t.userId}</td>
+                      <td class="px-3 py-2 text-[#888]">${t.cores || '—'} Cores • ${t.memory ? `${t.memory}GB` : '—'}</td>
+                      <td class="px-3 py-2 ${gpuClass} truncate max-w-[200px]" title="${t.gpu || 'standard'}">${t.gpu || 'standard'}</td>
+                      <td class="px-3 py-2">${tamperPill}</td>
+                      <td class="px-3 py-2">${autoPill}</td>
+                      <td class="px-3 py-2 text-[#666]">${time}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      } catch (e) {
+        console.warn('Telemetry fetch error:', e);
       }
     }
 
@@ -956,8 +1074,8 @@
       const disableBtn = document.getElementById('ac-disable-btn');
 
       if (report.enabled) {
-        badge.textContent = 'ACTIVE';
-        badge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-[#5bd882]/15 text-[#5bd882] mono animate-pulse';
+        badge.textContent = `VANGUARD v5.0 [${report.profile || 'STANDARD'}]`;
+        badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full bg-[#ef4444]/15 text-[#ef4444] border border-[#ef4444]/40 mono font-bold animate-pulse';
         enableBtn.classList.add('hidden');
         disableBtn.classList.remove('hidden');
       } else {
@@ -967,9 +1085,23 @@
         disableBtn.classList.add('hidden');
       }
 
+      // Profile button highlighting
+      ['standard', 'strict', 'vanguard_paranoia'].forEach(p => {
+        const btn = document.getElementById(`ac-prof-${p}`);
+        if (!btn) return;
+        const isActive = (report.profile || 'STANDARD').toLowerCase() === p;
+        if (isActive) {
+          btn.className = 'text-[10px] px-2.5 py-1 rounded bg-[#ef4444] text-white mono font-bold shadow-md shadow-[#ef4444]/30 transition';
+        } else {
+          btn.className = 'text-[10px] px-2.5 py-1 rounded bg-[#222] text-[#888] hover:text-white mono transition';
+        }
+      });
+
       document.getElementById('ac-total-violations').textContent = report.totalViolations || 0;
       document.getElementById('ac-total-users').textContent = report.totalUsers || 0;
       document.getElementById('ac-flagged-count').textContent = report.flaggedUsers || 0;
+      const telemCount = document.getElementById('ac-telemetry-count');
+      if (telemCount) telemCount.textContent = report.telemetrySampleCount || 0;
 
       if (report.startedAt) {
         const mins = Math.floor((Date.now() - report.startedAt) / 60000);
@@ -985,12 +1117,15 @@
       grid.innerHTML = Object.entries(AC_SETTINGS_MAP).map(([key, info]) => {
         const checked = settings[key] !== false;
         return `
-          <label class="flex items-center gap-2 p-2 rounded-lg bg-[#111] hover:bg-[#1a1a1a] cursor-pointer transition">
+          <label class="flex items-center gap-2.5 p-2 rounded-lg bg-[#111] hover:bg-[#1a1a1a] cursor-pointer transition border border-transparent hover:border-[#333]">
             <input type="checkbox" id="ac-s-${key}" ${checked ? 'checked' : ''}
               onchange="acSettings['${key}'] = this.checked"
-              class="w-4 h-4 rounded bg-[#222] border-[#444] text-[#5e9eff] focus:ring-[#5e9eff] focus:ring-offset-0">
-            <span class="text-xs mono">${info.icon}</span>
-            <span class="text-xs text-[#ccc] mono">${info.label}</span>
+              class="w-3.5 h-3.5 rounded bg-[#222] border-[#444] text-[#ef4444] focus:ring-[#ef4444] focus:ring-offset-0">
+            <span class="text-xs">${info.icon}</span>
+            <div class="flex-1 min-w-0">
+              <div class="text-xs text-[#ddd] mono truncate font-medium">${info.label}</div>
+              <div class="text-[9px] text-[#555] mono uppercase tracking-wider">${info.cat}</div>
+            </div>
           </label>
         `;
       }).join('');
@@ -1007,23 +1142,39 @@
         return;
       }
       container.innerHTML = scores.map(u => {
-        const flagBadge = u.flagged ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-[#ff6b6b]/15 text-[#ff6b6b] mono">FLAGGED</span>' : '';
-        const banBadge = u.reachedBanThreshold ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-[#ef4444]/15 text-[#ef4444] mono">BAN?</span>' : '';
+        const flagBadge = u.flagged ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-[#ff6b6b]/15 text-[#ff6b6b] mono font-bold">FLAGGED</span>' : '';
+        const banBadge = u.reachedBanThreshold ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-[#ef4444]/15 text-[#ef4444] mono font-bold">BAN-TRIGGERED</span>' : '';
         const weightColor = u.totalWeight >= 30 ? '#ef4444' : u.totalWeight >= 15 ? '#ff6b6b' : u.totalWeight >= 5 ? '#fbbf24' : '#5bd882';
+        
+        const tier = u.trustTier || (u.trustScore >= 85 ? 'SECURE' : u.trustScore >= 65 ? 'ELEVATED_RISK' : u.trustScore >= 40 ? 'SUSPICIOUS' : 'COMPROMISED');
+        const tStyle = TRUST_TIER_STYLES[tier] || TRUST_TIER_STYLES.SECURE;
+        const trustScore = typeof u.trustScore === 'number' ? u.trustScore : Math.max(0, 100 - (u.totalWeight * 2));
+        
+        const hw = u.hardwareSummary;
+        const hwText = hw ? `${hw.cores || '?'} Cores • ${hw.tamperDetected ? '⚠️ TAMPER' : 'CLEAN'}` : '';
         const typeBreakdown = Object.entries(u.violationsByType || {}).map(([t, c]) => `${t}:${c}`).join(', ');
+
         return `
-          <div class="flex items-center gap-3 px-4 py-2.5 border-b border-[#1a1a1a] hover:bg-[#111]/50 transition">
-            <div class="w-8 h-8 rounded-lg bg-[#222] flex items-center justify-center text-xs mono font-bold" style="color:${weightColor}">${u.totalWeight}</div>
+          <div class="flex items-center gap-3 px-4 py-3 border-b border-[#1a1a1a] hover:bg-[#111]/50 transition">
+            <div class="w-9 h-9 rounded-xl bg-[#222] flex flex-col items-center justify-center text-xs mono font-bold border border-[#333]" style="color:${weightColor}">
+              <span>${u.totalWeight}</span>
+              <span class="text-[8px] text-[#666] -mt-0.5">PTS</span>
+            </div>
             <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-white mono font-medium truncate">${u.username || u.userId}</span>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs text-white mono font-bold truncate">${u.username || u.userId}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded-full mono font-bold" style="color:${tStyle.color}; background:${tStyle.bg}; border:1px solid ${tStyle.border}">
+                  TRUST ${trustScore}% • ${tStyle.text}
+                </span>
                 ${flagBadge} ${banBadge}
               </div>
-              <div class="text-[10px] text-[#555] mono truncate">${u.violationCount} violations \u2022 ${typeBreakdown || 'none'}</div>
+              <div class="text-[10px] text-[#666] mono truncate mt-0.5">
+                ${u.violationCount} violations ${hwText ? `\u2022 ${hwText}` : ''} \u2022 ${typeBreakdown || 'clean record'}
+              </div>
             </div>
             <div class="flex items-center gap-1">
               ${u.flagged ? `<button onclick="unflagUser('${u.userId}')" class="text-[10px] px-2 py-1 rounded bg-[#222] text-[#888] hover:text-white mono transition">unflag</button>` : ''}
-              ${u.reachedBanThreshold ? `<button onclick="autoBanUser('${u.userId}')" class="text-[10px] px-2 py-1 rounded bg-[#ff6b6b]/10 text-[#ff6b6b] hover:bg-[#ff6b6b]/20 mono transition">ban</button>` : ''}
+              ${u.reachedBanThreshold ? `<button onclick="autoBanUser('${u.userId}')" class="text-[10px] px-2 py-1 rounded bg-[#ef4444]/10 text-[#ef4444] hover:bg-[#ef4444]/20 mono transition font-bold">ban</button>` : ''}
               <button onclick="clearUserAc('${u.userId}')" class="text-[10px] px-2 py-1 rounded bg-[#222] text-[#555] hover:text-white mono transition">clear</button>
             </div>
           </div>
