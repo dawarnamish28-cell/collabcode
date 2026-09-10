@@ -15,7 +15,7 @@
 
 import { useState, useEffect, useRef, useCallback, memo } from 'react';
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
+import { SERVER_URL } from '../utils/config';
 
 // Category icons mapping
 const CATEGORY_ICONS = {

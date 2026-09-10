@@ -13,7 +13,7 @@
 import { useState, useEffect, useCallback, memo } from 'react';
 import axios from 'axios';
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
+import { SERVER_URL } from '../utils/config';
 
 const WorkspacePanel = memo(function WorkspacePanel({ isOpen, onClose, user, language, onLoadWorkspace, onSaveWorkspace, code, roomId }) {
   const [tab, setTab] = useState('workspaces'); // 'workspaces' | 'templates'

@@ -15,7 +15,7 @@
 
 import { io } from 'socket.io-client';
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
+import { SERVER_URL } from './config';
 
 let socket = null;
 let listenersAttached = false; // v3: prevent duplicate global listeners

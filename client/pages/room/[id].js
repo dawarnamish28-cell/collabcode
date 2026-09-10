@@ -52,7 +52,7 @@ import { canRunInBrowser, runInBrowser } from '../../utils/browserExecution';
 
 const Editor = dynamic(() => import('../../components/Editor'), { ssr: false });
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
+import { SERVER_URL } from '../../utils/config';
 
 const EXT_MAP = {
   javascript: '.js', typescript: '.ts', python: '.py', java: '.java',

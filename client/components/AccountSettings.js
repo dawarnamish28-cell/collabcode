@@ -12,7 +12,7 @@ import { useState, useCallback, useEffect, useRef, memo } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
+import { SERVER_URL } from '../utils/config';
 
 const AVATAR_COLORS = [
   '#5e9eff', '#5bd882', '#ffb347', '#ff6b6b', '#c4b5fd',

@@ -10,7 +10,7 @@ import React, { createContext, useContext, useReducer, useCallback, useEffect } 
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
+import { SERVER_URL } from '../utils/config';
 
 const initialState = {
   user: null, isAuthenticated: false,

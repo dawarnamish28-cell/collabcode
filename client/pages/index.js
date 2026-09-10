@@ -16,7 +16,7 @@ import { useAppContext } from '../context/AppContext';
 import AccountSettings from '../components/AccountSettings';
 import axios from 'axios';
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
+import { SERVER_URL } from '../utils/config';
 
 const LANGUAGES = [
   { id: 'javascript', name: 'JavaScript', icon: 'JS', color: '#f7df1e', bg: '#f7df1e15' },

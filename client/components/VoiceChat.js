@@ -22,6 +22,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
+import { SERVER_URL } from '../utils/config';
 
 // Fallback ICE servers — used if /api/ice-servers endpoint is unreachable
 const FALLBACK_ICE_SERVERS = [
@@ -56,17 +57,7 @@ const FALLBACK_ICE_SERVERS = [
 let cachedIceServers = null;
 let cacheExpiry = 0;
 function getServerBaseUrl() {
-  if (process.env.NEXT_PUBLIC_SERVER_URL) return process.env.NEXT_PUBLIC_SERVER_URL;
-  if (typeof window !== 'undefined') {
-    const origin = window.location.origin;
-    if (origin.includes(':3000')) {
-      return origin.replace(':3000', ':4000');
-    }
-    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      return window.location.protocol + '//api.' + window.location.hostname.replace(/^app\./, '');
-    }
-  }
-  return 'http://localhost:4000';
+  return SERVER_URL;
 }
 async function getIceServers() {
   const now = Date.now();
