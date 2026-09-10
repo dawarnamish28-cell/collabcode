@@ -366,11 +366,14 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
     monacoRef.current = monaco;
     setIsLoaded(true);
 
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+
     editor.updateOptions({
-      fontSize: fontSize || 14,
+      fontSize: fontSize || (isMobile ? 12 : 14),
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
       fontLigatures: true,
-      minimap: { enabled: minimap !== false, scale: 1 },
+      minimap: { enabled: !isMobile && minimap !== false, scale: 1 },
+      lineNumbersMinChars: isMobile ? 3 : 5,
       scrollBeyondLastLine: false,
       smoothScrolling: true,
       cursorBlinking: 'smooth',
@@ -382,18 +385,21 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
       autoClosingQuotes: 'always',
       formatOnPaste: true,
       autoIndent: autoIndent !== false ? 'full' : 'none',
-      wordWrap: wordWrap !== false ? 'on' : 'off',
+      wordWrap: isMobile ? 'on' : (wordWrap !== false ? 'on' : 'off'),
       tabSize: tabSize || 2,
       lineNumbers: lineNumbers !== false ? 'on' : 'off',
       readOnly: !!readOnly,
-      padding: { top: 12 },
+      padding: { top: isMobile ? 8 : 12, bottom: isMobile ? 8 : 12 },
     });
 
     // v8: Register enhanced completion providers
     registerCompletionProviders(monaco, language);
 
     setupYjsBinding(editor, monaco);
-    editor.focus();
+    // Don't auto-focus on mobile to avoid popping open the mobile keyboard immediately
+    if (!isMobile) {
+      editor.focus();
+    }
   }, [ydoc, provider, user, language]);
 
   // ─── v8: Enhanced IntelliSense with Modular Syntax ───────────────────
@@ -809,9 +815,10 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
         }
         options={{
           automaticLayout: true,
-          fontSize: fontSize || 14,
+          fontSize: fontSize || (typeof window !== 'undefined' && window.innerWidth < 640 ? 12 : 14),
           fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-          minimap: { enabled: minimap !== false },
+          minimap: { enabled: (typeof window !== 'undefined' && window.innerWidth < 640) ? false : minimap !== false },
+          lineNumbersMinChars: (typeof window !== 'undefined' && window.innerWidth < 640) ? 3 : 5,
           scrollBeyondLastLine: false,
           smoothScrolling: true,
           cursorBlinking: 'smooth',
@@ -821,9 +828,9 @@ const Editor = memo(function Editor({ ydoc, provider, language, theme, user, fon
           bracketPairColorization: { enabled: bracketColors !== false },
           autoIndent: autoIndent !== false ? 'full' : 'none',
           lineNumbers: lineNumbers !== false ? 'on' : 'off',
-          wordWrap: wordWrap !== false ? 'on' : 'off',
+          wordWrap: (typeof window !== 'undefined' && window.innerWidth < 640) ? 'on' : (wordWrap !== false ? 'on' : 'off'),
           tabSize: tabSize || 2,
-          padding: { top: 12 },
+          padding: { top: (typeof window !== 'undefined' && window.innerWidth < 640) ? 8 : 12 },
         }}
       />
     </div>

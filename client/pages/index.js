@@ -594,6 +594,7 @@ export default function Home() {
   const router = useRouter();
   const { state, setUser } = useAppContext();
   const [joinCode, setJoinCode] = useState('');
+  const [mobileAction, setMobileAction] = useState('create'); // 'create' | 'join'
   const [selectedLang, setSelectedLang] = useState('python');
   const [isPublicRoom, setIsPublicRoom] = useState(false);
   const [customRoomName, setCustomRoomName] = useState('');
@@ -847,8 +848,10 @@ export default function Home() {
             <div className="gradient-orb w-[400px] h-[400px] bg-[#5e9eff] top-[-100px] left-[-150px]" style={{ animationDelay: '0s' }} />
             <div className="gradient-orb w-[300px] h-[300px] bg-[#5bd882] top-[50px] right-[-100px]" style={{ animationDelay: '-7s' }} />
             <div className="gradient-orb w-[200px] h-[200px] bg-[#c4b5fd] bottom-[0] left-[30%]" style={{ animationDelay: '-14s' }} />
-            <ParticleBackground />
-            <MatrixRain />
+            <div className="hidden md:block">
+              <ParticleBackground />
+              <MatrixRain />
+            </div>
 
             <div className="relative z-10 grid md:grid-cols-[1.1fr_1fr] gap-8 items-center">
               {/* Left: Text */}
@@ -909,10 +912,36 @@ export default function Home() {
             <LanguageMarquee />
           </div>
 
+          {/* Mobile Segmented Action Switcher */}
+          <div className="flex sm:hidden p-1 bg-[#141518] rounded-xl border border-[#282828] mb-4">
+            <button
+              type="button"
+              onClick={() => setMobileAction('create')}
+              className={`flex-1 py-2 text-center text-xs font-mono font-medium rounded-lg transition ${
+                mobileAction === 'create'
+                  ? 'bg-[#5e9eff] text-[#0a0a0a] font-semibold shadow'
+                  : 'text-[#888] hover:text-white'
+              }`}
+            >
+              ✨ New Room
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileAction('join')}
+              className={`flex-1 py-2 text-center text-xs font-mono font-medium rounded-lg transition ${
+                mobileAction === 'join'
+                  ? 'bg-[#ffb347] text-[#0a0a0a] font-semibold shadow'
+                  : 'text-[#888] hover:text-white'
+              }`}
+            >
+              🔑 Join Room
+            </button>
+          </div>
+
           {/* ── Create + Join (asymmetric layout) ────────────────── */}
           <div className="grid md:grid-cols-[1.2fr_1fr] gap-4 sm:gap-6 mb-10 sm:mb-16 stagger-in">
             {/* Create Room */}
-            <div className="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-5 sm:p-7 hover-lift fade-in-scale tilt-card gradient-border-card">
+            <div className={`bg-[#1a1b1e] border border-[#282828] rounded-2xl p-5 sm:p-7 hover-lift fade-in-scale tilt-card gradient-border-card ${mobileAction === 'create' ? 'block' : 'hidden sm:block'}`}>
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full bg-[#5e9eff] breathe" />
@@ -922,7 +951,7 @@ export default function Home() {
               </div>
               
               <div className="mb-5">
-                <div className="grid grid-cols-5 gap-1.5">
+                <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
                   {LANGUAGES.map(lang => (
                     <button key={lang.id} onClick={() => setSelectedLang(lang.id)}
                       className={`lang-pill relative px-1 py-2.5 rounded-lg text-[10px] font-mono font-bold transition-all duration-200 ${
@@ -980,7 +1009,7 @@ export default function Home() {
             </div>
 
             {/* Join Room */}
-            <div className="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-5 sm:p-7 hover-lift fade-in-scale tilt-card gradient-border-card" style={{ animationDelay: '100ms' }}>
+            <div className={`bg-[#1a1b1e] border border-[#282828] rounded-2xl p-5 sm:p-7 hover-lift fade-in-scale tilt-card gradient-border-card ${mobileAction === 'join' ? 'block' : 'hidden sm:block'}`} style={{ animationDelay: '100ms' }}>
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full bg-[#ffb347] breathe" />

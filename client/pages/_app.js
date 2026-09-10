@@ -15,7 +15,7 @@ export default function App({ Component, pageProps }) {
     <AppProvider>
       <Head>
         <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#131416" />
         <meta name="description" content="Real-time collaborative coding platform. Pair program with anyone — 20 languages, CRDT sync, voice chat, and code execution in the browser." />
         <meta name="keywords" content="collaborative coding, pair programming, real-time editor, code execution, voice chat, Monaco editor, CRDT, WebRTC" />

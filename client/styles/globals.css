@@ -48,6 +48,20 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* ─── Mobile Safe Area & Touch Ergonomics ───────────────────── */
+.safe-top {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+.safe-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+@media (max-width: 640px) {
+  /* Prevent iOS zoom on inputs */
+  input[type="text"], input[type="password"], input[type="email"], select, textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* ─── Custom Selection ───────────────────────────────────────── */
 ::selection {
   background: #5e9eff33;

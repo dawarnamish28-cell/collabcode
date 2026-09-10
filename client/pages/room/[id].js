@@ -118,6 +118,7 @@ export default function RoomPage() {
   const [files, setFiles] = useState([]);
   const [activeFileId, setActiveFileId] = useState(null);
   const [filesOpen, setFilesOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState('editor'); // 'editor' | 'terminal' | 'chat'
 
   const [extensionsOpen, setExtensionsOpen] = useState(false);
   const [librariesOpen, setLibrariesOpen] = useState(false);
@@ -999,7 +1000,7 @@ export default function RoomPage() {
       />}
 
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Left Panel */}
+        {/* Left Panel — Desktop */}
         {leftPanelOpen && !zenMode && (
           <div style={{ width: leftPanelWidth }} className="flex-shrink-0 hidden sm:block panel-slide-in">
             {filesOpen && (
@@ -1030,6 +1031,57 @@ export default function RoomPage() {
                 onInsertImport={handleInsertImport}
               />
             )}
+          </div>
+        )}
+
+        {/* Left Panel — Mobile Slide-out Drawer */}
+        {leftPanelOpen && !zenMode && (
+          <div className="fixed inset-0 z-50 flex sm:hidden bg-black/60 backdrop-blur-sm" onClick={() => { setFilesOpen(false); setExtensionsOpen(false); setLibrariesOpen(false); }}>
+            <div className="w-[85%] max-w-xs h-full bg-[#1a1b1e] border-r border-[#333] flex flex-col shadow-2xl safe-top safe-bottom" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#282828] bg-[#19191c]">
+                <span className="text-xs font-mono font-medium text-[#ccc]">
+                  {filesOpen ? 'Files' : extensionsOpen ? 'Editor Settings' : 'Libraries'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setFilesOpen(false); setExtensionsOpen(false); setLibrariesOpen(false); }}
+                  className="p-1.5 text-[#666] hover:text-white rounded-lg hover:bg-[#222]"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {filesOpen && (
+                  <FileExplorer
+                    files={files} activeFileId={activeFileId}
+                    onSelectFile={(id) => { handleSelectFile(id); setFilesOpen(false); }}
+                    onAddFile={handleAddFile}
+                    onRemoveFile={handleRemoveFile} onOpenFolder={handleOpenFolder}
+                    language={state.language}
+                  />
+                )}
+                {extensionsOpen && (
+                  <Extensions
+                    editorTheme={state.theme} onEditorThemeChange={(t) => setTheme(t)}
+                    terminalTheme={terminalTheme} onTerminalThemeChange={setTerminalTheme}
+                    fontSize={editorFontSize} onFontSizeChange={setEditorFontSize}
+                    tabSize={editorTabSize} onTabSizeChange={setEditorTabSize}
+                    minimap={editorMinimap} onMinimapToggle={() => setEditorMinimap(!editorMinimap)}
+                    wordWrap={editorWordWrap} onWordWrapToggle={() => setEditorWordWrap(!editorWordWrap)}
+                    cursorStyle={editorCursorStyle} onCursorStyleChange={setEditorCursorStyle}
+                    bracketColors={editorBracketColors} onBracketColorsToggle={() => setEditorBracketColors(!editorBracketColors)}
+                    lineNumbers={editorLineNumbers} onLineNumbersToggle={() => setEditorLineNumbers(!editorLineNumbers)}
+                    autoIndent={editorAutoIndent} onAutoIndentToggle={() => setEditorAutoIndent(!editorAutoIndent)}
+                  />
+                )}
+                {librariesOpen && (
+                  <LibraryPanel
+                    language={state.language}
+                    onInsertImport={(imp) => { handleInsertImport(imp); setLibrariesOpen(false); }}
+                  />
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1107,7 +1159,7 @@ export default function RoomPage() {
 
           <UserPresence users={state.users} currentUser={state.user} awarenessStates={awarenessStates} />
 
-          <div className="flex-1 min-h-0 relative">
+          <div className={`flex-1 min-h-0 relative ${mobileTab !== 'editor' ? 'hidden sm:block' : 'block'}`}>
             {/* v23: Polite notification when backend is waking up (Render cold-start) */}
             {wakingServer && (
               <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-[#181a20]/95 border border-[#5e9eff]/40 shadow-xl backdrop-blur text-[11px] font-mono text-[#adcbfb] pointer-events-auto select-none transition-all">
@@ -1174,55 +1226,64 @@ export default function RoomPage() {
             <RunButton onRun={handleMainRun} isRunning={isRunning} language={state.language} />
           </div>
 
-          {state.outputOpen && (
-            <>
-              <div
-                className={`resizer resizer-horizontal h-[3px] w-full flex-shrink-0 ${isResizing && resizeType === 'output' ? 'active' : ''}`}
-                onMouseDown={handleMouseDown('output')}
-                onTouchStart={handleMouseDown('output')}
+          {/* Terminal / Output Console Container */}
+          <div
+            className={`min-h-0 ${
+              mobileTab === 'terminal' ? 'flex sm:hidden flex-1 flex-col' : 'hidden'
+            } ${state.outputOpen ? 'sm:flex sm:flex-shrink-0 sm:flex-col' : 'sm:hidden'}`}
+            style={{
+              height: typeof window !== 'undefined' && window.innerWidth >= 640 ? outputHeight : undefined,
+            }}
+          >
+            <div
+              className={`resizer resizer-horizontal h-[3px] w-full flex-shrink-0 hidden sm:block ${isResizing && resizeType === 'output' ? 'active' : ''}`}
+              onMouseDown={handleMouseDown('output')}
+              onTouchStart={handleMouseDown('output')}
+            />
+            <div className="flex-1 min-h-0 h-full">
+              <OutputConsole
+                ref={outputConsoleRef}
+                output={output} onClear={() => setOutput(null)}
+                isRunning={isRunning} language={state.language}
+                code={ydocRef.current ? ydocRef.current.getText('monaco').toString() : ''}
+                onRunWithStdin={(stdin) => {
+                  if (ydocRef.current) handleRunCode(ydocRef.current.getText('monaco').toString(), stdin);
+                }}
+                terminalTheme={terminalTheme}
               />
-              <div style={{ height: outputHeight }} className="flex-shrink-0">
-                <OutputConsole
-                  ref={outputConsoleRef}
-                  output={output} onClear={() => setOutput(null)}
-                  isRunning={isRunning} language={state.language}
-                  code={ydocRef.current ? ydocRef.current.getText('monaco').toString() : ''}
-                  onRunWithStdin={(stdin) => {
-                    if (ydocRef.current) handleRunCode(ydocRef.current.getText('monaco').toString(), stdin);
-                  }}
-                  terminalTheme={terminalTheme}
-                />
-              </div>
-            </>
-          )}
+            </div>
+          </div>
         </div>
 
         {/* Chat Sidebar — desktop: side panel, mobile: fullscreen overlay */}
-        {state.chatOpen && !zenMode && (
+        {(state.chatOpen || mobileTab === 'chat') && !zenMode && (
           <>
             {/* Desktop: resizable side panel */}
-            <div
-              className={`resizer w-[3px] flex-shrink-0 hidden sm:block ${isResizing && resizeType === 'sidebar' ? 'active' : ''}`}
-              onMouseDown={handleMouseDown('sidebar')}
-              onTouchStart={handleMouseDown('sidebar')}
-            />
-            {/* Desktop sidebar */}
-            <div style={{ width: panelWidth }} className="room-sidebar flex-shrink-0 border-l border-[#282828] flex-col hidden sm:flex">
-              <VideoChat socket={socketRef.current} currentUser={state.user} users={state.users} />
-              <VoiceChat socket={socketRef.current} currentUser={state.user} />
-              <div className="flex-1 min-h-0">
-                <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketRef.current} />
-              </div>
-            </div>
+            {state.chatOpen && (
+              <>
+                <div
+                  className={`resizer w-[3px] flex-shrink-0 hidden sm:block ${isResizing && resizeType === 'sidebar' ? 'active' : ''}`}
+                  onMouseDown={handleMouseDown('sidebar')}
+                  onTouchStart={handleMouseDown('sidebar')}
+                />
+                <div style={{ width: panelWidth }} className="room-sidebar flex-shrink-0 border-l border-[#282828] flex-col hidden sm:flex">
+                  <VideoChat socket={socketRef.current} currentUser={state.user} users={state.users} />
+                  <VoiceChat socket={socketRef.current} currentUser={state.user} />
+                  <div className="flex-1 min-h-0">
+                    <Chat messages={messages} onSendMessage={handleSendMessage} currentUser={state.user} socket={socketRef.current} />
+                  </div>
+                </div>
+              </>
+            )}
             {/* Mobile: fullscreen overlay */}
-            <div className="room-mobile-overlay fixed inset-0 bg-[#1a1b1e] flex flex-col sm:hidden" style={{ animation: 'slideInRight 0.2s cubic-bezier(0.22, 1, 0.36, 1)' }}>
-              <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#282828] bg-[#19191c] flex-shrink-0">
+            <div className={`room-mobile-overlay fixed inset-0 bg-[#1a1b1e] flex-col sm:hidden z-40 ${mobileTab === 'chat' || state.chatOpen ? 'flex' : 'hidden'}`} style={{ animation: 'slideInRight 0.2s cubic-bezier(0.22, 1, 0.36, 1)' }}>
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#282828] bg-[#19191c] flex-shrink-0 safe-top">
                 <div className="flex items-center gap-2">
                   <svg className="w-4 h-4 text-[#5e9eff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                   <span className="text-[12px] font-mono text-[#888]">chat & voice</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={toggleChat} className="p-2 text-[#666] hover:text-white rounded-lg hover:bg-[#222] active:scale-95 transition">
+                  <button onClick={() => { if (state.chatOpen) toggleChat(); setMobileTab('editor'); }} className="p-2 text-[#666] hover:text-white rounded-lg hover:bg-[#222] active:scale-95 transition">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
                 </div>
@@ -1251,8 +1312,8 @@ export default function RoomPage() {
         </div>
       )}
 
-      {/* Status Bar */}
-      {!zenMode && <div className="room-status-bar flex items-center gap-2 px-3 py-1 bg-[#19191c] border-t border-[#222] text-[9px] font-mono text-[#555]">
+      {/* Status Bar — Desktop */}
+      {!zenMode && <div className="room-status-bar hidden sm:flex items-center gap-2 px-3 py-1 bg-[#19191c] border-t border-[#222] text-[9px] font-mono text-[#555]">
         {/* Auto-save indicator */}
         {autoSaveStatus && (
           <>
@@ -1409,6 +1470,103 @@ export default function RoomPage() {
           </>
         )}
       </div>}
+
+      {/* Mobile Bottom Navigation Bar (sm:hidden) */}
+      {!zenMode && (
+        <div className="flex sm:hidden items-center justify-between bg-[#141518] border-t border-[#282828] px-3 py-1.5 z-40 safe-bottom">
+          {/* Code Tab */}
+          <button
+            type="button"
+            onClick={() => setMobileTab('editor')}
+            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-lg transition ${
+              mobileTab === 'editor'
+                ? 'text-[#5e9eff] bg-[#5e9eff]/10 font-semibold'
+                : 'text-[#888] hover:text-[#bbb]'
+            }`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+            <span className="text-[10px] font-mono mt-0.5">Code</span>
+          </button>
+
+          {/* Terminal Tab */}
+          <button
+            type="button"
+            onClick={() => {
+              setMobileTab('terminal');
+              if (!state.outputOpen) toggleOutput();
+            }}
+            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-lg transition relative ${
+              mobileTab === 'terminal'
+                ? 'text-[#5bd882] bg-[#5bd882]/10 font-semibold'
+                : 'text-[#888] hover:text-[#bbb]'
+            }`}
+          >
+            {output && output.content && (
+              <span className="absolute top-1.5 right-4 w-2 h-2 rounded-full bg-[#5bd882] animate-pulse" />
+            )}
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="text-[10px] font-mono mt-0.5">Terminal</span>
+          </button>
+
+          {/* Chat Tab */}
+          <button
+            type="button"
+            onClick={() => {
+              setMobileTab('chat');
+              if (!state.chatOpen) toggleChat();
+            }}
+            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-lg transition relative ${
+              mobileTab === 'chat'
+                ? 'text-[#ffb347] bg-[#ffb347]/10 font-semibold'
+                : 'text-[#888] hover:text-[#bbb]'
+            }`}
+          >
+            {messages.length > 0 && (
+              <span className="absolute top-1.5 right-4 w-2 h-2 rounded-full bg-[#ffb347]" />
+            )}
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <span className="text-[10px] font-mono mt-0.5">Chat</span>
+          </button>
+
+          {/* Mobile Run Code Button */}
+          <button
+            type="button"
+            onClick={() => {
+              handleMainRun();
+              setMobileTab('terminal');
+            }}
+            disabled={isRunning}
+            className={`flex items-center justify-center gap-1.5 px-4 py-2 ml-1 rounded-xl font-mono text-[12px] font-bold shadow-md transition active:scale-95 ${
+              isRunning
+                ? 'bg-[#ffb347]/20 text-[#ffb347] border border-[#ffb347]/40 animate-pulse'
+                : 'bg-[#5bd882] hover:bg-[#4bc772] text-[#0a1f0f] border border-[#5bd882]'
+            }`}
+          >
+            {isRunning ? (
+              <>
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <span>...</span>
+              </>
+            ) : (
+              <>
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+                <span>Run</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* v18: Share Room Popup */}
       {showSharePopup && (

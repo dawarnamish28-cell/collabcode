@@ -7,7 +7,7 @@ import { memo } from 'react';
 
 const RunButton = memo(function RunButton({ onRun, isRunning, language }) {
   return (
-    <div className="absolute top-2.5 sm:top-3 right-3 sm:right-4 z-30 flex items-center gap-2">
+    <div className="hidden sm:flex absolute top-2.5 sm:top-3 right-3 sm:right-4 z-30 items-center gap-2">
       {/* Shortcut hint */}
       <div className="hidden md:flex items-center gap-1.5 text-[10px] text-[#555] bg-[#1a1b1e]/90 
                     backdrop-blur-sm px-2.5 py-1 rounded-lg border border-[#282828] font-mono">
