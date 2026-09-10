@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Build output
+client/.next/
+client/out/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+server/.env
+client/.env.local
+
+# Runtime
+pids/
+*.pid
+*.seed
+*.pid.lock
+logs/
+*.log
+
+# PM2
+.pm2/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# MongoDB local data
+.wrangler/
+data/
+
+# Backups
+*.tar.gz
+*.zip
+*.backup
