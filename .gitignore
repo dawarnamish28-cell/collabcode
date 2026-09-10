@@ -40,3 +40,4 @@ data/
 *.tar.gz
 *.zip
 *.backup
+server/node-compile-cache/
