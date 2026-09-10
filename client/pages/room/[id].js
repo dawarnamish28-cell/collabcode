@@ -113,6 +113,7 @@ export default function RoomPage() {
   const [isResizing, setIsResizing] = useState(false);
   const [resizeType, setResizeType] = useState(null);
   const [ready, setReady] = useState(false);
+  const [wakingServer, setWakingServer] = useState(false);
 
   const [files, setFiles] = useState([]);
   const [activeFileId, setActiveFileId] = useState(null);
@@ -448,6 +449,9 @@ export default function RoomPage() {
     const ydoc = createYjsDoc();
     ydocRef.current = ydoc;
 
+    // v23: Instant offline-first editor mounting — don't block user on cloud backend cold-start!
+    setReady(true);
+
     const socket = getSocket({
       userId: state.user.userId, username: state.user.username,
       color: state.user.color, token: state.user.token, tabId: state.user.tabId,
@@ -459,13 +463,32 @@ export default function RoomPage() {
 
     const isPublicRoom = queryPublic === 'true';
 
+    // v23: If server takes >3s (Render free tier cold start), show friendly status capsule
+    const coldStartTimer = setTimeout(() => {
+      if (!socket.connected) {
+        setWakingServer(true);
+      }
+    }, 3000);
+
     // v21: Only send language on initial room creation (when queryLang is explicitly set),
     // not on every join/reconnect — prevents overwriting the room's established language
     const sendLang = queryLang ? lang : undefined;
-    socket.on('connect', () => { setConnectionStatus('connected'); socket.emit('room:join', { roomId, language: sendLang, isPublic: isPublicRoom, roomName: queryRoomName || undefined }); });
+    socket.on('connect', () => {
+      clearTimeout(coldStartTimer);
+      setWakingServer(false);
+      setConnectionStatus('connected');
+      socket.emit('room:join', { roomId, language: sendLang, isPublic: isPublicRoom, roomName: queryRoomName || undefined });
+    });
     socket.on('disconnect', () => setConnectionStatus('disconnected'));
-    socket.on('reconnect', () => { setConnectionStatus('connected'); socket.emit('room:join', { roomId }); });
+    socket.on('reconnect', () => {
+      clearTimeout(coldStartTimer);
+      setWakingServer(false);
+      setConnectionStatus('connected');
+      socket.emit('room:join', { roomId });
+    });
     socket.on('room:state', (data) => {
+      clearTimeout(coldStartTimer);
+      setWakingServer(false);
       if (data.users) setUsers(data.users);
       if (data.isPublic !== undefined) setIsPublic(data.isPublic);
       if (data.language) setLanguage(data.language);
@@ -481,7 +504,6 @@ export default function RoomPage() {
       }
       if (data.roomName) setRoomName(data.roomName);
       setRoom({ roomId });
-      setReady(true);
     });
     socket.on('room:user-joined', (user) => { addUser(user); addToast(`${user.username} joined`, 'join'); addNotification(`${user.username} joined the room`, 'join'); });
     socket.on('room:user-left', (data) => { removeUser(data.userId); addToast(`${data.username || 'Someone'} left`, 'leave'); addNotification(`${data.username || 'Someone'} left the room`, 'leave'); });
@@ -582,6 +604,7 @@ export default function RoomPage() {
     else setConnectionStatus('connecting');
 
     return () => {
+      clearTimeout(coldStartTimer);
       provider.destroy();
       ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change','room:visibility-changed','competition:lock-change','competition:mode-change','competition:kicked','admin:broadcast','admin:force-disconnect','admin:banned','anticheat:state-change','anticheat:settings-update','anticheat:violation-ack'].forEach(e => socket.off(e));
       disconnectSocket();
@@ -1085,6 +1108,19 @@ export default function RoomPage() {
           <UserPresence users={state.users} currentUser={state.user} awarenessStates={awarenessStates} />
 
           <div className="flex-1 min-h-0 relative">
+            {/* v23: Polite notification when backend is waking up (Render cold-start) */}
+            {wakingServer && (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-[#181a20]/95 border border-[#5e9eff]/40 shadow-xl backdrop-blur text-[11px] font-mono text-[#adcbfb] pointer-events-auto select-none transition-all">
+                <span className="w-2 h-2 rounded-full bg-[#5e9eff] animate-ping inline-block flex-shrink-0" />
+                <span>☁️ Cloud server waking up (~25s)... Offline editing & in-browser execution are ready!</span>
+                <button
+                  type="button"
+                  onClick={() => setWakingServer(false)}
+                  className="ml-1 text-[#666] hover:text-white text-xs px-1 rounded transition"
+                  title="Dismiss"
+                >✕</button>
+              </div>
+            )}
             {ready && ydocRef.current ? (
               <div className="relative w-full h-full">
                 <Editor

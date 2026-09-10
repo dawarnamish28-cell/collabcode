@@ -75,6 +75,14 @@ export class SocketIOProvider {
           }
         }
         this.synced = true;
+        // v4: If user typed before server connected (offline mode), push local state to server
+        const localDocUpdate = Y.encodeStateAsUpdate(this.ydoc);
+        if (localDocUpdate.byteLength > 0 && this.socket && this.socket.connected) {
+          this.socket.emit('crdt:update', {
+            update: Array.from(localDocUpdate),
+            roomId: this.roomId,
+          });
+        }
       } catch (err) {
         console.error('[YjsProvider] Error applying state:', err);
       }
