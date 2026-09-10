@@ -11,18 +11,12 @@
 
 window.COLLAB_ADMIN_CONFIG = {
   // Backend API Base URL (Express + Socket.io Server)
-  API_BASE: (typeof window !== 'undefined' && window.location.port === '3001')
-    ? 'http://localhost:4000'
-    : (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
-      // If hosted on admin.yourdomain.com, default API to api.yourdomain.com
-      ? window.location.protocol + '//api.' + window.location.hostname.replace(/^admin\./, '')
-      : 'http://localhost:4000',
+  API_BASE: (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+    ? 'https://collabcode-v9b6.onrender.com'
+    : 'http://localhost:4000',
 
   // Main Coding App URL
-  CLIENT_URL: (typeof window !== 'undefined' && window.location.port === '3001')
-    ? 'http://localhost:3000'
-    : (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
-      // If hosted on admin.yourdomain.com, default client to yourdomain.com
-      ? window.location.protocol + '//' + window.location.hostname.replace(/^admin\./, '')
-      : 'http://localhost:3000',
+  CLIENT_URL: (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+    ? 'https://www.collabcodeio.xyz'
+    : 'http://localhost:3000',
 };
