@@ -41,3 +41,6 @@ data/
 *.zip
 *.backup
 server/node-compile-cache/
+node-compile-cache/
+.npm/
+Library/

@@ -84,6 +84,10 @@ const VIOLATION_TYPES = {
   // Presence & Heartbeat
   IDLE_TIMEOUT:         { id: 'idle_timeout',         name: 'Session Idle Timeout',        severity: 'low',      weight: 1, category: 'presence' },
   HEARTBEAT_MISSING:    { id: 'heartbeat_missing',    name: 'Telemetry Heartbeat Dropped', severity: 'medium',   weight: 3, category: 'presence' },
+
+  // Multi-Instance & Timing Integrity
+  DUAL_TAB_COLLUSION:   { id: 'dual_tab_collusion',   name: 'Dual Tab / Multi-Instance',   severity: 'critical', weight: 6, category: 'integrity' },
+  THREAD_FREEZE_PAUSE:  { id: 'thread_freeze_pause',  name: 'Debugger Thread Freeze Pause', severity: 'high',     weight: 4, category: 'integrity' },
 };
 
 // ─── Vanguard Sensitivity Presets ────────────────────────────────────
@@ -129,6 +133,8 @@ const anticheatState = {
     detectMacros: true,
     detectPiP: true,
     detectApiTampering: true,
+    detectDualTab: true,
+    detectThreadFreeze: true,
     idleTimeoutSec: 90,
     autoFlagThreshold: 8,
     autoBanThreshold: 20,

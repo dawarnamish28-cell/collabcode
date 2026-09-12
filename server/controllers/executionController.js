@@ -24,6 +24,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const axios = require('axios');
 
 // ─── Configuration ─────────────────────────────────────────────────────
 const TIMEOUT_MS = parseInt(process.env.EXEC_TIMEOUT_MS) || 10000;
@@ -855,6 +856,76 @@ async function executeLocal(code, language, stdin) {
   }
 }
 
+// ─── Judge0 Cloud Execution Fallback ──────────────────────────────────
+const JUDGE0_LANGUAGE_MAP = {
+  javascript: 102, // Node.js 22.08.0
+  typescript: 101, // TypeScript 5.6.2
+  python: 100,     // Python 3.12.5
+  java: 91,        // Java JDK 17.0.6
+  c: 103,          // C GCC 14.1.0
+  cpp: 105,        // C++ GCC 14.1.0
+  go: 107,         // Go 1.23.5
+  rust: 108,       // Rust 1.85.0
+  ruby: 72,        // Ruby 2.7.0
+  php: 98,         // PHP 8.3.11
+  perl: 85,        // Perl 5.28.1
+  r: 99,           // R 4.4.1
+  bash: 46,        // Bash 5.0.0
+  shell: 46,       // Bash 5.0.0
+  lua: 64,         // Lua 5.3.5
+  fortran: 59,     // Fortran GFortran 9.2.0
+  sqlite: 82,      // SQLite 3.27.2
+  nasm: 45,        // Assembly NASM 2.14.02
+};
+
+async function executeCloud(code, language, stdin = '') {
+  const languageId = JUDGE0_LANGUAGE_MAP[language];
+  if (!languageId) return null;
+
+  const startTime = process.hrtime.bigint();
+  try {
+    const payload = {
+      source_code: code,
+      language_id: languageId,
+      stdin: stdin || '',
+    };
+
+    const response = await axios.post(
+      'https://ce.judge0.com/submissions?base64_encoded=false&wait=true',
+      payload,
+      {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000,
+      }
+    );
+
+    const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
+    const data = response.data;
+    const isSuccess = data.status && data.status.id === 3;
+    const stdout = data.stdout || '';
+    const stderr = (data.stderr || data.compile_output || data.message || '').trim();
+    const exitCode = isSuccess ? 0 : (data.exit_code !== undefined && data.exit_code !== null ? data.exit_code : 1);
+    const executionTime = `${(data.time ? parseFloat(data.time) : elapsed / 1000).toFixed(3)}s`;
+    const status = data.status ? data.status.description : (isSuccess ? 'Success' : 'Error');
+    const phase = data.compile_output ? 'compile' : 'run';
+
+    return {
+      success: isSuccess,
+      stdout,
+      stderr,
+      exitCode,
+      executionTime,
+      status,
+      phase,
+      engine: 'cloud (Judge0)',
+      parsedErrors: parseErrors(stderr, language),
+    };
+  } catch (err) {
+    console.error(`[Exec Cloud Fallback] Error for ${language}:`, err.message);
+    return null;
+  }
+}
+
 // ─── API Handler: Execute Code ─────────────────────────────────────────
 async function executeCode(req, res) {
   const { code, language, stdin = '' } = req.body;
@@ -868,7 +939,29 @@ async function executeCode(req, res) {
   console.log(`[Exec] ${language} | ${code.length} chars | stdin=${stdin.length} chars | queue=${executionQueue.length} active=${activeWorkers}`);
 
   try {
-    const result = await enqueueExecution(() => executeLocal(code, language, stdin));
+    let result = null;
+
+    // 1. Try local execution if the runtime is marked local
+    if (lang.local !== false) {
+      try {
+        result = await enqueueExecution(() => executeLocal(code, language, stdin));
+      } catch (localErr) {
+        if (localErr.code === 'ENOENT' || localErr.message?.includes('ENOENT') || localErr.message?.includes('SPAWN_FAILED')) {
+          console.warn(`[Exec] Local runtime binary missing for ${language}, auto-switching to cloud fallback`);
+          lang.local = false;
+          result = null;
+        } else {
+          throw localErr;
+        }
+      }
+    }
+
+    // 2. Seamless Cloud Execution Fallback if local is missing or returned null
+    if (!result && JUDGE0_LANGUAGE_MAP[language]) {
+      console.log(`[Exec] Executing ${language} via Cloud Execution Engine...`);
+      result = await executeCloud(code, language, stdin);
+    }
+
     if (result) {
       if (result.success) metrics.successfulExecutions++;
       else metrics.failedExecutions++;
@@ -881,13 +974,14 @@ async function executeCode(req, res) {
       return res.json({
         success: result.success, output: result.stdout, error: result.stderr,
         exitCode: result.exitCode, executionTime: result.executionTime,
-        status: result.status, engine: 'local', language: lang.name,
-        version: lang.version, phase: result.phase,
+        status: result.status, engine: result.engine || 'local', language: lang.name,
+        version: lang.version || (result.engine?.includes('cloud') ? 'Cloud 2026' : null),
+        phase: result.phase,
         cached: result.cached || false,
         parsedErrors: result.parsedErrors || [],
       });
     }
-    return res.status(501).json({ error: true, message: `${lang.name} runtime is not available on this server.` });
+    return res.status(501).json({ error: true, message: `${lang.name} runtime is currently unavailable.` });
   } catch (err) {
     metrics.failedExecutions++;
     // v9: Specific error responses for queue issues
@@ -906,8 +1000,11 @@ async function executeCode(req, res) {
 // ─── API Handler: Supported Languages ──────────────────────────────────
 function getSupportedLanguages(req, res) {
   const languages = Object.entries(LANGUAGES).map(([id, lang]) => ({
-    id, name: lang.name, version: lang.version || null,
-    localExecution: lang.local, ext: lang.ext, template: lang.template,
+    id, name: lang.name, version: lang.version || (JUDGE0_LANGUAGE_MAP[id] ? 'Cloud' : null),
+    localExecution: lang.local,
+    cloudExecution: Boolean(JUDGE0_LANGUAGE_MAP[id]),
+    available: Boolean(lang.local || JUDGE0_LANGUAGE_MAP[id]),
+    ext: lang.ext, template: lang.template,
   }));
   res.json({ languages });
 }

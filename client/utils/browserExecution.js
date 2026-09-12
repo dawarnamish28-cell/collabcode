@@ -286,7 +286,7 @@ async function runSqliteBrowser(code, stdin, startTime) {
   const elapsed = ((performance.now() - startTime) / 1000).toFixed(3);
   return {
     success: true,
-    output: 'SQL query processed locally.\\n',
+    output: 'SQL query processed locally.\n',
     error: '',
     exitCode: 0,
     executionTime: `${elapsed}s`,
@@ -295,5 +295,75 @@ async function runSqliteBrowser(code, stdin, startTime) {
     language: 'SQLite',
     version: 'Client',
     phase: 'run',
+  };
+}
+
+/**
+ * Judge0 CE Cloud Execution Engine mapping
+ */
+export const JUDGE0_LANGUAGE_MAP = {
+  javascript: 102,
+  typescript: 101,
+  python: 100,
+  java: 91,
+  c: 103,
+  cpp: 105,
+  go: 107,
+  rust: 108,
+  ruby: 72,
+  php: 98,
+  perl: 85,
+  r: 99,
+  bash: 46,
+  shell: 46,
+  lua: 64,
+  fortran: 59,
+  sqlite: 82,
+  nasm: 45,
+};
+
+/**
+ * Direct Cloud Execution (Judge0 CE) from client
+ */
+export async function runInCloud(code, language, stdin = '') {
+  const langKey = (language || '').toLowerCase().trim();
+  const languageId = JUDGE0_LANGUAGE_MAP[langKey];
+  if (!languageId) {
+    throw new Error(`Cloud execution not available for ${language}`);
+  }
+
+  const startTime = performance.now();
+  const res = await fetch('https://ce.judge0.com/submissions?base64_encoded=false&wait=true', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      source_code: code,
+      language_id: languageId,
+      stdin: stdin || '',
+    }),
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.message || `Cloud execution failed with HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  const elapsed = ((performance.now() - startTime) / 1000).toFixed(3);
+  const isSuccess = data.status && data.status.id === 3;
+  const stdout = data.stdout || '';
+  const stderr = (data.stderr || data.compile_output || data.message || '').trim();
+
+  return {
+    success: isSuccess,
+    output: stdout || (isSuccess && !stderr ? 'Code executed with no output.\n' : ''),
+    error: stderr,
+    exitCode: isSuccess ? 0 : (data.exit_code ?? 1),
+    executionTime: `${(data.time ? parseFloat(data.time) : elapsed).toFixed(3)}s`,
+    status: data.status ? data.status.description : (isSuccess ? 'Success' : 'Execution Failed'),
+    engine: 'Cloud (Judge0 Engine)',
+    language,
+    version: 'Cloud 2026',
+    phase: data.compile_output ? 'compile' : 'run',
   };
 }

@@ -641,6 +641,45 @@ export function useAnticheat(socketRef, enabled, settings, onViolation) {
       cleanups.push(() => clearInterval(heartbeat));
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // 20. DUAL TAB / MULTI-INSTANCE COLLUSION TRAP
+    // ═══════════════════════════════════════════════════════════════
+    if (s.detectDualTab !== false && typeof BroadcastChannel !== 'undefined') {
+      try {
+        const tabId = Math.random().toString(36).slice(2);
+        const channel = new BroadcastChannel('cc_vanguard_instance_sync');
+        channel.onmessage = (e) => {
+          if (e.data?.type === 'PING' && e.data.tabId !== tabId) {
+            channel.postMessage({ type: 'PONG', tabId });
+            report('DUAL_TAB_COLLUSION', { detail: 'Multiple active exam tabs detected' });
+          } else if (e.data?.type === 'PONG' && e.data.tabId !== tabId) {
+            report('DUAL_TAB_COLLUSION', { detail: 'Parallel session collision detected' });
+          }
+        };
+        channel.postMessage({ type: 'PING', tabId });
+        cleanups.push(() => {
+          try { channel.close(); } catch {}
+        });
+      } catch {}
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 21. THREAD FREEZE / TIMING ATTACK DETECTOR
+    // ═══════════════════════════════════════════════════════════════
+    if (s.detectThreadFreeze !== false) {
+      let lastTick = performance.now();
+      const freezeChecker = setInterval(() => {
+        const now = performance.now();
+        const delta = now - lastTick;
+        lastTick = now;
+        // If thread was halted for >2.8s without standard tab hidden
+        if (delta > 2800 && !document.hidden) {
+          report('THREAD_FREEZE_PAUSE', { stallDurationMs: Math.round(delta) });
+        }
+      }, 1000);
+      cleanups.push(() => clearInterval(freezeChecker));
+    }
+
     console.log(`[Vanguard] 🛡️ All ${cleanups.length} defense vectors operational`);
     cleanupFnsRef.current = cleanups;
 
