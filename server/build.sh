@@ -1,30 +1,33 @@
 #!/bin/bash
-# Render build script — installs language runtimes and Node dependencies
-set -e
+# Render runtime installer — installs language runtimes needed for local code execution.
+# Called via npm preinstall hook so it runs on every Render deploy automatically.
 
 echo "[Build] Installing system language runtimes..."
-apt-get update -qq 2>/dev/null || true
-apt-get install -y --no-install-recommends \
-  gfortran \
-  nasm \
-  lua5.4 \
-  tclsh \
-  gawk \
-  sqlite3 \
-  php-cli \
-  r-base \
-  2>/dev/null || echo "[Build] Some packages skipped (non-root or not available)"
 
-echo "[Build] Verifying installed runtimes..."
+# Try apt-get (Render/Ubuntu build environment has root during build)
+if command -v apt-get &>/dev/null; then
+  apt-get update -qq 2>/dev/null || true
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    gfortran \
+    nasm \
+    lua5.4 \
+    tclsh \
+    gawk \
+    sqlite3 \
+    php-cli \
+    r-base \
+    2>/dev/null || echo "[Build] Some packages skipped"
+else
+  echo "[Build] apt-get not available — skipping system package install"
+fi
+
+echo "[Build] Runtime check:"
 for bin in gfortran nasm lua5.4 tclsh awk sqlite3 php Rscript; do
   if command -v "$bin" &>/dev/null; then
-    echo "  [OK] $bin: $(${bin} --version 2>&1 | head -1)"
+    echo "  [OK]   $bin"
   else
-    echo "  [SKIP] $bin: not available (will use cloud fallback)"
+    echo "  [MISS] $bin (cloud fallback will be used)"
   fi
 done
-
-echo "[Build] Installing Node.js dependencies..."
-npm install
 
 echo "[Build] Done."

