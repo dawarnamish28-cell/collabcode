@@ -276,7 +276,8 @@ const LANGUAGES = {
   typescript: {
     name: 'TypeScript', ext: '.ts', fileName: 'main.ts',
     local: true, interpreted: true,
-    runner: 'npx', runArgs: (f) => ['--yes', 'tsx', f],
+    runner: require('path').resolve(__dirname, '../node_modules/.bin/tsx'),
+    runArgs: (f) => [f],
     template: `const message: string = "Hello from TypeScript!";\nconsole.log(message);\n`,
   },
   python: {
@@ -401,7 +402,7 @@ const LANGUAGES = {
 // ─── Parallel Version Detection ────────────────────────────────────────
 const versionChecks = [
   { lang: 'javascript', cmd: 'node', args: ['--version'] },
-  { lang: 'typescript', cmd: 'npx', args: ['--yes', 'tsx', '--version'] },
+  { lang: 'typescript', cmd: require('path').resolve(__dirname, '../node_modules/.bin/tsx'), args: ['--version'] },
   { lang: 'python', cmd: 'python3', args: ['--version'] },
   { lang: 'java', cmd: 'java', args: ['-version'] },
   { lang: 'c', cmd: 'gcc', args: ['--version'] },
