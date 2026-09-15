@@ -454,52 +454,27 @@ export const JUDGE0_LANGUAGE_MAP = {
 };
 
 /**
- * Direct Cloud Execution (Judge0 CE) from client
+ * Direct Cloud Execution — proxied via our server to avoid CORS/rate-limit issues
+ * with Judge0 CE when called directly from the browser.
  */
 export async function runInCloud(code, language, stdin = '') {
   const langKey = (language || '').toLowerCase().trim();
-  let languageId = JUDGE0_LANGUAGE_MAP[langKey];
-  if (!languageId) {
+  if (!JUDGE0_LANGUAGE_MAP[langKey]) {
     throw new Error(`Cloud execution not available for ${language}`);
   }
 
-  let sourceCode = code;
-
-  // Custom bridge for languages requiring Python host environment
-  if (langKey === 'tcl') {
-    languageId = 100; // Python 3
-    sourceCode = [
-      'import sys, tkinter',
-      'tcl = tkinter.Tcl()',
-      'code = ' + JSON.stringify(code),
-      'try:',
-      '    tcl.eval(code)',
-      'except Exception as e:',
-      '    sys.stderr.write(str(e) + "\\n")',
-      '    sys.exit(1)',
-    ].join('\n');
-  } else if (langKey === 'awk') {
-    languageId = 100; // Python 3
-    sourceCode = [
-      'import subprocess, sys',
-      'awk_code = ' + JSON.stringify(code),
-      'stdin_data = ' + JSON.stringify(stdin || ''),
-      'res = subprocess.run(["awk", awk_code], input=stdin_data, capture_output=True, text=True)',
-      'sys.stdout.write(res.stdout)',
-      'sys.stderr.write(res.stderr)',
-      'sys.exit(res.returncode)',
-    ].join('\n');
-  }
+  // Detect server URL (same logic as the main page uses)
+  const SERVER_URL = (typeof window !== 'undefined' && window.__NEXT_DATA__?.runtimeConfig?.serverUrl)
+    || process.env.NEXT_PUBLIC_SERVER_URL
+    || 'https://collabcode-vc6p.onrender.com';
 
   const startTime = performance.now();
-  const res = await fetch('https://ce.judge0.com/submissions?base64_encoded=false&wait=true', {
+
+  // Route through our server proxy — never call Judge0 directly from the browser
+  const res = await fetch(`${SERVER_URL}/api/execute/cloud`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      source_code: sourceCode,
-      language_id: languageId,
-      stdin: stdin || '',
-    }),
+    body: JSON.stringify({ source_code: code, code, language: langKey, stdin: stdin || '' }),
   });
 
   if (!res.ok) {
@@ -509,20 +484,20 @@ export async function runInCloud(code, language, stdin = '') {
 
   const data = await res.json();
   const elapsed = ((performance.now() - startTime) / 1000).toFixed(3);
-  const isSuccess = data.status && data.status.id === 3;
-  const stdout = data.stdout || '';
-  const stderr = (data.stderr || data.compile_output || data.message || '').trim();
+  const isSuccess = data.success;
+  const stdout = data.output || '';
+  const stderr = (data.error || '').trim();
 
   return {
     success: isSuccess,
     output: stdout || (isSuccess && !stderr ? 'Code executed with no output.\n' : ''),
     error: stderr,
-    exitCode: isSuccess ? 0 : (data.exit_code ?? 1),
-    executionTime: `${(data.time ? parseFloat(data.time) : elapsed).toFixed(3)}s`,
-    status: data.status ? data.status.description : (isSuccess ? 'Success' : 'Execution Failed'),
-    engine: 'Cloud (Judge0 Engine)',
+    exitCode: isSuccess ? 0 : (data.exitCode ?? 1),
+    executionTime: data.executionTime || `${elapsed}s`,
+    status: data.status || (isSuccess ? 'Success' : 'Execution Failed'),
+    engine: data.engine || 'Cloud (Judge0 Engine)',
     language,
     version: 'Cloud 2026',
-    phase: data.compile_output ? 'compile' : 'run',
+    phase: data.phase || 'run',
   };
 }

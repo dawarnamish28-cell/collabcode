@@ -1035,6 +1035,37 @@ async function executeCode(req, res) {
   }
 }
 
+// ─── API Handler: Cloud Proxy (for legacy client fallback) ─────────────
+// Browsers cannot call Judge0 directly (CORS/rate-limits/auth). Old client bundles
+// that still have runInCloud() now call this server endpoint instead.
+async function executeCloudProxy(req, res) {
+  const { code, language, stdin = '' } = req.body;
+  if (!code || typeof code !== 'string') return res.status(400).json({ error: true, message: 'Code is required' });
+  if (!language) return res.status(400).json({ error: true, message: 'Language is required' });
+
+  try {
+    const result = await executeCloud(code, language, stdin);
+    if (result) {
+      return res.json({
+        success: result.success,
+        output: result.stdout,
+        error: result.stderr,
+        exitCode: result.exitCode,
+        executionTime: result.executionTime,
+        status: result.status,
+        engine: result.engine || 'cloud (Judge0)',
+        language: LANGUAGES[language]?.name || language,
+        version: 'Cloud 2026',
+        phase: result.phase,
+        parsedErrors: result.parsedErrors || [],
+      });
+    }
+    return res.status(501).json({ error: true, message: `Cloud execution not available for ${language}` });
+  } catch (err) {
+    return res.status(500).json({ error: true, message: `Cloud execution failed: ${err.message}` });
+  }
+}
+
 // ─── API Handler: Supported Languages ──────────────────────────────────
 function getSupportedLanguages(req, res) {
   const languages = Object.entries(LANGUAGES).map(([id, lang]) => ({
@@ -1140,4 +1171,4 @@ function cleanup() {
   }
 }
 
-module.exports = { executeCode, getSupportedLanguages, getExecutionStats, LANGUAGES, cleanup };
+module.exports = { executeCode, executeCloudProxy, getSupportedLanguages, getExecutionStats, LANGUAGES, cleanup };
