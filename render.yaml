@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: collabcode-server
+    env: node
+    region: oregon
+    plan: free
+    rootDir: server
+    buildCommand: chmod +x build.sh && bash build.sh
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
