@@ -696,7 +696,26 @@ export default function RoomPage() {
           return;
         }
 
-        data = await res.json();
+        // v18: Auto-retry once on 501 (cloud warming up after cold start)
+        if (res.status === 501) {
+          setOutput({ type: 'info', content: `Cloud engine warming up for ${state.language}... retrying in 4s` });
+          await new Promise(r => setTimeout(r, 4000));
+          if (!mountedRef.current) return;
+          const retryRes = await fetch(`${SERVER_URL}/api/execute`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-session-id': state.user?.userId || '',
+              'x-tab-id': state.user?.tabId || '',
+            },
+            body: JSON.stringify({ code, language: state.language, stdin }),
+            signal: abortRef.current.signal,
+          });
+          data = await retryRes.json();
+        } else {
+          data = await res.json();
+        }
+
       }
 
       const base = {

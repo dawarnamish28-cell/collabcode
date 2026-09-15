@@ -914,24 +914,36 @@ async function executeCloud(code, language, stdin = '') {
   }
 
   const startTime = process.hrtime.bigint();
-  try {
-    const payload = {
-      source_code: sourceCode,
-      language_id: languageId,
-      stdin: stdin || '',
-    };
 
+  // Helper: single Judge0 attempt
+  async function judge0Attempt() {
     const response = await axios.post(
       'https://ce.judge0.com/submissions?base64_encoded=false&wait=true',
-      payload,
+      {
+        source_code: sourceCode,
+        language_id: languageId,
+        stdin: stdin || '',
+      },
       {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 15000,
+        timeout: 25000, // 25s — enough to survive Render cold-start
       }
     );
+    return response.data;
+  }
+
+  try {
+    let data;
+    try {
+      data = await judge0Attempt();
+    } catch (firstErr) {
+      // One retry after a short delay — handles transient network hiccups
+      console.warn(`[Exec Cloud] First attempt failed for ${language}: ${firstErr.message} — retrying...`);
+      await new Promise(r => setTimeout(r, 2000));
+      data = await judge0Attempt();
+    }
 
     const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
-    const data = response.data;
     const isSuccess = data.status && data.status.id === 3;
     const stdout = data.stdout || '';
     const stderr = (data.stderr || data.compile_output || data.message || '').trim();
@@ -1019,7 +1031,7 @@ async function executeCode(req, res) {
         parsedErrors: result.parsedErrors || [],
       });
     }
-    return res.status(501).json({ error: true, message: `${lang.name} runtime is currently unavailable.` });
+    return res.status(501).json({ error: true, message: `${lang.name} is executing via cloud — server may be warming up. Please wait 10 seconds and try again.` });
   } catch (err) {
     metrics.failedExecutions++;
     // v9: Specific error responses for queue issues
