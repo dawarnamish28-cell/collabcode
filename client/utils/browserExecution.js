@@ -280,26 +280,155 @@ sys.stdin = io.StringIO(_stdin_content)
 }
 
 /**
- * Run SQLite in browser (minimal memory parser/query helper)
+ * Load sql.js WebAssembly for in-browser SQLite execution
  */
-async function runSqliteBrowser(code, stdin, startTime) {
-  const elapsed = ((performance.now() - startTime) / 1000).toFixed(3);
-  return {
-    success: true,
-    output: 'SQL query processed locally.\n',
-    error: '',
-    exitCode: 0,
-    executionTime: `${elapsed}s`,
-    status: 'Success',
-    engine: 'Browser SQLite',
-    language: 'SQLite',
-    version: 'Client',
-    phase: 'run',
-  };
+let sqlJsInstance = null;
+let sqlJsLoadingPromise = null;
+
+async function loadSqlJsEngine() {
+  if (sqlJsInstance) return sqlJsInstance;
+  if (sqlJsLoadingPromise) return sqlJsLoadingPromise;
+
+  sqlJsLoadingPromise = new Promise(async (resolve, reject) => {
+    try {
+      if (typeof window === 'undefined') return reject(new Error('Browser environment required'));
+      if (!window.initSqlJs) {
+        await new Promise((res, rej) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js';
+          script.onload = res;
+          script.onerror = () => rej(new Error('Failed to load sql.js from CDN'));
+          document.head.appendChild(script);
+        });
+      }
+
+      const SQL = await window.initSqlJs({
+        locateFile: (file) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`,
+      });
+
+      sqlJsInstance = SQL;
+      resolve(SQL);
+    } catch (err) {
+      sqlJsLoadingPromise = null;
+      reject(err);
+    }
+  });
+
+  return sqlJsLoadingPromise;
+}
+
+function formatSqlResults(results) {
+  if (!results || results.length === 0) {
+    return 'Query executed successfully. (0 result sets returned)\n';
+  }
+
+  let out = '';
+  for (const res of results) {
+    if (!res.columns || res.columns.length === 0) continue;
+    const cols = res.columns;
+    const rows = res.values || [];
+
+    const colWidths = cols.map((c, i) => {
+      let max = c.length;
+      for (const row of rows) {
+        const valStr = row[i] === null ? 'NULL' : String(row[i]);
+        if (valStr.length > max) max = valStr.length;
+      }
+      return max;
+    });
+
+    const header = cols.map((c, i) => c.padEnd(colWidths[i])).join(' | ');
+    const divider = colWidths.map((w) => '-'.repeat(w)).join('-+-');
+    const rowLines = rows.map((row) =>
+      row.map((val, i) => (val === null ? 'NULL' : String(val)).padEnd(colWidths[i])).join(' | ')
+    );
+
+    out += header + '\n' + divider + '\n' + (rowLines.length > 0 ? rowLines.join('\n') + '\n' : '') + `(${rows.length} row${rows.length === 1 ? '' : 's'})\n\n`;
+  }
+
+  return out.trim() + '\n';
 }
 
 /**
- * Judge0 CE Cloud Execution Engine mapping
+ * Run SQLite in browser with real SQLite WebAssembly (sql.js)
+ */
+async function runSqliteBrowser(code, stdin, startTime) {
+  try {
+    const SQL = await loadSqlJsEngine();
+    const db = new SQL.Database();
+
+    // Clean out sqlite3 CLI dot-commands (.headers on, .mode column, etc.)
+    const lines = (code || '').split('\n');
+    const sqlStatements = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('.')) {
+        if (trimmed.startsWith('.tables')) {
+          sqlStatements.push("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;");
+        } else if (trimmed.startsWith('.schema')) {
+          sqlStatements.push("SELECT sql FROM sqlite_master WHERE type='table';");
+        }
+        continue;
+      }
+      sqlStatements.push(line);
+    }
+
+    const cleanSql = sqlStatements.join('\n').trim();
+    if (!cleanSql) {
+      return {
+        success: true,
+        output: 'No SQL statements executed.\n',
+        error: '',
+        exitCode: 0,
+        executionTime: '0.001s',
+        status: 'Success',
+        engine: 'SQLite WebAssembly (Client-Side)',
+        language: 'SQLite',
+        version: 'SQLite 3 (Wasm)',
+        phase: 'run',
+      };
+    }
+
+    const results = db.exec(cleanSql);
+    const output = formatSqlResults(results);
+    const elapsed = ((performance.now() - startTime) / 1000).toFixed(3);
+
+    return {
+      success: true,
+      output: output || 'Statements executed successfully.\n',
+      error: '',
+      exitCode: 0,
+      executionTime: `${elapsed}s`,
+      status: 'Success',
+      engine: 'SQLite WebAssembly (Client-Side)',
+      language: 'SQLite',
+      version: 'SQLite 3 (Wasm)',
+      phase: 'run',
+    };
+  } catch (err) {
+    // If client-side sql.js fails or CDN blocked, fall back seamlessly to Judge0
+    try {
+      return await runInCloud(code, 'sqlite', stdin);
+    } catch (cloudErr) {
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(3);
+      return {
+        success: false,
+        output: '',
+        error: err.message || String(err),
+        exitCode: 1,
+        executionTime: `${elapsed}s`,
+        status: 'SQL Error',
+        engine: 'SQLite WebAssembly (Client-Side)',
+        language: 'SQLite',
+        version: 'SQLite 3 (Wasm)',
+        phase: 'run',
+      };
+    }
+  }
+}
+
+/**
+ * Judge0 CE Cloud Execution Engine mapping (All 20 languages supported)
  */
 export const JUDGE0_LANGUAGE_MAP = {
   javascript: 102,
@@ -316,8 +445,10 @@ export const JUDGE0_LANGUAGE_MAP = {
   r: 99,
   bash: 46,
   shell: 46,
+  awk: 100,    // Python awk runner
   lua: 64,
   fortran: 59,
+  tcl: 100,    // Python tkinter.Tcl() embedded runner
   sqlite: 82,
   nasm: 45,
 };
@@ -327,9 +458,37 @@ export const JUDGE0_LANGUAGE_MAP = {
  */
 export async function runInCloud(code, language, stdin = '') {
   const langKey = (language || '').toLowerCase().trim();
-  const languageId = JUDGE0_LANGUAGE_MAP[langKey];
+  let languageId = JUDGE0_LANGUAGE_MAP[langKey];
   if (!languageId) {
     throw new Error(`Cloud execution not available for ${language}`);
+  }
+
+  let sourceCode = code;
+
+  // Custom bridge for languages requiring Python host environment
+  if (langKey === 'tcl') {
+    languageId = 100; // Python 3
+    sourceCode = [
+      'import sys, tkinter',
+      'tcl = tkinter.Tcl()',
+      'code = ' + JSON.stringify(code),
+      'try:',
+      '    tcl.eval(code)',
+      'except Exception as e:',
+      '    sys.stderr.write(str(e) + "\\n")',
+      '    sys.exit(1)',
+    ].join('\n');
+  } else if (langKey === 'awk') {
+    languageId = 100; // Python 3
+    sourceCode = [
+      'import subprocess, sys',
+      'awk_code = ' + JSON.stringify(code),
+      'stdin_data = ' + JSON.stringify(stdin || ''),
+      'res = subprocess.run(["awk", awk_code], input=stdin_data, capture_output=True, text=True)',
+      'sys.stdout.write(res.stdout)',
+      'sys.stderr.write(res.stderr)',
+      'sys.exit(res.returncode)',
+    ].join('\n');
   }
 
   const startTime = performance.now();
@@ -337,7 +496,7 @@ export async function runInCloud(code, language, stdin = '') {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      source_code: code,
+      source_code: sourceCode,
       language_id: languageId,
       stdin: stdin || '',
     }),

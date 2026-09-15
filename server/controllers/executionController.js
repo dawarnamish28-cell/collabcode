@@ -872,20 +872,50 @@ const JUDGE0_LANGUAGE_MAP = {
   r: 99,           // R 4.4.1
   bash: 46,        // Bash 5.0.0
   shell: 46,       // Bash 5.0.0
+  awk: 100,        // Python awk runner
   lua: 64,         // Lua 5.3.5
   fortran: 59,     // Fortran GFortran 9.2.0
+  tcl: 100,        // Python tkinter.Tcl() embedded runner
   sqlite: 82,      // SQLite 3.27.2
   nasm: 45,        // Assembly NASM 2.14.02
 };
 
 async function executeCloud(code, language, stdin = '') {
-  const languageId = JUDGE0_LANGUAGE_MAP[language];
+  let languageId = JUDGE0_LANGUAGE_MAP[language];
   if (!languageId) return null;
+
+  let sourceCode = code;
+
+  // Custom runner for languages requiring Python host environment (Tcl, AWK)
+  if (language === 'tcl') {
+    languageId = 100; // Python 3
+    sourceCode = [
+      'import sys, tkinter',
+      'tcl = tkinter.Tcl()',
+      'code = ' + JSON.stringify(code),
+      'try:',
+      '    tcl.eval(code)',
+      'except Exception as e:',
+      '    sys.stderr.write(str(e) + "\\n")',
+      '    sys.exit(1)',
+    ].join('\n');
+  } else if (language === 'awk') {
+    languageId = 100; // Python 3
+    sourceCode = [
+      'import subprocess, sys',
+      'awk_code = ' + JSON.stringify(code),
+      'stdin_data = ' + JSON.stringify(stdin || ''),
+      'res = subprocess.run(["awk", awk_code], input=stdin_data, capture_output=True, text=True)',
+      'sys.stdout.write(res.stdout)',
+      'sys.stderr.write(res.stderr)',
+      'sys.exit(res.returncode)',
+    ].join('\n');
+  }
 
   const startTime = process.hrtime.bigint();
   try {
     const payload = {
-      source_code: code,
+      source_code: sourceCode,
       language_id: languageId,
       stdin: stdin || '',
     };
