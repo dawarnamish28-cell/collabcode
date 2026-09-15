@@ -675,43 +675,28 @@ export default function RoomPage() {
         setOutput({ type: 'info', content: `Running ${state.language} in browser sandbox...` });
         data = await runInBrowser(code, state.language, stdin);
       } else {
-        try {
-          const res = await fetch(`${SERVER_URL}/api/execute`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-session-id': state.user?.userId || '',
-              'x-tab-id': state.user?.tabId || '',
-            },
-            body: JSON.stringify({ code, language: state.language, stdin }),
-            signal: abortRef.current.signal,
-          });
+        const res = await fetch(`${SERVER_URL}/api/execute`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-session-id': state.user?.userId || '',
+            'x-tab-id': state.user?.tabId || '',
+          },
+          body: JSON.stringify({ code, language: state.language, stdin }),
+          signal: abortRef.current.signal,
+        });
 
-          // v15: Graceful rate-limit handling with countdown & notification
-          if (res.status === 429) {
-            const retryAfter = parseInt(res.headers.get('Retry-After') || '60', 10);
-            setRateLimitUntil(Date.now() + retryAfter * 1000);
-            setOutput({ type: 'error', content: '', error: `Rate limit reached. Wait ${retryAfter}s before running again.`, status: 'Rate Limited' });
-            addToast(`Rate limited — retry in ${retryAfter}s`, 'error');
-            addNotification(`Code execution rate limited (${retryAfter}s cooldown)`, 'error', 'system');
-            return;
-          }
-
-          const serverData = await res.json();
-          // If server reported runtime unavailable, fallback to cloud execution
-          if (res.status === 501 || (serverData.error && serverData.message && serverData.message.includes('not available'))) {
-            throw new Error('SERVER_RUNTIME_UNAVAILABLE');
-          }
-          data = serverData;
-        } catch (fetchErr) {
-          if (fetchErr.name === 'AbortError') return;
-          if (JUDGE0_LANGUAGE_MAP[state.language?.toLowerCase()]) {
-            setOutput({ type: 'info', content: `Executing ${state.language} via Cloud Engine...` });
-            data = await runInCloud(code, state.language, stdin);
-          } else {
-            throw fetchErr;
-          }
+        // v15: Graceful rate-limit handling with countdown & notification
+        if (res.status === 429) {
+          const retryAfter = parseInt(res.headers.get('Retry-After') || '60', 10);
+          setRateLimitUntil(Date.now() + retryAfter * 1000);
+          setOutput({ type: 'error', content: '', error: `Rate limit reached. Wait ${retryAfter}s before running again.`, status: 'Rate Limited' });
+          addToast(`Rate limited — retry in ${retryAfter}s`, 'error');
+          addNotification(`Code execution rate limited (${retryAfter}s cooldown)`, 'error', 'system');
+          return;
         }
+
+        data = await res.json();
       }
 
       const base = {
