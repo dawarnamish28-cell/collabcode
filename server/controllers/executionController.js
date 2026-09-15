@@ -976,11 +976,18 @@ async function executeCode(req, res) {
       try {
         result = await enqueueExecution(() => executeLocal(code, language, stdin));
       } catch (localErr) {
-        if (localErr.code === 'ENOENT' || localErr.message?.includes('ENOENT') || localErr.message?.includes('SPAWN_FAILED')) {
-          console.warn(`[Exec] Local runtime binary missing for ${language}, auto-switching to cloud fallback`);
+        // QUEUE errors should propagate immediately — they are not execution errors
+        if (localErr.message === 'QUEUE_FULL' || localErr.message === 'QUEUE_TIMEOUT') {
+          throw localErr;
+        }
+        // For any other local error: try cloud fallback if available, else re-throw
+        const hasCloud = Boolean(JUDGE0_LANGUAGE_MAP[language]);
+        if (hasCloud) {
+          console.warn(`[Exec] Local execution error for ${language} (${localErr.message}), auto-switching to cloud fallback`);
           lang.local = false;
           result = null;
         } else {
+          // No cloud fallback available — propagate the error
           throw localErr;
         }
       }
