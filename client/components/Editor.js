@@ -261,7 +261,7 @@ print()
   fortran: `! Fortran — CollabCode
 program hello
     implicit none
-    integer :: i, sum_val
+    integer :: i, sum_val, a, b, c
     integer, dimension(5) :: nums = (/5, 3, 1, 4, 2/)
     
     print *, "Hello from Fortran!"
@@ -273,7 +273,6 @@ program hello
     print *, "Sum:", sum_val
     
     ! Fibonacci
-    integer :: a, b, c
     a = 0; b = 1
     write(*, '(A)', advance='no') " Fibonacci: "
     do i = 1, 10

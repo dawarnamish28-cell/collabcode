@@ -674,7 +674,12 @@ export default function RoomPage() {
       if (canRunInBrowser(state.language)) {
         setOutput({ type: 'info', content: `Running ${state.language} in browser sandbox...` });
         data = await runInBrowser(code, state.language, stdin);
-      } else {
+        if (data && !data.success && (data.error?.includes('Failed to load') || data.error?.includes('Network') || data.error?.includes('not supported') || data.error?.includes('ReferenceError') || data.error?.includes('CDN'))) {
+          data = null; // trigger server fallback
+        }
+      }
+
+      if (!data) {
         const res = await fetch(`${SERVER_URL}/api/execute`, {
           method: 'POST',
           headers: {

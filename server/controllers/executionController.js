@@ -934,6 +934,8 @@ async function executeCloud(code, language, stdin = '') {
         source_code: encodedSource,
         language_id: languageId,
         stdin: encodedStdin,
+        cpu_time_limit: 10,
+        wall_time_limit: 15,
       },
       {
         headers: { 'Content-Type': 'application/json' },
@@ -976,7 +978,7 @@ async function executeCloud(code, language, stdin = '') {
     const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
     const isSuccess = data?.status && data.status.id === 3;
     const stdout = decodeBase64(data?.stdout);
-    const stderr = (decodeBase64(data?.stderr) || decodeBase64(data?.compile_output) || data?.message || '').trim();
+    const stderr = (decodeBase64(data?.stderr) || decodeBase64(data?.compile_output) || decodeBase64(data?.message) || data?.message || '').trim();
     const exitCode = isSuccess ? 0 : (data?.exit_code !== undefined && data?.exit_code !== null ? data.exit_code : 1);
     const executionTime = `${(data?.time ? parseFloat(data.time) : elapsed / 1000).toFixed(3)}s`;
     const status = data?.status ? data.status.description : (isSuccess ? 'Success' : 'Error');
