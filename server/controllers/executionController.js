@@ -881,6 +881,15 @@ const JUDGE0_LANGUAGE_MAP = {
   nasm: 45,        // Assembly NASM 2.14.02
 };
 
+function decodeBase64(str) {
+  if (!str) return '';
+  try {
+    return Buffer.from(str, 'base64').toString('utf8');
+  } catch {
+    return str;
+  }
+}
+
 async function executeCloud(code, language, stdin = '') {
   let languageId = JUDGE0_LANGUAGE_MAP[language];
   if (!languageId) return null;
@@ -915,18 +924,20 @@ async function executeCloud(code, language, stdin = '') {
 
   const startTime = process.hrtime.bigint();
 
-  // Helper: single Judge0 attempt
+  // Helper: single Judge0 attempt with Base64 encoding
   async function judge0Attempt() {
+    const encodedSource = Buffer.from(sourceCode, 'utf8').toString('base64');
+    const encodedStdin = stdin ? Buffer.from(stdin, 'utf8').toString('base64') : '';
     const response = await axios.post(
-      'https://ce.judge0.com/submissions?base64_encoded=false&wait=true',
+      'https://ce.judge0.com/submissions?base64_encoded=true&wait=true',
       {
-        source_code: sourceCode,
+        source_code: encodedSource,
         language_id: languageId,
-        stdin: stdin || '',
+        stdin: encodedStdin,
       },
       {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 25000, // 25s — enough to survive Render cold-start
+        timeout: 25000, // 25s timeout
       }
     );
     return response.data;
@@ -943,14 +954,33 @@ async function executeCloud(code, language, stdin = '') {
       data = await judge0Attempt();
     }
 
+    // If Judge0 queued or processing asynchronously, poll until done
+    if (data?.token && data?.status && (data.status.id === 1 || data.status.id === 2)) {
+      for (let poll = 0; poll < 10; poll++) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+          const pollRes = await axios.get(
+            `https://ce.judge0.com/submissions/${data.token}?base64_encoded=true`,
+            { timeout: 10000 }
+          );
+          if (pollRes.data?.status && pollRes.data.status.id >= 3) {
+            data = pollRes.data;
+            break;
+          }
+        } catch (pollErr) {
+          console.warn(`[Exec Cloud] Poll attempt ${poll + 1} failed:`, pollErr.message);
+        }
+      }
+    }
+
     const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
-    const isSuccess = data.status && data.status.id === 3;
-    const stdout = data.stdout || '';
-    const stderr = (data.stderr || data.compile_output || data.message || '').trim();
-    const exitCode = isSuccess ? 0 : (data.exit_code !== undefined && data.exit_code !== null ? data.exit_code : 1);
-    const executionTime = `${(data.time ? parseFloat(data.time) : elapsed / 1000).toFixed(3)}s`;
-    const status = data.status ? data.status.description : (isSuccess ? 'Success' : 'Error');
-    const phase = data.compile_output ? 'compile' : 'run';
+    const isSuccess = data?.status && data.status.id === 3;
+    const stdout = decodeBase64(data?.stdout);
+    const stderr = (decodeBase64(data?.stderr) || decodeBase64(data?.compile_output) || data?.message || '').trim();
+    const exitCode = isSuccess ? 0 : (data?.exit_code !== undefined && data?.exit_code !== null ? data.exit_code : 1);
+    const executionTime = `${(data?.time ? parseFloat(data.time) : elapsed / 1000).toFixed(3)}s`;
+    const status = data?.status ? data.status.description : (isSuccess ? 'Success' : 'Error');
+    const phase = data?.compile_output ? 'compile' : 'run';
 
     return {
       success: isSuccess,
@@ -964,8 +994,19 @@ async function executeCloud(code, language, stdin = '') {
       parsedErrors: parseErrors(stderr, language),
     };
   } catch (err) {
-    console.error(`[Exec Cloud Fallback] Error for ${language}:`, err.message);
-    return null;
+    const errorDetails = err.response?.data?.message || err.response?.data?.error || err.message;
+    console.error(`[Exec Cloud Fallback] Error for ${language}:`, errorDetails);
+    return {
+      success: false,
+      stdout: '',
+      stderr: `Cloud execution error: ${errorDetails}`,
+      exitCode: 1,
+      executionTime: '0.000s',
+      status: 'Cloud Error',
+      phase: 'run',
+      engine: 'cloud (Judge0)',
+      parsedErrors: [],
+    };
   }
 }
 
@@ -1031,7 +1072,7 @@ async function executeCode(req, res) {
         parsedErrors: result.parsedErrors || [],
       });
     }
-    return res.status(501).json({ error: true, message: `${lang.name} is executing via cloud — server may be warming up. Please wait 10 seconds and try again.` });
+    return res.status(503).json({ error: true, message: `${lang.name} execution engine is currently unavailable. Please try again.` });
   } catch (err) {
     metrics.failedExecutions++;
     // v9: Specific error responses for queue issues

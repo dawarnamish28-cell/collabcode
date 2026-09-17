@@ -1,8 +1,5 @@
-/**
- * In-Browser Code Execution Engine
- * Compiles and executes code directly on the user's browser/platform.
- * Zero server CPU, instant execution, runs completely client-side.
- */
+import { getServerUrl } from './config';
+
 
 // Cached Pyodide instance for Python
 let pyodideInstance = null;
@@ -463,10 +460,7 @@ export async function runInCloud(code, language, stdin = '') {
     throw new Error(`Cloud execution not available for ${language}`);
   }
 
-  // Detect server URL (same logic as the main page uses)
-  const SERVER_URL = (typeof window !== 'undefined' && window.__NEXT_DATA__?.runtimeConfig?.serverUrl)
-    || process.env.NEXT_PUBLIC_SERVER_URL
-    || 'https://collabcode-vc6p.onrender.com';
+  const SERVER_URL = getServerUrl();
 
   const startTime = performance.now();
 
