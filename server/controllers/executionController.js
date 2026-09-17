@@ -1,48 +1,48 @@
 /**
- * Execution Controller v9.0 — Hardened for Continuous Heavy Use
+ * Execution Controller v10.0 — High-Concurrency Rework
  *
- * v9.0 hardening:
- *  - Zombie process reaper: tracks all spawned child PIDs, periodic sweep kills orphans
- *  - Sandbox leak protection: startup sweep cleans stale /tmp/collabcode-* dirs
- *  - Queue max length cap (prevents unbounded memory growth under load)
- *  - Queue timeout: tasks waiting too long get rejected with 503
- *  - Compilation cache TTL: entries older than 1 hour are auto-evicted
- *  - postProcessOutput applied to ALL languages (compiled + interpreted)
- *  - Process-exit cleanup: cache purge + sandbox sweep on SIGTERM/SIGINT
- *  - Proper child process tree kill (process group kill)
- *  - stdin pipe error handling (prevents EPIPE crash)
- *  - Code size validation tightened
- *  - Execution timeout includes compile time budget
- *
- * ALL 20 LANGUAGES run locally with full stdin/input() support.
+ * Architecture:
+ *  - Adaptive Multi-Lane Concurrency Queue (Fast Lane vs Strict Compile Lane)
+ *  - Dynamic Backpressure (Event-Loop Lag & Memory Headroom Shedding)
+ *  - Client Disconnect & AbortSignal Propagation (req.on('close'))
+ *  - In-Flight Singleflight Deduplication & 3-Tier Caching (Result + Binary)
+ *  - Process Group Tree-Kill (process.kill(-pid, 'SIGKILL')) & Zombie Reaper
+ *  - Streaming Output Buffering with Instant 64KB Truncation & Pipe Teardown
+ *  - Resilient Judge0 Cloud Runner with Circuit Breaker & Adaptive Polling
+ *  - Full Support for All 20 Languages with Local + Cloud Fallback
  *
  * made with <3 by Namish
  */
 
-const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const crypto = require('crypto');
-const axios = require('axios');
+const { adaptiveQueue } = require('./executionEngine/queue');
+const {
+  runSandboxedCommand,
+  createSandbox,
+  cleanupSandbox,
+  cleanupAllProcesses,
+  getActiveProcessCount,
+  getActiveSandboxCount,
+  TIMEOUT_MS,
+  MAX_OUTPUT,
+} = require('./executionEngine/processManager');
+const {
+  resultCache,
+  singleflight,
+  compilationCache,
+  CACHE_DIR_PREFIX,
+} = require('./executionEngine/cache');
+const {
+  executeCloud,
+  JUDGE0_LANGUAGE_MAP,
+  circuitBreaker,
+} = require('./executionEngine/cloudRunner');
 
-// ─── Configuration ─────────────────────────────────────────────────────
-const TIMEOUT_MS = parseInt(process.env.EXEC_TIMEOUT_MS) || 10000;
-const MAX_OUTPUT = parseInt(process.env.EXEC_MAX_OUTPUT) || 65536;
+// ─── Constants ─────────────────────────────────────────────────────────
 const COMPILE_TIMEOUT_MS = 20000;
-const MAX_CONCURRENT = parseInt(process.env.EXEC_MAX_CONCURRENT) || 8;
-const CACHE_MAX_SIZE = parseInt(process.env.EXEC_CACHE_SIZE) || 50;
-const CACHE_TTL_MS = parseInt(process.env.EXEC_CACHE_TTL_MS) || 3600000; // 1 hour
-const MAX_MEMORY_MB = parseInt(process.env.EXEC_MAX_MEMORY_MB) || 256;
-const MAX_FILE_SIZE_MB = parseInt(process.env.EXEC_MAX_FILE_MB) || 10;
-const MAX_PROCESSES = parseInt(process.env.EXEC_MAX_PROCS) || 32;
-const MAX_QUEUE_LENGTH = parseInt(process.env.EXEC_MAX_QUEUE) || 50;
-const QUEUE_WAIT_TIMEOUT_MS = parseInt(process.env.EXEC_QUEUE_TIMEOUT_MS) || 30000;
 const MAX_CODE_SIZE = 100000; // 100KB
-const ZOMBIE_REAPER_INTERVAL = 30000; // 30s
-const CACHE_GC_INTERVAL = 300000; // 5 min
-const SANDBOX_PREFIX = 'collabcode-';
-const CACHE_PREFIX = 'collabcache-';
 
 // ─── Execution Metrics ─────────────────────────────────────────────────
 const metrics = {
@@ -52,161 +52,11 @@ const metrics = {
   cacheHits: 0,
   cacheMisses: 0,
   timeouts: 0,
-  queueRejections: 0,
-  queueTimeouts: 0,
-  zombiesReaped: 0,
-  sandboxesLeaked: 0,
+  abortedExecutions: 0,
   averageExecutionMs: 0,
   languageCounts: {},
   startedAt: Date.now(),
 };
-
-// ─── Active Process Tracking (for zombie reaper) ───────────────────────
-const activeChildren = new Set(); // PIDs of spawned children
-
-// ─── Compilation Cache (LRU + TTL) ────────────────────────────────────
-class CompilationCache {
-  constructor(maxSize = CACHE_MAX_SIZE) {
-    this.maxSize = maxSize;
-    this.cache = new Map();
-  }
-
-  _hash(code, language) {
-    return crypto.createHash('sha256').update(`${language}:${code}`).digest('hex').slice(0, 16);
-  }
-
-  get(code, language) {
-    const key = this._hash(code, language);
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-    // v9: TTL check
-    if (Date.now() - entry.createdAt > CACHE_TTL_MS) {
-      this._evictEntry(key, entry);
-      return null;
-    }
-    // Check if compiled binary still exists
-    if (!fs.existsSync(entry.binaryPath)) {
-      this.cache.delete(key);
-      return null;
-    }
-    // LRU: move to end
-    this.cache.delete(key);
-    this.cache.set(key, { ...entry, lastAccess: Date.now() });
-    return entry;
-  }
-
-  set(code, language, binaryPath, sandboxDir) {
-    const key = this._hash(code, language);
-    // Evict oldest if at capacity
-    if (this.cache.size >= this.maxSize) {
-      const oldestKey = this.cache.keys().next().value;
-      const oldest = this.cache.get(oldestKey);
-      this._evictEntry(oldestKey, oldest);
-    }
-    this.cache.set(key, {
-      binaryPath, sandboxDir, language,
-      lastAccess: Date.now(), createdAt: Date.now(),
-    });
-  }
-
-  _evictEntry(key, entry) {
-    if (entry?.sandboxDir) {
-      try { fs.rmSync(entry.sandboxDir, { recursive: true, force: true }); } catch (e) {}
-    }
-    this.cache.delete(key);
-  }
-
-  // v9: Periodic TTL sweep
-  gcExpired() {
-    const now = Date.now();
-    let evicted = 0;
-    for (const [key, entry] of this.cache) {
-      if (now - entry.createdAt > CACHE_TTL_MS) {
-        this._evictEntry(key, entry);
-        evicted++;
-      }
-    }
-    return evicted;
-  }
-
-  clear() {
-    for (const [key, entry] of this.cache) {
-      this._evictEntry(key, entry);
-    }
-  }
-
-  get size() { return this.cache.size; }
-}
-
-const compileCache = new CompilationCache();
-
-// ─── Concurrent Execution Queue (bounded) ──────────────────────────────
-let activeWorkers = 0;
-const executionQueue = [];
-
-function enqueueExecution(fn) {
-  return new Promise((resolve, reject) => {
-    // v9: Queue length cap
-    if (executionQueue.length >= MAX_QUEUE_LENGTH) {
-      metrics.queueRejections++;
-      reject(new Error('QUEUE_FULL'));
-      return;
-    }
-
-    const task = { fn, resolve, reject, enqueuedAt: Date.now() };
-
-    if (activeWorkers < MAX_CONCURRENT) {
-      runTask(task);
-    } else {
-      // v9: Queue wait timeout
-      task.timeoutId = setTimeout(() => {
-        const idx = executionQueue.indexOf(task);
-        if (idx !== -1) {
-          executionQueue.splice(idx, 1);
-          metrics.queueTimeouts++;
-          task.reject(new Error('QUEUE_TIMEOUT'));
-        }
-      }, QUEUE_WAIT_TIMEOUT_MS);
-
-      executionQueue.push(task);
-    }
-  });
-}
-
-async function runTask(task) {
-  // v9: Clear queue timeout if it was set
-  if (task.timeoutId) {
-    clearTimeout(task.timeoutId);
-    task.timeoutId = null;
-  }
-
-  activeWorkers++;
-  try {
-    const result = await task.fn();
-    task.resolve(result);
-  } catch (err) {
-    task.reject(err);
-  } finally {
-    activeWorkers--;
-    // Drain next from queue
-    while (executionQueue.length > 0 && activeWorkers < MAX_CONCURRENT) {
-      const next = executionQueue.shift();
-      // v9: Check if task was already timed out
-      if (next.timeoutId) {
-        clearTimeout(next.timeoutId);
-        next.timeoutId = null;
-      }
-      // Check if too old
-      if (Date.now() - next.enqueuedAt > QUEUE_WAIT_TIMEOUT_MS) {
-        metrics.queueTimeouts++;
-        next.reject(new Error('QUEUE_TIMEOUT'));
-        continue;
-      }
-      runTask(next);
-      break;
-    }
-  }
-}
 
 // ─── Security: Code Sanitization ───────────────────────────────────────
 const DANGEROUS_PATTERNS = {
@@ -399,7 +249,7 @@ const LANGUAGES = {
   },
 };
 
-// ─── Parallel Version Detection ────────────────────────────────────────
+// ─── Parallel Local Version Detection ──────────────────────────────────
 const versionChecks = [
   { lang: 'javascript', cmd: 'node', args: ['--version'] },
   { lang: 'typescript', cmd: require('path').resolve(__dirname, '../node_modules/.bin/tsx'), args: ['--version'] },
@@ -430,11 +280,17 @@ const versionChecks = [
       try {
         let result;
         if (check.lang === 'tcl') {
-          result = await runCommand('tclsh', [], { timeout: 5000, stdin: 'puts [info patchlevel]\nexit\n' });
+          result = await runSandboxedCommand('tclsh', [], { timeout: 5000, stdin: 'puts [info patchlevel]\nexit\n' });
         } else {
-          result = await runCommand(check.cmd, check.args, { timeout: 15000 });
+          result = await runSandboxedCommand(check.cmd, check.args, { timeout: 10000 });
+        }
+        if (result.exitCode !== 0) {
+          throw new Error(result.stderr || `Exit code ${result.exitCode}`);
         }
         const out = (result.stdout + result.stderr).trim().split('\n')[0];
+        if (out.includes('Unable to locate') || out.includes('not found') || out.includes('No Java')) {
+          throw new Error('Runtime stub');
+        }
         if (LANGUAGES[check.lang]) LANGUAGES[check.lang].version = out;
         return { lang: check.lang, version: out };
       } catch (e) {
@@ -443,167 +299,10 @@ const versionChecks = [
       }
     })
   );
-  const available = results.filter(r => r.status === 'fulfilled').length;
+  const available = results.filter((r) => r.status === 'fulfilled').length;
   const elapsed = Date.now() - startTime;
-  console.log(`[Exec] v9.0 — Detected ${available}/${versionChecks.length} languages in ${elapsed}ms (parallel)`);
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled') {
-      console.log(`[Exec]   ${versionChecks[i].lang}: ${r.value.version}`);
-    } else {
-      console.warn(`[Exec]   ${versionChecks[i].lang}: not available`);
-    }
-  });
+  console.log(`[Exec v10.0] Detected ${available}/${versionChecks.length} local languages in ${elapsed}ms`);
 })();
-
-// ─── Core: Run Command with Resource Limits ────────────────────────────
-function runCommand(cmd, args, opts = {}) {
-  return new Promise((resolve, reject) => {
-    const timeout = opts.timeout || TIMEOUT_MS;
-    const cwd = opts.cwd || process.cwd();
-    const stdin = opts.stdin || '';
-    let stdout = '', stderr = '', timedOut = false, settled = false;
-
-    const env = {
-      ...process.env, PATH: process.env.PATH,
-      HOME: opts.home || cwd, TMPDIR: cwd,
-      NODE_OPTIONS: '--max-old-space-size=128',
-      PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1',
-      PYTHONIOENCODING: 'utf-8', PYTHONHASHSEED: '0',
-    };
-    if (cmd === 'go') {
-      env.GOPATH = path.join(cwd, '.gopath');
-      env.GOCACHE = path.join(cwd, '.gocache');
-    }
-
-    const spawnOpts = {
-      cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env,
-      timeout: timeout + 2000,
-      // v9: Spawn in new process group for reliable tree-kill
-      detached: false,
-    };
-
-    let child;
-    try {
-      child = spawn(cmd, args, spawnOpts);
-    } catch (spawnErr) {
-      return reject(new Error(`SPAWN_FAILED: ${spawnErr.message}`));
-    }
-
-    // v9: Track child PID
-    if (child.pid) activeChildren.add(child.pid);
-
-    const killTimer = setTimeout(() => {
-      timedOut = true;
-      safeKill(child);
-    }, timeout);
-
-    child.stdout.on('data', (data) => {
-      stdout += data.toString();
-      if (stdout.length > MAX_OUTPUT) {
-        stdout = stdout.substring(0, MAX_OUTPUT) + '\n... [output truncated at 64KB]';
-        safeKill(child);
-      }
-    });
-
-    child.stderr.on('data', (data) => {
-      stderr += data.toString();
-      if (stderr.length > MAX_OUTPUT) {
-        stderr = stderr.substring(0, MAX_OUTPUT) + '\n... [stderr truncated]';
-      }
-    });
-
-    // v9: Handle stdin pipe errors gracefully
-    if (stdin) {
-      child.stdin.on('error', () => {}); // Ignore EPIPE
-      child.stdin.write(stdin);
-    }
-    child.stdin.end();
-
-    child.on('close', (code, signal) => {
-      clearTimeout(killTimer);
-      if (child.pid) activeChildren.delete(child.pid);
-      if (settled) return;
-      settled = true;
-      if (timedOut) reject(new Error('TIME_LIMIT_EXCEEDED'));
-      else resolve({ stdout, stderr, exitCode: code, signal });
-    });
-
-    child.on('error', (err) => {
-      clearTimeout(killTimer);
-      if (child.pid) activeChildren.delete(child.pid);
-      if (settled) return;
-      settled = true;
-      reject(err);
-    });
-  });
-}
-
-// v9: Safe kill helper — tries SIGTERM then SIGKILL
-function safeKill(child) {
-  try {
-    child.kill('SIGTERM');
-    setTimeout(() => {
-      try { child.kill('SIGKILL'); } catch (e) {}
-    }, 2000);
-  } catch (e) {}
-}
-
-function createSandbox() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), SANDBOX_PREFIX));
-}
-
-function cleanupSandbox(dir) {
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
-}
-
-// ─── Cached Compilation ────────────────────────────────────────────────
-async function compileCached(code, language, sandbox, lang) {
-  const cached = compileCache.get(code, language);
-  if (cached) {
-    metrics.cacheHits++;
-    const binaryName = path.basename(cached.binaryPath);
-    const destPath = path.join(sandbox, binaryName);
-    try {
-      fs.copyFileSync(cached.binaryPath, destPath);
-      if (language !== 'java') fs.chmodSync(destPath, 0o755);
-      return { cached: true, binaryPath: destPath };
-    } catch (e) {
-      // Cache entry invalid, fall through to recompile
-    }
-  }
-  metrics.cacheMisses++;
-
-  // Compile normally
-  if (language === 'nasm') {
-    const asmResult = await runCommand('nasm', ['-f', 'elf64', '-o', 'main.o', lang.fileName], { cwd: sandbox, timeout: COMPILE_TIMEOUT_MS });
-    if (asmResult.exitCode !== 0) return { error: true, result: asmResult, phase: 'compile', status: 'Assembly Error' };
-    const linkResult = await runCommand('ld', ['-o', 'main', 'main.o'], { cwd: sandbox, timeout: COMPILE_TIMEOUT_MS });
-    if (linkResult.exitCode !== 0) return { error: true, result: linkResult, phase: 'compile', status: 'Link Error' };
-  } else {
-    const compileArgs = lang.compile.args(lang.fileName);
-    const compileResult = await runCommand(lang.compile.cmd, compileArgs, { cwd: sandbox, timeout: COMPILE_TIMEOUT_MS });
-    if (compileResult.exitCode !== 0) return { error: true, result: compileResult, phase: 'compile', status: 'Compilation Error' };
-  }
-
-  // Store compiled binary in a persistent cache directory
-  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), CACHE_PREFIX));
-  const binaryName = language === 'java' ? 'Main.class' : 'main';
-  const srcBinary = path.join(sandbox, binaryName);
-  const cacheBinary = path.join(cacheDir, binaryName);
-  try {
-    if (fs.existsSync(srcBinary)) {
-      fs.copyFileSync(srcBinary, cacheBinary);
-      if (language !== 'java') fs.chmodSync(cacheBinary, 0o755);
-      compileCache.set(code, language, cacheBinary, cacheDir);
-    }
-  } catch (e) {
-    cleanupSandbox(cacheDir);
-  }
-
-  return { cached: false, binaryPath: path.join(sandbox, binaryName) };
-}
 
 // ─── Output Post-Processing ────────────────────────────────────────────
 function postProcessOutput(result, language) {
@@ -623,16 +322,10 @@ function postProcessOutput(result, language) {
       .trim();
   }
 
-  if ((language === 'c' || language === 'cpp') && result.stderr) {
-    result.stderr = result.stderr.replace(/\/tmp\/collabcode-[a-zA-Z0-9]+\//g, '');
-  }
-
-  // v9: Generic cleanup for all languages — strip sandbox paths
   if (result.stderr) {
     result.stderr = result.stderr.replace(/\/tmp\/collabcode-[a-zA-Z0-9]+\//g, '');
   }
 
-  // v12: Parse structured error info (line numbers, error types)
   if (result.stderr && result.exitCode !== 0) {
     result.parsedErrors = parseErrors(result.stderr, language);
   }
@@ -640,18 +333,16 @@ function postProcessOutput(result, language) {
   return result;
 }
 
-// ─── v12: Structured Error Parsing ────────────────────────────────────
+// ─── Structured Error Parsing ──────────────────────────────────────────
 function parseErrors(stderr, language) {
   const errors = [];
-  const lines = stderr.split('\n');
+  const lines = (stderr || '').split('\n');
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     let parsed = null;
 
-    // Python: File "main.py", line 5, in <module>
-    //   or: SyntaxError: invalid syntax
-    //   or: Traceback (most recent call last):
+    // Python
     if (language === 'python') {
       const fileMatch = line.match(/\s*File\s+"([^"]*)",\s*line\s*(\d+)(?:,\s*in\s+(.+))?/);
       if (fileMatch) {
@@ -668,9 +359,7 @@ function parseErrors(stderr, language) {
       }
     }
 
-    // JavaScript/TypeScript: main.js:5
-    //   or: SyntaxError: Unexpected token
-    //   or: ReferenceError: x is not defined
+    // JS / TS
     if (language === 'javascript' || language === 'typescript') {
       const fileMatch = line.match(/^\s*([\w.-]+\.[jt]sx?):(\d+)(?::(\d+))?/);
       if (fileMatch) {
@@ -687,8 +376,7 @@ function parseErrors(stderr, language) {
       }
     }
 
-    // C/C++: main.c:5:10: error: expected ';'
-    //   or: main.cpp:12:3: warning: unused variable
+    // C / C++
     if (language === 'c' || language === 'cpp') {
       const gccMatch = line.match(/^([\w.-]+\.\w+):(\d+):(\d+):\s*(error|warning|note|fatal error):\s*(.+)/);
       if (gccMatch) {
@@ -696,7 +384,7 @@ function parseErrors(stderr, language) {
       }
     }
 
-    // Java: Main.java:5: error: ';' expected
+    // Java
     if (language === 'java') {
       const javaMatch = line.match(/^([\w.-]+\.java):(\d+):\s*(error|warning):\s*(.+)/);
       if (javaMatch) {
@@ -704,7 +392,7 @@ function parseErrors(stderr, language) {
       }
     }
 
-    // Go: ./main.go:12:5: undefined: x
+    // Go
     if (language === 'go') {
       const goMatch = line.match(/^\.?\/?(\w[\w.-]*\.go):(\d+):(\d+):\s*(.+)/);
       if (goMatch) {
@@ -712,8 +400,7 @@ function parseErrors(stderr, language) {
       }
     }
 
-    // Rust: error[E0425]: cannot find value `x` in this scope
-    //  --> main.rs:5:5
+    // Rust
     if (language === 'rust') {
       const rustErrMatch = line.match(/^(error|warning)\[?(E\d+)?\]?:\s*(.+)/);
       if (rustErrMatch) {
@@ -728,7 +415,7 @@ function parseErrors(stderr, language) {
       }
     }
 
-    // Ruby: main.rb:5:in `<main>': undefined local variable
+    // Ruby
     if (language === 'ruby') {
       const rubyMatch = line.match(/^([\w.-]+\.rb):(\d+)(?::in\s*`(.+)')?:\s*(.+)/);
       if (rubyMatch) {
@@ -736,7 +423,7 @@ function parseErrors(stderr, language) {
       }
     }
 
-    // PHP: Fatal error: ... in main.php on line 5
+    // PHP
     if (language === 'php') {
       const phpMatch = line.match(/(Fatal error|Parse error|Warning|Notice):\s*(.+?)\s+in\s+([\w.-]+\.php)\s+on\s+line\s+(\d+)/);
       if (phpMatch) {
@@ -752,17 +439,23 @@ function parseErrors(stderr, language) {
   return errors;
 }
 
-// ─── Execute Locally ───────────────────────────────────────────────────
-async function executeLocal(code, language, stdin) {
+// ─── Execute Locally with Sandbox & Caching ────────────────────────────
+async function executeLocal(code, language, stdin, abortSignal) {
   const lang = LANGUAGES[language];
   if (!lang || !lang.local) return null;
 
   const sanitizeErrors = sanitizeCode(code, language);
   if (sanitizeErrors.length > 0) {
     return {
-      success: false, stdout: '', stderr: sanitizeErrors.join('\n'),
-      exitCode: -1, executionTime: '0.000s',
-      status: 'Security Violation', phase: 'sanitize',
+      success: false,
+      stdout: '',
+      stderr: sanitizeErrors.join('\n'),
+      exitCode: -1,
+      executionTime: '0.000s',
+      status: 'Security Violation',
+      phase: 'sanitize',
+      engine: 'local',
+      parsedErrors: [],
     };
   }
 
@@ -773,82 +466,217 @@ async function executeLocal(code, language, stdin) {
   try {
     fs.writeFileSync(filePath, code, 'utf-8');
 
-    // Special handling for SQLite
+    // SQLite in-memory execution
     if (language === 'sqlite') {
       try {
-        const result = await runCommand('sqlite3', [':memory:'], { cwd: sandbox, timeout: TIMEOUT_MS, stdin: code + '\n.quit\n' });
+        const result = await runSandboxedCommand('sqlite3', [':memory:'], {
+          cwd: sandbox,
+          timeout: TIMEOUT_MS,
+          stdin: code + '\n.quit\n',
+          abortSignal,
+        });
         const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
         const processed = postProcessOutput(result, language);
         return {
-          success: processed.exitCode === 0, stdout: processed.stdout, stderr: processed.stderr,
-          exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
-          status: processed.exitCode === 0 ? 'Success' : `Exit Code: ${processed.exitCode}`, phase: 'run',
+          success: processed.exitCode === 0,
+          stdout: processed.stdout,
+          stderr: processed.stderr,
+          exitCode: processed.exitCode,
+          executionTime: `${(elapsed / 1000).toFixed(3)}s`,
+          status: processed.exitCode === 0 ? 'Success' : `Exit Code: ${processed.exitCode}`,
+          phase: 'run',
+          engine: 'local',
           parsedErrors: processed.parsedErrors || [],
         };
       } catch (runErr) {
         const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
         if (runErr.message === 'TIME_LIMIT_EXCEEDED') {
-          return { success: false, stdout: '', stderr: 'Time Limit Exceeded', exitCode: -1, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: 'Time Limit Exceeded', phase: 'run' };
+          return {
+            success: false,
+            stdout: '',
+            stderr: `Time Limit Exceeded (${TIMEOUT_MS / 1000}s limit)`,
+            exitCode: -1,
+            executionTime: `${(elapsed / 1000).toFixed(3)}s`,
+            status: 'Time Limit Exceeded',
+            phase: 'run',
+            engine: 'local',
+            parsedErrors: [],
+          };
         }
         throw runErr;
       }
     }
 
-    // Compiled languages — use cache
+    // Compiled languages
     if (!lang.interpreted && lang.compile) {
-      try {
-        const compileResult = await compileCached(code, language, sandbox, lang);
+      // 1. Check compilation cache
+      const cached = compilationCache.get(language, code);
+      let binaryPath;
+      let wasCached = false;
+
+      if (cached) {
+        wasCached = true;
+        metrics.cacheHits++;
+        const binName = path.basename(cached.binaryPath);
+        const destPath = path.join(sandbox, binName);
+        try {
+          fs.copyFileSync(cached.binaryPath, destPath);
+          if (language !== 'java') fs.chmodSync(destPath, 0o755);
+          binaryPath = destPath;
+        } catch (e) {
+          wasCached = false;
+        }
+      }
+
+      // 2. Compile if not cached (using singleflight compile lock)
+      if (!wasCached) {
+        metrics.cacheMisses++;
+        const compileResult = await compilationCache.lockAndCompile(language, code, async () => {
+          if (language === 'nasm') {
+            const asm = await runSandboxedCommand('nasm', ['-f', 'elf64', '-o', 'main.o', lang.fileName], {
+              cwd: sandbox,
+              timeout: COMPILE_TIMEOUT_MS,
+              abortSignal,
+            });
+            if (asm.exitCode !== 0) return { error: true, result: asm, phase: 'compile', status: 'Assembly Error' };
+
+            const link = await runSandboxedCommand('ld', ['-o', 'main', 'main.o'], {
+              cwd: sandbox,
+              timeout: COMPILE_TIMEOUT_MS,
+              abortSignal,
+            });
+            if (link.exitCode !== 0) return { error: true, result: link, phase: 'compile', status: 'Link Error' };
+          } else {
+            const compileArgs = lang.compile.args(lang.fileName);
+            const comp = await runSandboxedCommand(lang.compile.cmd, compileArgs, {
+              cwd: sandbox,
+              timeout: COMPILE_TIMEOUT_MS,
+              abortSignal,
+            });
+            if (comp.exitCode !== 0) return { error: true, result: comp, phase: 'compile', status: 'Compilation Error' };
+          }
+
+          // Cache the compiled binary in a persistent directory
+          const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), CACHE_DIR_PREFIX));
+          const binaryName = language === 'java' ? 'Main.class' : 'main';
+          const srcBin = path.join(sandbox, binaryName);
+          const cacheBin = path.join(cacheDir, binaryName);
+          try {
+            if (fs.existsSync(srcBin)) {
+              fs.copyFileSync(srcBin, cacheBin);
+              if (language !== 'java') fs.chmodSync(cacheBin, 0o755);
+              compilationCache.set(language, code, cacheBin, cacheDir);
+            }
+          } catch (e) {
+            cleanupSandbox(cacheDir);
+          }
+
+          return { error: false, binaryPath: path.join(sandbox, binaryName) };
+        });
+
         if (compileResult.error) {
+          const rawStderr = compileResult.result?.stderr || '';
+          if (rawStderr.includes('Unable to locate') || rawStderr.includes('not found') || compileResult.result?.exitCode === 127) {
+            console.warn(`[Exec v10.0] Compiler missing for ${language}, auto-switching to cloud`);
+            lang.local = false;
+            return null;
+          }
           const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
           const processed = postProcessOutput(compileResult.result, language);
           return {
-            success: false, stdout: processed.stdout, stderr: processed.stderr,
-            exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
-            status: compileResult.status, phase: compileResult.phase,
+            success: false,
+            stdout: processed.stdout,
+            stderr: processed.stderr,
+            exitCode: processed.exitCode,
+            executionTime: `${(elapsed / 1000).toFixed(3)}s`,
+            status: compileResult.status,
+            phase: compileResult.phase,
+            engine: 'local',
             parsedErrors: processed.parsedErrors || [],
           };
         }
+        binaryPath = compileResult.binaryPath;
+      }
 
-        // Run compiled binary
+      // 3. Execute compiled binary
+      try {
         const runCmd = lang.runCompiled || lang.runner;
         const runArgs = lang.runCompiled ? [] : lang.runArgs();
-        const runResult = await runCommand(runCmd, runArgs, { cwd: sandbox, timeout: TIMEOUT_MS, stdin });
+        const runResult = await runSandboxedCommand(runCmd, runArgs, {
+          cwd: sandbox,
+          timeout: TIMEOUT_MS,
+          stdin,
+          abortSignal,
+        });
         const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
         const processed = postProcessOutput(runResult, language);
         return {
-          success: processed.exitCode === 0, stdout: processed.stdout, stderr: processed.stderr,
-          exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
+          success: processed.exitCode === 0,
+          stdout: processed.stdout,
+          stderr: processed.stderr,
+          exitCode: processed.exitCode,
+          executionTime: `${(elapsed / 1000).toFixed(3)}s`,
           status: processed.exitCode === 0 ? 'Success' : `Exit Code: ${processed.exitCode}`,
-          phase: 'run', cached: compileResult.cached,
+          phase: 'run',
+          engine: 'local',
+          cached: wasCached,
           parsedErrors: processed.parsedErrors || [],
         };
       } catch (err) {
         const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
         if (err.message === 'TIME_LIMIT_EXCEEDED') {
-          metrics.timeouts++;
-          return { success: false, stdout: '', stderr: `Time Limit Exceeded (${TIMEOUT_MS / 1000}s limit)`, exitCode: -1, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: 'Time Limit Exceeded', phase: 'run' };
+          return {
+            success: false,
+            stdout: '',
+            stderr: `Time Limit Exceeded (${TIMEOUT_MS / 1000}s limit)`,
+            exitCode: -1,
+            executionTime: `${(elapsed / 1000).toFixed(3)}s`,
+            status: 'Time Limit Exceeded',
+            phase: 'run',
+            engine: 'local',
+            parsedErrors: [],
+          };
         }
         throw err;
       }
     }
 
     // Interpreted languages
-    const runArgs = lang.runArgs(lang.fileName);
     try {
-      const result = await runCommand(lang.runner, runArgs, { cwd: sandbox, timeout: TIMEOUT_MS, stdin });
+      const runArgs = lang.runArgs(lang.fileName);
+      const result = await runSandboxedCommand(lang.runner, runArgs, {
+        cwd: sandbox,
+        timeout: TIMEOUT_MS,
+        stdin,
+        abortSignal,
+      });
       const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
       const processed = postProcessOutput(result, language);
       return {
-        success: processed.exitCode === 0, stdout: processed.stdout, stderr: processed.stderr,
-        exitCode: processed.exitCode, executionTime: `${(elapsed / 1000).toFixed(3)}s`,
-        status: processed.exitCode === 0 ? 'Success' : `Exit Code: ${processed.exitCode}`, phase: 'run',
+        success: processed.exitCode === 0,
+        stdout: processed.stdout,
+        stderr: processed.stderr,
+        exitCode: processed.exitCode,
+        executionTime: `${(elapsed / 1000).toFixed(3)}s`,
+        status: processed.exitCode === 0 ? 'Success' : `Exit Code: ${processed.exitCode}`,
+        phase: 'run',
+        engine: 'local',
         parsedErrors: processed.parsedErrors || [],
       };
     } catch (runErr) {
       const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
       if (runErr.message === 'TIME_LIMIT_EXCEEDED') {
-        metrics.timeouts++;
-        return { success: false, stdout: '', stderr: `Time Limit Exceeded (${TIMEOUT_MS / 1000}s limit)`, exitCode: -1, executionTime: `${(elapsed / 1000).toFixed(3)}s`, status: 'Time Limit Exceeded', phase: 'run' };
+        return {
+          success: false,
+          stdout: '',
+          stderr: `Time Limit Exceeded (${TIMEOUT_MS / 1000}s limit)`,
+          exitCode: -1,
+          executionTime: `${(elapsed / 1000).toFixed(3)}s`,
+          status: 'Time Limit Exceeded',
+          phase: 'run',
+          engine: 'local',
+          parsedErrors: [],
+        };
       }
       throw runErr;
     }
@@ -857,249 +685,178 @@ async function executeLocal(code, language, stdin) {
   }
 }
 
-// ─── Judge0 Cloud Execution Fallback ──────────────────────────────────
-const JUDGE0_LANGUAGE_MAP = {
-  javascript: 102, // Node.js 22.08.0
-  typescript: 101, // TypeScript 5.6.2
-  python: 100,     // Python 3.12.5
-  java: 91,        // Java JDK 17.0.6
-  c: 103,          // C GCC 14.1.0
-  cpp: 105,        // C++ GCC 14.1.0
-  go: 107,         // Go 1.23.5
-  rust: 108,       // Rust 1.85.0
-  ruby: 72,        // Ruby 2.7.0
-  php: 98,         // PHP 8.3.11
-  perl: 85,        // Perl 5.28.1
-  r: 99,           // R 4.4.1
-  bash: 46,        // Bash 5.0.0
-  shell: 46,       // Bash 5.0.0
-  awk: 100,        // Python awk runner
-  lua: 64,         // Lua 5.3.5
-  fortran: 59,     // Fortran GFortran 9.2.0
-  tcl: 100,        // Python tkinter.Tcl() embedded runner
-  sqlite: 82,      // SQLite 3.27.2
-  nasm: 45,        // Assembly NASM 2.14.02
-};
-
-function decodeBase64(str) {
-  if (!str) return '';
-  try {
-    return Buffer.from(str, 'base64').toString('utf8');
-  } catch {
-    return str;
-  }
-}
-
-async function executeCloud(code, language, stdin = '') {
-  let languageId = JUDGE0_LANGUAGE_MAP[language];
-  if (!languageId) return null;
-
-  let sourceCode = code;
-
-  // Custom runner for languages requiring Python host environment (Tcl, AWK)
-  if (language === 'tcl') {
-    languageId = 100; // Python 3
-    sourceCode = [
-      'import sys, tkinter',
-      'tcl = tkinter.Tcl()',
-      'code = ' + JSON.stringify(code),
-      'try:',
-      '    tcl.eval(code)',
-      'except Exception as e:',
-      '    sys.stderr.write(str(e) + "\\n")',
-      '    sys.exit(1)',
-    ].join('\n');
-  } else if (language === 'awk') {
-    languageId = 100; // Python 3
-    sourceCode = [
-      'import subprocess, sys',
-      'awk_code = ' + JSON.stringify(code),
-      'stdin_data = ' + JSON.stringify(stdin || ''),
-      'res = subprocess.run(["awk", awk_code], input=stdin_data, capture_output=True, text=True)',
-      'sys.stdout.write(res.stdout)',
-      'sys.stderr.write(res.stderr)',
-      'sys.exit(res.returncode)',
-    ].join('\n');
-  }
-
-  const startTime = process.hrtime.bigint();
-
-  // Helper: single Judge0 attempt with Base64 encoding
-  async function judge0Attempt() {
-    const encodedSource = Buffer.from(sourceCode, 'utf8').toString('base64');
-    const encodedStdin = stdin ? Buffer.from(stdin, 'utf8').toString('base64') : '';
-    const response = await axios.post(
-      'https://ce.judge0.com/submissions?base64_encoded=true&wait=true',
-      {
-        source_code: encodedSource,
-        language_id: languageId,
-        stdin: encodedStdin,
-        cpu_time_limit: 10,
-        wall_time_limit: 15,
-      },
-      {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 25000, // 25s timeout
-      }
-    );
-    return response.data;
-  }
-
-  try {
-    let data;
-    try {
-      data = await judge0Attempt();
-    } catch (firstErr) {
-      // One retry after a short delay — handles transient network hiccups
-      console.warn(`[Exec Cloud] First attempt failed for ${language}: ${firstErr.message} — retrying...`);
-      await new Promise(r => setTimeout(r, 2000));
-      data = await judge0Attempt();
-    }
-
-    // If Judge0 queued or processing asynchronously, poll until done
-    if (data?.token && data?.status && (data.status.id === 1 || data.status.id === 2)) {
-      for (let poll = 0; poll < 10; poll++) {
-        await new Promise(r => setTimeout(r, 1000));
-        try {
-          const pollRes = await axios.get(
-            `https://ce.judge0.com/submissions/${data.token}?base64_encoded=true`,
-            { timeout: 10000 }
-          );
-          if (pollRes.data?.status && pollRes.data.status.id >= 3) {
-            data = pollRes.data;
-            break;
-          }
-        } catch (pollErr) {
-          console.warn(`[Exec Cloud] Poll attempt ${poll + 1} failed:`, pollErr.message);
-        }
-      }
-    }
-
-    const elapsed = Number(process.hrtime.bigint() - startTime) / 1e6;
-    const isSuccess = data?.status && data.status.id === 3;
-    const stdout = decodeBase64(data?.stdout);
-    const stderr = (decodeBase64(data?.stderr) || decodeBase64(data?.compile_output) || decodeBase64(data?.message) || data?.message || '').trim();
-    const exitCode = isSuccess ? 0 : (data?.exit_code !== undefined && data?.exit_code !== null ? data.exit_code : 1);
-    const executionTime = `${(data?.time ? parseFloat(data.time) : elapsed / 1000).toFixed(3)}s`;
-    const status = data?.status ? data.status.description : (isSuccess ? 'Success' : 'Error');
-    const phase = data?.compile_output ? 'compile' : 'run';
-
-    return {
-      success: isSuccess,
-      stdout,
-      stderr,
-      exitCode,
-      executionTime,
-      status,
-      phase,
-      engine: 'cloud (Judge0)',
-      parsedErrors: parseErrors(stderr, language),
-    };
-  } catch (err) {
-    const errorDetails = err.response?.data?.message || err.response?.data?.error || err.message;
-    console.error(`[Exec Cloud Fallback] Error for ${language}:`, errorDetails);
-    return {
-      success: false,
-      stdout: '',
-      stderr: `Cloud execution error: ${errorDetails}`,
-      exitCode: 1,
-      executionTime: '0.000s',
-      status: 'Cloud Error',
-      phase: 'run',
-      engine: 'cloud (Judge0)',
-      parsedErrors: [],
-    };
-  }
-}
-
 // ─── API Handler: Execute Code ─────────────────────────────────────────
 async function executeCode(req, res) {
   const { code, language, stdin = '' } = req.body;
-  if (!code || typeof code !== 'string') return res.status(400).json({ error: true, message: 'Code is required' });
-  if (!language || !LANGUAGES[language]) return res.status(400).json({ error: true, message: `Unsupported language. Supported: ${Object.keys(LANGUAGES).join(', ')}` });
-  if (code.length > MAX_CODE_SIZE) return res.status(400).json({ error: true, message: `Code exceeds ${Math.round(MAX_CODE_SIZE / 1000)}KB limit` });
+
+  if (!code || typeof code !== 'string') {
+    return res.status(400).json({ error: true, message: 'Code is required' });
+  }
+  if (!language || !LANGUAGES[language]) {
+    return res.status(400).json({ error: true, message: `Unsupported language. Supported: ${Object.keys(LANGUAGES).join(', ')}` });
+  }
+  if (code.length > MAX_CODE_SIZE) {
+    return res.status(400).json({ error: true, message: `Code exceeds ${Math.round(MAX_CODE_SIZE / 1000)}KB limit` });
+  }
 
   const lang = LANGUAGES[language];
   metrics.totalExecutions++;
   metrics.languageCounts[language] = (metrics.languageCounts[language] || 0) + 1;
-  console.log(`[Exec] ${language} | ${code.length} chars | stdin=${stdin.length} chars | queue=${executionQueue.length} active=${activeWorkers}`);
+
+  // 1. Check Result Cache for instant response (<1ms)
+  const cachedResult = resultCache.get(language, code, stdin);
+  if (cachedResult) {
+    metrics.cacheHits++;
+    metrics.successfulExecutions++;
+    return res.json({
+      ...cachedResult,
+      cached: true,
+      language: lang.name,
+      version: lang.version || 'Cached',
+    });
+  }
+
+  // 2. Setup Client Abort Controller
+  const abortController = new AbortController();
+  req.on('close', () => {
+    if (!res.writableEnded) {
+      abortController.abort();
+    }
+  });
 
   try {
-    let result = null;
+    // 3. In-flight Singleflight Deduplication & Adaptive Queue
+    const result = await singleflight.do(language, code, stdin, async () => {
+      const isCompiled = !lang.interpreted;
+      const lane = isCompiled ? 'compile' : 'fast';
 
-    // 1. Try local execution if the runtime is marked local
-    if (lang.local !== false) {
-      try {
-        result = await enqueueExecution(() => executeLocal(code, language, stdin));
-      } catch (localErr) {
-        // QUEUE errors should propagate immediately — they are not execution errors
-        if (localErr.message === 'QUEUE_FULL' || localErr.message === 'QUEUE_TIMEOUT') {
-          throw localErr;
-        }
-        // For any other local error: try cloud fallback if available, else re-throw
-        const hasCloud = Boolean(JUDGE0_LANGUAGE_MAP[language]);
-        if (hasCloud) {
-          console.warn(`[Exec] Local execution error for ${language} (${localErr.message}), auto-switching to cloud fallback`);
-          lang.local = false;
-          result = null;
-        } else {
-          // No cloud fallback available — propagate the error
-          throw localErr;
-        }
-      }
-    }
+      return await adaptiveQueue.enqueue({
+        lane,
+        abortSignal: abortController.signal,
+        executeFn: async () => {
+          let executionResult = null;
 
-    // 2. Seamless Cloud Execution Fallback if local is missing or returned null
-    if (!result && JUDGE0_LANGUAGE_MAP[language]) {
-      console.log(`[Exec] Executing ${language} via Cloud Execution Engine...`);
-      result = await executeCloud(code, language, stdin);
-    }
+          // Attempt local execution first if runtime is available
+          if (lang.local !== false) {
+            try {
+              executionResult = await executeLocal(code, language, stdin, abortController.signal);
+              if (executionResult && !executionResult.success && JUDGE0_LANGUAGE_MAP[language]) {
+                const errStr = (executionResult.stderr || executionResult.stdout || '');
+                if (errStr.includes('Unable to locate') || errStr.includes('not found') || errStr.includes('No Java')) {
+                  console.warn(`[Exec v10.0] Runtime not properly installed for ${language}, auto-switching to cloud`);
+                  lang.local = false;
+                  executionResult = null;
+                }
+              }
+            } catch (localErr) {
+              if (localErr.message === 'REQUEST_ABORTED') throw localErr;
+
+              // If local failed due to missing binary on host, mark local=false and fallback to cloud
+              if (JUDGE0_LANGUAGE_MAP[language]) {
+                console.warn(`[Exec v10.0] Local runner error for ${language} (${localErr.message}), switching to cloud`);
+                lang.local = false;
+                executionResult = null;
+              } else {
+                throw localErr;
+              }
+            }
+          }
+
+          // Fallback to Cloud Engine (Judge0)
+          if (!executionResult && JUDGE0_LANGUAGE_MAP[language]) {
+            executionResult = await executeCloud(code, language, stdin, abortController.signal);
+          }
+
+          return executionResult;
+        },
+      });
+    });
 
     if (result) {
-      if (result.success) metrics.successfulExecutions++;
-      else metrics.failedExecutions++;
+      if (result.success) {
+        metrics.successfulExecutions++;
+      } else {
+        metrics.failedExecutions++;
+      }
 
       const execMs = parseFloat(result.executionTime) * 1000;
       if (!isNaN(execMs)) {
         metrics.averageExecutionMs = (metrics.averageExecutionMs * (metrics.totalExecutions - 1) + execMs) / metrics.totalExecutions;
       }
 
-      return res.json({
-        success: result.success, output: result.stdout, error: result.stderr,
-        exitCode: result.exitCode, executionTime: result.executionTime,
-        status: result.status, engine: result.engine || 'local', language: lang.name,
+      const responsePayload = {
+        success: result.success,
+        output: result.stdout,
+        error: result.stderr,
+        exitCode: result.exitCode,
+        executionTime: result.executionTime,
+        status: result.status,
+        engine: result.engine || 'local',
+        language: lang.name,
         version: lang.version || (result.engine?.includes('cloud') ? 'Cloud 2026' : null),
         phase: result.phase,
         cached: result.cached || false,
         parsedErrors: result.parsedErrors || [],
+      };
+
+      if (result.success) {
+        resultCache.set(language, code, stdin, responsePayload);
+      }
+
+      return res.json(responsePayload);
+    }
+
+    return res.status(503).json({
+      error: true,
+      message: `${lang.name} execution engine is currently unavailable. Please try again.`,
+    });
+  } catch (err) {
+    if (err.message === 'REQUEST_ABORTED') {
+      metrics.abortedExecutions++;
+      return; // Request was aborted by client, no need to send response
+    }
+
+    metrics.failedExecutions++;
+
+    if (err.message === 'SERVER_SATURATED') {
+      return res.status(503).json({
+        error: true,
+        message: 'Server is currently under heavy load. Please retry in a few seconds.',
       });
     }
-    return res.status(503).json({ error: true, message: `${lang.name} execution engine is currently unavailable. Please try again.` });
-  } catch (err) {
-    metrics.failedExecutions++;
-    // v9: Specific error responses for queue issues
+
     if (err.message === 'QUEUE_FULL') {
-      metrics.queueRejections++;
-      return res.status(503).json({ error: true, message: 'Server is busy. Too many code executions queued. Please try again in a moment.' });
+      return res.status(503).json({
+        error: true,
+        message: 'Execution queue is full. Server is busy, please try again shortly.',
+      });
     }
+
     if (err.message === 'QUEUE_TIMEOUT') {
-      return res.status(503).json({ error: true, message: 'Execution request timed out in queue. Server is under heavy load.' });
+      return res.status(503).json({
+        error: true,
+        message: 'Execution request timed out in queue. Please retry.',
+      });
     }
-    console.error(`[Exec] Error:`, err.message);
+
+    console.error(`[Exec Error] ${language}:`, err.message);
     return res.status(500).json({ error: true, message: `Execution failed: ${err.message}` });
   }
 }
 
-// ─── API Handler: Cloud Proxy (for legacy client fallback) ─────────────
-// Browsers cannot call Judge0 directly (CORS/rate-limits/auth). Old client bundles
-// that still have runInCloud() now call this server endpoint instead.
+// ─── API Handler: Cloud Proxy ──────────────────────────────────────────
 async function executeCloudProxy(req, res) {
   const { code, language, stdin = '' } = req.body;
   if (!code || typeof code !== 'string') return res.status(400).json({ error: true, message: 'Code is required' });
   if (!language) return res.status(400).json({ error: true, message: 'Language is required' });
 
+  const abortController = new AbortController();
+  req.on('close', () => {
+    if (!res.writableEnded) abortController.abort();
+  });
+
   try {
-    const result = await executeCloud(code, language, stdin);
+    const result = await executeCloud(code, language, stdin, abortController.signal);
     if (result) {
       return res.json({
         success: result.success,
@@ -1124,106 +881,54 @@ async function executeCloudProxy(req, res) {
 // ─── API Handler: Supported Languages ──────────────────────────────────
 function getSupportedLanguages(req, res) {
   const languages = Object.entries(LANGUAGES).map(([id, lang]) => ({
-    id, name: lang.name, version: lang.version || (JUDGE0_LANGUAGE_MAP[id] ? 'Cloud' : null),
+    id,
+    name: lang.name,
+    version: lang.version || (JUDGE0_LANGUAGE_MAP[id] ? 'Cloud' : null),
     localExecution: lang.local,
     cloudExecution: Boolean(JUDGE0_LANGUAGE_MAP[id]),
     available: Boolean(lang.local || JUDGE0_LANGUAGE_MAP[id]),
-    ext: lang.ext, template: lang.template,
+    ext: lang.ext,
+    template: lang.template,
   }));
   res.json({ languages });
 }
 
 // ─── API Handler: Execution Stats ──────────────────────────────────────
 function getExecutionStats(req, res) {
+  const queueStats = adaptiveQueue.getStats();
   res.json({
     ...metrics,
-    cacheSize: compileCache.size,
-    cacheMaxSize: CACHE_MAX_SIZE,
-    cacheTtlMs: CACHE_TTL_MS,
-    activeWorkers,
-    queueLength: executionQueue.length,
-    maxQueueLength: MAX_QUEUE_LENGTH,
-    maxConcurrent: MAX_CONCURRENT,
-    activeChildren: activeChildren.size,
+    queue: queueStats,
+    cache: {
+      resultCacheSize: resultCache.size,
+      compilationCacheSize: compilationCache.size,
+      singleflightActive: singleflight.activeCount,
+    },
+    circuitBreaker: {
+      state: circuitBreaker.state,
+      failures: circuitBreaker.failures,
+      isOpen: circuitBreaker.isOpen,
+    },
+    activeProcesses: getActiveProcessCount(),
+    activeSandboxes: getActiveSandboxCount(),
     uptime: Math.floor((Date.now() - metrics.startedAt) / 1000),
     memoryUsage: process.memoryUsage(),
   });
 }
 
-// ─── v9: Zombie Process Reaper ─────────────────────────────────────────
-const zombieReaperInterval = setInterval(() => {
-  // Kill any tracked child that's been alive too long
-  // (normally children clean up via close event, this is a safety net)
-  for (const pid of activeChildren) {
-    try {
-      // Check if process still exists
-      process.kill(pid, 0);
-      // If it does and it's tracked, try to kill it
-      // (it should have been cleaned up by the timeout already)
-      process.kill(pid, 'SIGKILL');
-      activeChildren.delete(pid);
-      metrics.zombiesReaped++;
-    } catch (e) {
-      // Process doesn't exist — clean up tracking
-      activeChildren.delete(pid);
-    }
-  }
-}, ZOMBIE_REAPER_INTERVAL);
-
-// v9: Cache TTL GC
-const cacheGcInterval = setInterval(() => {
-  const evicted = compileCache.gcExpired();
-  if (evicted > 0) {
-    console.log(`[Exec] Cache GC: evicted ${evicted} expired entries (${compileCache.size} remaining)`);
-  }
-}, CACHE_GC_INTERVAL);
-
-// v9: Startup sandbox sweep — clean stale sandbox dirs from previous crashes
-(function startupSweep() {
-  try {
-    const tmpDir = os.tmpdir();
-    const entries = fs.readdirSync(tmpDir);
-    let cleaned = 0;
-    const now = Date.now();
-    for (const entry of entries) {
-      if (entry.startsWith(SANDBOX_PREFIX) || entry.startsWith(CACHE_PREFIX)) {
-        const fullPath = path.join(tmpDir, entry);
-        try {
-          const stat = fs.statSync(fullPath);
-          // Clean if older than 10 minutes
-          if (now - stat.mtimeMs > 600000) {
-            fs.rmSync(fullPath, { recursive: true, force: true });
-            cleaned++;
-          }
-        } catch (e) {}
-      }
-    }
-    if (cleaned > 0) {
-      metrics.sandboxesLeaked = cleaned;
-      console.log(`[Exec] Startup sweep: cleaned ${cleaned} stale sandbox directories`);
-    }
-  } catch (e) {
-    console.warn('[Exec] Startup sweep failed:', e.message);
-  }
-})();
-
-// ─── v9: Cleanup on exit ───────────────────────────────────────────────
+// ─── Cleanup on Server Shutdown ────────────────────────────────────────
 function cleanup() {
-  clearInterval(zombieReaperInterval);
-  clearInterval(cacheGcInterval);
-  // Kill all active children
-  for (const pid of activeChildren) {
-    try { process.kill(pid, 'SIGKILL'); } catch (e) {}
-  }
-  activeChildren.clear();
-  // Clear compilation cache and temp dirs
-  compileCache.clear();
-  // Reject queued tasks
-  while (executionQueue.length > 0) {
-    const task = executionQueue.shift();
-    if (task.timeoutId) clearTimeout(task.timeoutId);
-    task.reject(new Error('Server shutting down'));
-  }
+  adaptiveQueue.clear();
+  cleanupAllProcesses();
+  resultCache.clear();
+  compilationCache.clear();
 }
 
-module.exports = { executeCode, executeCloudProxy, getSupportedLanguages, getExecutionStats, LANGUAGES, cleanup };
+module.exports = {
+  executeCode,
+  executeCloudProxy,
+  getSupportedLanguages,
+  getExecutionStats,
+  LANGUAGES,
+  cleanup,
+};
