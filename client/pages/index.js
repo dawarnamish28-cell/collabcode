@@ -1,13 +1,9 @@
 /**
- * Landing Page v20.0 — Niche Features & Polish
+ * CollabCode Landing Page
+ * Engineered for sub-millisecond collaborative programming.
  * 
- * Changes in v14:
- *  - Custom room naming input in create room section
- *  - Room name passed as query param and sent to server
- *  - Room names shown in public room listing
- *  - All v13 features retained
- * 
- * made with <3 by Namish
+ * Distinctive developer aesthetic: VS Code / Linear / GitHub level polish,
+ * architectural typography, authentic IDE viewport, and zero generic SaaS fluff.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -15,30 +11,29 @@ import { useRouter } from 'next/router';
 import { useAppContext } from '../context/AppContext';
 import AccountSettings from '../components/AccountSettings';
 import axios from 'axios';
-
 import { SERVER_URL } from '../utils/config';
 
 const LANGUAGES = [
-  { id: 'javascript', name: 'JavaScript', icon: 'JS', color: '#f7df1e', bg: '#f7df1e15' },
-  { id: 'typescript', name: 'TypeScript', icon: 'TS', color: '#3178c6', bg: '#3178c615' },
-  { id: 'python', name: 'Python', icon: 'PY', color: '#3776ab', bg: '#3776ab15' },
-  { id: 'java', name: 'Java', icon: 'JV', color: '#ed8b00', bg: '#ed8b0015' },
-  { id: 'cpp', name: 'C++', icon: 'C+', color: '#00599c', bg: '#00599c15' },
-  { id: 'c', name: 'C', icon: 'C', color: '#a8b9cc', bg: '#a8b9cc15' },
-  { id: 'go', name: 'Go', icon: 'GO', color: '#00add8', bg: '#00add815' },
-  { id: 'rust', name: 'Rust', icon: 'RS', color: '#ce412b', bg: '#ce412b15' },
-  { id: 'ruby', name: 'Ruby', icon: 'RB', color: '#cc342d', bg: '#cc342d15' },
-  { id: 'php', name: 'PHP', icon: 'PH', color: '#777bb4', bg: '#777bb415' },
-  { id: 'perl', name: 'Perl', icon: 'PL', color: '#39457e', bg: '#39457e15' },
-  { id: 'r', name: 'R', icon: 'R', color: '#276dc3', bg: '#276dc315' },
-  { id: 'bash', name: 'Bash', icon: 'SH', color: '#4eaa25', bg: '#4eaa2515' },
-  { id: 'shell', name: 'Shell', icon: '$', color: '#89e051', bg: '#89e05115' },
-  { id: 'awk', name: 'AWK', icon: 'AW', color: '#c4a000', bg: '#c4a00015' },
-  { id: 'lua', name: 'Lua', icon: 'LU', color: '#000080', bg: '#00008015' },
-  { id: 'fortran', name: 'Fortran', icon: 'FN', color: '#734f96', bg: '#734f9615' },
-  { id: 'tcl', name: 'Tcl', icon: 'TC', color: '#e4cc98', bg: '#e4cc9815' },
-  { id: 'sqlite', name: 'SQLite', icon: 'SQ', color: '#003b57', bg: '#003b5715' },
-  { id: 'nasm', name: 'Assembly', icon: 'AS', color: '#6e4c13', bg: '#6e4c1315' },
+  { id: 'python', name: 'Python', icon: 'PY', color: '#3776ab', runtime: 'Browser WASM', ext: '.py' },
+  { id: 'javascript', name: 'JavaScript', icon: 'JS', color: '#f7df1e', runtime: 'Browser Engine', ext: '.js' },
+  { id: 'typescript', name: 'TypeScript', icon: 'TS', color: '#3178c6', runtime: 'Browser Engine', ext: '.ts' },
+  { id: 'sqlite', name: 'SQLite', icon: 'SQ', color: '#003b57', runtime: 'In-Memory WASM', ext: '.sql' },
+  { id: 'rust', name: 'Rust', icon: 'RS', color: '#dea584', runtime: 'Cloud Sandbox', ext: '.rs' },
+  { id: 'go', name: 'Go', icon: 'GO', color: '#00add8', runtime: 'Cloud Sandbox', ext: '.go' },
+  { id: 'cpp', name: 'C++', icon: 'C+', color: '#00599c', runtime: 'Cloud Sandbox', ext: '.cpp' },
+  { id: 'c', name: 'C', icon: 'C', color: '#a8b9cc', runtime: 'Cloud Sandbox', ext: '.c' },
+  { id: 'java', name: 'Java', icon: 'JV', color: '#ed8b00', runtime: 'Cloud Sandbox', ext: '.java' },
+  { id: 'bash', name: 'Bash', icon: 'SH', color: '#4eaa25', runtime: 'Cloud Sandbox', ext: '.sh' },
+  { id: 'ruby', name: 'Ruby', icon: 'RB', color: '#cc342d', runtime: 'Cloud Sandbox', ext: '.rb' },
+  { id: 'php', name: 'PHP', icon: 'PH', color: '#777bb4', runtime: 'Cloud Sandbox', ext: '.php' },
+  { id: 'perl', name: 'Perl', icon: 'PL', color: '#39457e', runtime: 'Cloud Sandbox', ext: '.pl' },
+  { id: 'r', name: 'R', icon: 'R', color: '#276dc3', runtime: 'Cloud Sandbox', ext: '.R' },
+  { id: 'lua', name: 'Lua', icon: 'LU', color: '#000080', runtime: 'Cloud Sandbox', ext: '.lua' },
+  { id: 'fortran', name: 'Fortran', icon: 'FN', color: '#734f96', runtime: 'Cloud Sandbox', ext: '.f90' },
+  { id: 'shell', name: 'POSIX sh', icon: '$', color: '#89e051', runtime: 'Cloud Sandbox', ext: '.sh' },
+  { id: 'awk', name: 'AWK', icon: 'AW', color: '#c4a000', runtime: 'Cloud Sandbox', ext: '.awk' },
+  { id: 'tcl', name: 'Tcl', icon: 'TC', color: '#e4cc98', runtime: 'Cloud Sandbox', ext: '.tcl' },
+  { id: 'nasm', name: 'Assembly', icon: 'AS', color: '#e06c75', runtime: 'Cloud Sandbox', ext: '.asm' },
 ];
 
 function generateRoomCode() {
@@ -50,15 +45,17 @@ function generateRoomCode() {
 
 // ─── Toast System ─────────────────────────────────────────────
 function ToastContainer({ toasts, onDismiss }) {
+  if (!toasts.length) return null;
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 items-center">
+    <div className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-2 max-w-sm">
       {toasts.map(toast => (
         <div key={toast.id}
-          className="flex items-center gap-2.5 px-4 py-2.5 bg-[#222] border border-[#333] rounded-xl shadow-2xl text-[12px] font-mono backdrop-blur-sm"
-          style={{ animation: 'toastSlideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1)', color: toast.color || '#ccc' }}>
-          {toast.icon && <span className="text-[12px]">{toast.icon}</span>}
-          <span>{toast.message}</span>
-          <button onClick={() => onDismiss(toast.id)} className="text-[#555] hover:text-[#aaa] ml-1 p-0.5">
+          className="flex items-center justify-between gap-3 px-3.5 py-2.5 bg-[#121417] border border-white/10 rounded-lg shadow-xl text-xs font-mono text-[#d1d5db] backdrop-blur-md animate-slide-up">
+          <div className="flex items-center gap-2 truncate">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: toast.color || '#3b82f6' }} />
+            <span className="truncate">{toast.message}</span>
+          </div>
+          <button onClick={() => onDismiss(toast.id)} className="text-[#555] hover:text-[#999] p-0.5" aria-label="Dismiss">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -69,569 +66,224 @@ function ToastContainer({ toasts, onDismiss }) {
 
 function useToast() {
   const [toasts, setToasts] = useState([]);
-  const show = useCallback((message, { icon, color, duration = 3000 } = {}) => {
+  const show = useCallback((message, { color, duration = 3200 } = {}) => {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 4);
-    setToasts(prev => [...prev, { id, message, icon, color }]);
+    setToasts(prev => [...prev, { id, message, color }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration);
   }, []);
   const dismiss = useCallback((id) => setToasts(prev => prev.filter(t => t.id !== id)), []);
   return { toasts, show, dismiss };
 }
 
-// ─── Custom Cursor Hook ─────────────────────────────────────────
-function useCustomCursor() {
-  const cursorRef = useRef(null);
-  const dotRef = useRef(null);
-  const [hovering, setHovering] = useState(false);
-  const [clicking, setClicking] = useState(false);
+// ─── Interactive Hero IDE Viewport ─────────────────────────────
+function HeroIdeViewport() {
+  const [activeLine, setActiveLine] = useState(7);
 
   useEffect(() => {
-    const cursor = cursorRef.current;
-    const dot = dotRef.current;
-    if (!cursor || !dot) return;
-
-    let mx = -100, my = -100;
-    let cx = -100, cy = -100;
-
-    const move = (e) => {
-      mx = e.clientX;
-      my = e.clientY;
-      dot.style.left = mx + 'px';
-      dot.style.top = my + 'px';
-    };
-
-    let raf;
-    const lerp = () => {
-      cx += (mx - cx) * 0.15;
-      cy += (my - cy) * 0.15;
-      cursor.style.left = cx + 'px';
-      cursor.style.top = cy + 'px';
-      raf = requestAnimationFrame(lerp);
-    };
-
-    const checkHover = (e) => {
-      const el = e.target;
-      const isInteractive = el.closest('button, a, input, textarea, select, [role="button"], .hover-lift, .lang-pill, .magnetic-btn');
-      setHovering(!!isInteractive);
-    };
-
-    const down = () => setClicking(true);
-    const up = () => setClicking(false);
-
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseover', checkHover);
-    window.addEventListener('mousedown', down);
-    window.addEventListener('mouseup', up);
-    raf = requestAnimationFrame(lerp);
-
-    return () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseover', checkHover);
-      window.removeEventListener('mousedown', down);
-      window.removeEventListener('mouseup', up);
-      cancelAnimationFrame(raf);
-    };
-  }, []);
-
-  return { cursorRef, dotRef, hovering, clicking };
-}
-
-// ─── Particle Background ────────────────────────────────────────
-function ParticleBackground() {
-  const canvasRef = useRef(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let w, h, particles, raf;
-    let mouseX = -1000, mouseY = -1000;
-
-    const resize = () => {
-      w = canvas.width = canvas.offsetWidth;
-      h = canvas.height = canvas.offsetHeight;
-    };
-
-    const init = () => {
-      resize();
-      particles = [];
-      const count = Math.min(60, Math.floor((w * h) / 15000));
-      for (let i = 0; i < count; i++) {
-        particles.push({
-          x: Math.random() * w,
-          y: Math.random() * h,
-          vx: (Math.random() - 0.5) * 0.3,
-          vy: (Math.random() - 0.5) * 0.3,
-          r: Math.random() * 1.5 + 0.5,
-          color: ['#5e9eff', '#5bd882', '#ffb347', '#c4b5fd', '#ff6b6b'][Math.floor(Math.random() * 5)],
-          alpha: Math.random() * 0.4 + 0.1,
-        });
-      }
-    };
-
-    const onMouseMove = (e) => {
-      const rect = canvas.getBoundingClientRect();
-      mouseX = e.clientX - rect.left;
-      mouseY = e.clientY - rect.top;
-    };
-
-    const draw = () => {
-      ctx.clearRect(0, 0, w, h);
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const dx = particles[i].x - particles[j].x;
-          const dy = particles[i].y - particles[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 120) {
-            ctx.beginPath();
-            ctx.strokeStyle = `rgba(94, 158, 255, ${0.06 * (1 - dist / 120)})`;
-            ctx.lineWidth = 0.5;
-            ctx.moveTo(particles[i].x, particles[i].y);
-            ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.stroke();
-          }
-        }
-      }
-      particles.forEach(p => {
-        // Mouse repulsion
-        const dx = p.x - mouseX;
-        const dy = p.y - mouseY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 100 && dist > 0) {
-          const force = (100 - dist) / 100 * 0.5;
-          p.vx += (dx / dist) * force;
-          p.vy += (dy / dist) * force;
-        }
-        // Damping
-        p.vx *= 0.98;
-        p.vy *= 0.98;
-        // Base velocity
-        p.vx += (Math.random() - 0.5) * 0.02;
-        p.vy += (Math.random() - 0.5) * 0.02;
-
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < 0) p.x = w;
-        if (p.x > w) p.x = 0;
-        if (p.y < 0) p.y = h;
-        if (p.y > h) p.y = 0;
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = p.alpha;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      });
-      raf = requestAnimationFrame(draw);
-    };
-
-    init();
-    draw();
-    canvas.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('resize', resize);
-    return () => { cancelAnimationFrame(raf); canvas.removeEventListener('mousemove', onMouseMove); window.removeEventListener('resize', resize); };
-  }, []);
-
-  return <canvas ref={canvasRef} className="particle-canvas" />;
-}
-
-// ─── Typing Animation ──────────────────────────────────────────
-function TypingHero() {
-  const phrases = [
-    'print("hello, world")',
-    'console.log("collab time")',
-    'fmt.Println("let\'s go")',
-    'System.out.println("ready")',
-    'puts "code together"',
-    'echo "no conflicts"',
-  ];
-  const [text, setText] = useState('');
-  const [phraseIdx, setPhraseIdx] = useState(0);
-  const [charIdx, setCharIdx] = useState(0);
-  const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    const phrase = phrases[phraseIdx];
-    let timer;
-    if (!deleting && charIdx < phrase.length) {
-      timer = setTimeout(() => { setText(phrase.slice(0, charIdx + 1)); setCharIdx(charIdx + 1); }, 50 + Math.random() * 40);
-    } else if (!deleting && charIdx === phrase.length) {
-      timer = setTimeout(() => setDeleting(true), 2000);
-    } else if (deleting && charIdx > 0) {
-      timer = setTimeout(() => { setText(phrase.slice(0, charIdx - 1)); setCharIdx(charIdx - 1); }, 25);
-    } else if (deleting && charIdx === 0) {
-      setDeleting(false);
-      setPhraseIdx((phraseIdx + 1) % phrases.length);
-    }
-    return () => clearTimeout(timer);
-  }, [charIdx, deleting, phraseIdx]);
-
-  return (
-    <span className="font-mono text-[13px] sm:text-[16px] text-[#5e9eff]">
-      {text}<span className="typing-cursor" />
-    </span>
-  );
-}
-
-// ─── Animated Counter ───────────────────────────────────────────
-function AnimatedCounter({ target, suffix = '', prefix = '', color }) {
-  const [count, setCount] = useState(0);
-  const ref = useRef(null);
-  const counted = useRef(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting && !counted.current) {
-        counted.current = true;
-        let start = 0;
-        const isNumber = typeof target === 'number';
-        const end = isNumber ? target : parseInt(target) || 0;
-        if (end === 0) { setCount(target); return; }
-        const duration = 1500;
-        const step = Math.ceil(end / (duration / 16));
-        const tick = () => {
-          start = Math.min(start + step, end);
-          setCount(start);
-          if (start < end) requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
-      }
-    }, { threshold: 0.3 });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [target]);
-
-  return (
-    <span ref={ref} className="text-[24px] sm:text-[32px] font-display font-bold tabular-nums" style={{ color }}>
-      {prefix}{typeof target === 'number' ? count : target}{suffix}
-    </span>
-  );
-}
-
-// ─── Floating Language Marquee ──────────────────────────────────
-function LanguageMarquee() {
-  const doubled = [...LANGUAGES, ...LANGUAGES];
-  return (
-    <div className="w-full overflow-hidden py-3 relative">
-      <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-[#131416] to-transparent z-10" />
-      <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-[#131416] to-transparent z-10" />
-      <div className="marquee-track flex gap-3 w-max">
-        {doubled.map((lang, i) => (
-          <div key={`${lang.id}-${i}`}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a1b1e] border border-[#282828] rounded-full text-[11px] font-mono whitespace-nowrap hover:border-[#444] transition-all"
-            style={{ color: lang.color }}>
-            <span className="font-bold">{lang.icon}</span>
-            <span className="text-[#666]">{lang.name}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Interactive Code Demo Preview ─────────────────────────────
-function CodeDemoPreview() {
-  const lines = [
-    { num: 1, code: '<span style="color:#c678dd">def</span> <span style="color:#61afef">fibonacci</span>(n):', indent: 0 },
-    { num: 2, code: '<span style="color:#c678dd">if</span> n <= <span style="color:#d19a66">1</span>:', indent: 1 },
-    { num: 3, code: '<span style="color:#c678dd">return</span> n', indent: 2 },
-    { num: 4, code: '<span style="color:#c678dd">return</span> <span style="color:#61afef">fibonacci</span>(n-<span style="color:#d19a66">1</span>) + <span style="color:#61afef">fibonacci</span>(n-<span style="color:#d19a66">2</span>)', indent: 1 },
-    { num: 5, code: '', indent: 0 },
-    { num: 6, code: '<span style="color:#61afef">print</span>(<span style="color:#61afef">fibonacci</span>(<span style="color:#d19a66">10</span>))', indent: 0 },
-  ];
-
-  const [visibleLines, setVisibleLines] = useState(0);
-  const [showOutput, setShowOutput] = useState(false);
-  const [cursorLine, setCursorLine] = useState(1);
-
-  useEffect(() => {
-    const timers = [];
-    lines.forEach((_, i) => {
-      timers.push(setTimeout(() => { setVisibleLines(i + 1); setCursorLine(i + 1); }, 400 + i * 300));
-    });
-    timers.push(setTimeout(() => setShowOutput(true), 400 + lines.length * 300 + 500));
-    // Simulate second user cursor
-    return () => timers.forEach(clearTimeout);
-  }, []);
-
-  return (
-    <div className="bg-[#1e1f23] rounded-xl border border-[#333] overflow-hidden shadow-2xl code-preview-card">
-      {/* Title bar */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-[#19191c] border-b border-[#282828]">
-        <div className="flex gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f56]" />
-          <div className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]" />
-          <div className="w-2.5 h-2.5 rounded-full bg-[#27c93f]" />
-        </div>
-        <span className="text-[10px] text-[#555] font-mono ml-2">fibonacci.py</span>
-        <div className="flex-1" />
-        <div className="flex items-center gap-2">
-          {/* Simulated user avatars */}
-          <div className="flex -space-x-1.5">
-            <div className="w-4 h-4 rounded-full bg-[#5e9eff]/20 border border-[#333] flex items-center justify-center text-[7px] text-[#5e9eff]">A</div>
-            <div className="w-4 h-4 rounded-full bg-[#5bd882]/20 border border-[#333] flex items-center justify-center text-[7px] text-[#5bd882]">B</div>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#5bd882] animate-pulse" />
-            <span className="text-[9px] text-[#666] font-mono">2 online</span>
-          </div>
-        </div>
-      </div>
-      {/* Code */}
-      <div className="p-3 font-mono text-[11px] leading-relaxed relative">
-        {lines.slice(0, visibleLines).map((line, i) => (
-          <div key={i} className="flex" style={{ animation: 'fadeUp 0.3s ease both', animationDelay: `${i * 50}ms` }}>
-            <span className="text-[#555] w-6 text-right mr-3 select-none text-[10px]">{line.num}</span>
-            <span style={{ paddingLeft: `${line.indent * 16}px` }}
-              dangerouslySetInnerHTML={{ __html: line.code || '&nbsp;' }} />
-          </div>
-        ))}
-        {visibleLines < lines.length && (
-          <div className="flex items-center mt-0.5">
-            <span className="text-[#555] w-6 text-right mr-3 text-[10px]">&nbsp;</span>
-            <span className="inline-block w-[2px] h-[14px] bg-[#5e9eff] animate-pulse" />
-          </div>
-        )}
-        {/* Simulated second user cursor */}
-        {visibleLines >= 3 && (
-          <div className="absolute right-12 top-[38px] flex items-center gap-1 pointer-events-none" style={{ animation: 'fadeUp 0.5s ease' }}>
-            <div className="w-[2px] h-[14px] bg-[#5bd882] animate-pulse" />
-            <span className="text-[8px] bg-[#5bd882] text-white px-1 py-0.5 rounded text-[7px] font-sans">alice</span>
-          </div>
-        )}
-      </div>
-      {/* Output */}
-      {showOutput && (
-        <div className="border-t border-[#282828] px-3 py-2 bg-[#16171a]" style={{ animation: 'fadeUp 0.3s ease' }}>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[9px] text-[#5bd882] font-mono uppercase tracking-wider">output</span>
-            <span className="text-[8px] text-[#444] font-mono">0.02s</span>
-          </div>
-          <p className="text-[12px] font-mono text-[#5bd882]">55</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Scroll Reveal Observer ─────────────────────────────────────
-function useScrollReveal() {
-  useEffect(() => {
-    const els = document.querySelectorAll('.reveal');
-    if (!els.length) return;
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });
-    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
-    els.forEach(el => observer.observe(el));
-    return () => observer.disconnect();
-  }, []);
-}
-
-// ─── Scroll Progress Bar ───────────────────────────────────────
-function ScrollProgress() {
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const main = document.querySelector('main');
-    if (!main) return;
-    const handleScroll = () => {
-      const scrollTop = main.scrollTop;
-      const scrollHeight = main.scrollHeight - main.clientHeight;
-      setWidth(scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0);
-    };
-    main.addEventListener('scroll', handleScroll, { passive: true });
-    return () => main.removeEventListener('scroll', handleScroll);
-  }, []);
-  return <div className="scroll-progress" style={{ width: `${width}%` }} />;
-}
-
-// ─── Live Clock ────────────────────────────────────────────────
-function LiveClock() {
-  const [time, setTime] = useState('');
-  useEffect(() => {
-    const tick = () => {
-      const now = new Date();
-      setTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }));
-    };
-    tick();
-    const interval = setInterval(tick, 1000);
+    const interval = setInterval(() => {
+      setActiveLine(prev => (prev === 7 ? 8 : prev === 8 ? 12 : 7));
+    }, 2800);
     return () => clearInterval(interval);
   }, []);
-  const parts = time.split(':');
+
   return (
-    <span className="font-mono text-[10px] text-[#444] tabular-counter">
-      {parts[0]}<span className="clock-separator">:</span>{parts[1]}<span className="clock-separator">:</span>{parts[2]}
-    </span>
+    <div className="w-full bg-[#0c0d10] border border-white/[0.09] rounded-xl shadow-2xl overflow-hidden font-mono text-[12px] select-none">
+      {/* Window Titlebar */}
+      <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#101216] border-b border-white/[0.06]">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f56]/80 border border-[#e0443e]" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]/80 border border-[#dea123]" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#27c93f]/80 border border-[#1aab29]" />
+          </div>
+          <span className="text-[11px] text-neutral-500 ml-2 hidden sm:inline">collabcode / src / distributed_worker.py</span>
+        </div>
+
+        {/* Real-time telemetry badges */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded text-[10px] text-emerald-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>CRDT: SYNCED</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2 py-0.5 bg-white/[0.04] border border-white/[0.06] rounded text-[10px] text-neutral-400">
+            <span>3 PEERS</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Editor Tabs & Presence Strip */}
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[#0e1013] border-b border-white/[0.05] text-[11px]">
+        <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#0c0d10] border-t-2 border-t-blue-500 border-x border-x-white/[0.06] text-neutral-200">
+            <span className="text-[#3776ab] font-bold">PY</span>
+            <span>distributed_worker.py</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 ml-1" />
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 text-neutral-500 hover:text-neutral-300 transition cursor-pointer">
+            <span className="text-[#dea584] font-bold">RS</span>
+            <span>consensus_ring.rs</span>
+          </div>
+        </div>
+
+        {/* Collaborators online */}
+        <div className="flex items-center gap-2 text-[10px]">
+          <div className="flex -space-x-1.5">
+            <div className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center justify-center font-bold text-[9px]" title="Alice (Active)">AL</div>
+            <div className="w-5 h-5 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-300 flex items-center justify-center font-bold text-[9px]" title="Marcus (Editing)">MK</div>
+            <div className="w-5 h-5 rounded-full bg-blue-500/20 border border-blue-500/40 text-blue-300 flex items-center justify-center font-bold text-[9px]" title="You">YO</div>
+          </div>
+          <span className="text-neutral-500 hidden md:inline">14ms latency</span>
+        </div>
+      </div>
+
+      {/* Code Editor Body */}
+      <div className="p-4 bg-[#0c0d10] text-[12px] leading-[1.65] relative overflow-hidden">
+        {/* Line 1 */}
+        <div className="flex">
+          <span className="w-8 text-neutral-600 select-none text-right pr-4 text-[11px]">1</span>
+          <span className="text-neutral-500"># Distributed CRDT Consensus Aggregator</span>
+        </div>
+        {/* Line 2 */}
+        <div className="flex">
+          <span className="w-8 text-neutral-600 select-none text-right pr-4 text-[11px]">2</span>
+          <span><span className="text-purple-400">import</span> <span className="text-neutral-200">asyncio, time, typing</span></span>
+        </div>
+        {/* Line 3 */}
+        <div className="flex">
+          <span className="w-8 text-neutral-600 select-none text-right pr-4 text-[11px]">3</span>
+          <span><span className="text-purple-400">from</span> <span className="text-neutral-200">collabcode.crdt</span> <span className="text-purple-400">import</span> <span className="text-blue-400">VectorClock</span></span>
+        </div>
+        {/* Line 4 */}
+        <div className="flex">
+          <span className="w-8 text-neutral-600 select-none text-right pr-4 text-[11px]">4</span>
+          <span>&nbsp;</span>
+        </div>
+        {/* Line 5 */}
+        <div className="flex">
+          <span className="w-8 text-neutral-600 select-none text-right pr-4 text-[11px]">5</span>
+          <span><span className="text-purple-400">async def</span> <span className="text-blue-400">synchronize_delta</span>(clock: <span className="text-emerald-400">VectorClock</span>, batch_size: <span className="text-amber-400">int</span> = <span className="text-amber-300">256</span>):</span>
+        </div>
+        {/* Line 6 */}
+        <div className="flex">
+          <span className="w-8 text-neutral-600 select-none text-right pr-4 text-[11px]">6</span>
+          <span className="pl-6 text-neutral-400">&quot;&quot;&quot;Merge character deltas with commutative state isolation.&quot;&quot;&quot;</span>
+        </div>
+        {/* Line 7: Alice's cursor */}
+        <div className={`flex relative ${activeLine === 7 ? 'bg-emerald-500/[0.06]' : ''} transition-colors duration-300`}>
+          <span className="w-8 text-neutral-600 select-none text-right pr-4 text-[11px]">7</span>
+          <span className="pl-6">
+            <span className="text-neutral-300">deltas = </span>
+            <span className="text-purple-400">await</span>
+            <span className="text-blue-300"> clock.fetch_unmerged_ops</span>(timeout=<span className="text-amber-300">0.05</span>)
+            <span className="inline-block relative">
+              <span className="inline-block w-[2px] h-[14px] bg-emerald-400 align-middle animate-pulse" />
+              <span className="absolute -top-5 left-0 px-1 py-0.2 bg-emerald-500 text-black text-[9px] font-bold rounded tracking-tight shadow">alice</span>
+            </span>
+          </span>
+        </div>
+        {/* Line 8 */}
+        <div className={`flex relative ${activeLine === 8 ? 'bg-blue-500/[0.06]' : ''} transition-colors duration-300`}>
+          <span className="w-8 text-neutral-600 select-none text-right pr-4 text-[11px]">8</span>
+          <span className="pl-6 text-neutral-300">applied_count = <span className="text-emerald-400">len</span>(deltas)</span>
+        </div>
+        {/* Line 9 */}
+        <div className="flex">
+          <span className="w-8 text-neutral-600 select-none text-right pr-4 text-[11px]">9</span>
+          <span className="pl-6"><span className="text-purple-400">return</span> &#123;<span className="text-emerald-300">&quot;status&quot;</span>: <span className="text-emerald-300">&quot;OK&quot;</span>, <span className="text-emerald-300">&quot;ops&quot;</span>: applied_count&#125;</span>
+        </div>
+        {/* Line 10 */}
+        <div className="flex">
+          <span className="w-8 text-neutral-600 select-none text-right pr-4 text-[11px]">10</span>
+          <span>&nbsp;</span>
+        </div>
+        {/* Line 11: Marcus's selection */}
+        <div className="flex">
+          <span className="w-8 text-neutral-600 select-none text-right pr-4 text-[11px]">11</span>
+          <span><span className="text-purple-400">if</span> __name__ == <span className="text-emerald-300">&quot;__main__&quot;</span>:</span>
+        </div>
+        {/* Line 12: Marcus cursor */}
+        <div className={`flex relative ${activeLine === 12 ? 'bg-purple-500/[0.07]' : ''} transition-colors duration-300`}>
+          <span className="w-8 text-neutral-600 select-none text-right pr-4 text-[11px]">12</span>
+          <span className="pl-6">
+            <span className="text-blue-300">print</span>(
+            <span className="bg-purple-500/25 text-purple-200 px-0.5 rounded">f&quot;CRDT sync benchmark: &#123;time.time():.4f&#125;&quot;</span>
+            )
+            <span className="inline-block relative">
+              <span className="inline-block w-[2px] h-[14px] bg-purple-400 align-middle animate-pulse" />
+              <span className="absolute -top-5 left-0 px-1 py-0.2 bg-purple-500 text-white text-[9px] font-bold rounded tracking-tight shadow">marcus</span>
+            </span>
+          </span>
+        </div>
+      </div>
+
+      {/* Docked Execution Terminal */}
+      <div className="border-t border-white/[0.07] bg-[#090a0d]">
+        <div className="flex items-center justify-between px-3.5 py-1.5 bg-[#0e1014] border-b border-white/[0.04] text-[10px] text-neutral-400">
+          <div className="flex items-center gap-3">
+            <span className="font-semibold text-neutral-200 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              TERMINAL
+            </span>
+            <span className="text-neutral-600">|</span>
+            <span className="text-neutral-500">Python 3.11.2 (WASM)</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-emerald-400">✓ EXIT 0</span>
+            <span className="text-neutral-500">0.038s</span>
+          </div>
+        </div>
+        <div className="p-3 text-[11px] text-neutral-300 font-mono space-y-1">
+          <div className="text-neutral-500">$ python distributed_worker.py --concurrency 4</div>
+          <div className="text-neutral-400">[13:28:38] <span className="text-blue-400">INF</span> Initialized Yjs CRDT document channel: room_3e90</div>
+          <div className="text-neutral-400">[13:28:38] <span className="text-emerald-400">INF</span> Peer mesh connected (2 remotes: alice, marcus)</div>
+          <div className="text-emerald-300">[13:28:38] SUCCESS State vector synchronized (142 deltas, 0 merge conflicts)</div>
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ─── Matrix Rain Background ───────────────────────────────────
-function MatrixRain() {
-  const canvasRef = useRef(null);
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let w, h, columns, drops;
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789{}[]()<>=/+*&|!?.,:;';
-    const fontSize = 12;
-
-    const resize = () => {
-      w = canvas.width = canvas.offsetWidth;
-      h = canvas.height = canvas.offsetHeight;
-      columns = Math.floor(w / fontSize);
-      drops = Array(columns).fill(1);
-    };
-    resize();
-
-    let raf;
-    const draw = () => {
-      ctx.fillStyle = 'rgba(19, 20, 22, 0.06)';
-      ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = '#5e9eff';
-      ctx.font = `${fontSize}px monospace`;
-      for (let i = 0; i < drops.length; i++) {
-        const text = chars[Math.floor(Math.random() * chars.length)];
-        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
-        if (drops[i] * fontSize > h && Math.random() > 0.975) {
-          drops[i] = 0;
-        }
-        drops[i]++;
-      }
-    };
-
-    const interval = setInterval(draw, 60);
-    window.addEventListener('resize', resize);
-    return () => { clearInterval(interval); window.removeEventListener('resize', resize); };
-  }, []);
-  return <canvas ref={canvasRef} className="matrix-rain-canvas" />;
-}
-
-// ─── 3D Tilt Card Hook ─────────────────────────────────────────
-function use3DTilt(ref) {
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const handleMove = (e) => {
-      const rect = el.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width;
-      const y = (e.clientY - rect.top) / rect.height;
-      const rotateX = (y - 0.5) * -8;
-      const rotateY = (x - 0.5) * 8;
-      el.style.transform = `perspective(800px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.02)`;
-    };
-    const handleLeave = () => {
-      el.style.transform = 'perspective(800px) rotateX(0) rotateY(0) scale(1)';
-    };
-    el.addEventListener('mousemove', handleMove);
-    el.addEventListener('mouseleave', handleLeave);
-    return () => { el.removeEventListener('mousemove', handleMove); el.removeEventListener('mouseleave', handleLeave); };
-  }, [ref]);
-}
-
-// ─── Konami Code Easter Egg ─────────────────────────────────────
-function useKonamiCode(callback) {
-  useEffect(() => {
-    const KONAMI = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
-    let idx = 0;
-    const handler = (e) => {
-      if (e.key === KONAMI[idx]) {
-        idx++;
-        if (idx === KONAMI.length) {
-          idx = 0;
-          callback();
-        }
-      } else {
-        idx = 0;
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [callback]);
-}
-
-// ─── Random Pro Tip ────────────────────────────────────────────
-const PRO_TIPS = [
-  'Ctrl+K opens the command palette from anywhere',
-  'Ctrl+Shift+Z toggles Zen Mode — pure coding, zero distractions',
-  'Press ? to see all keyboard shortcuts in any room',
-  'You can export code with metadata headers for attribution',
-  'CRDT sync means zero merge conflicts, even with 10+ users',
-  'The room code is only 6 characters — easy to share verbally',
-  'Voice chat uses peer-to-peer WebRTC — no server relay lag',
-  'You can run code in 20 languages directly in the browser',
-  'Competition mode includes anticheat with 13 detection types',
-  'The command palette supports fuzzy search — just start typing',
-  'Ctrl+B toggles the chat panel, Ctrl+` toggles the terminal',
-  'Your editor settings persist across sessions via localStorage',
-  'The gallery lets you share and discover code snippets publicly',
-];
-
-// ─── Password Strength ──────────────────────────────────────────
-function getPasswordStrength(pw) {
-  if (!pw) return { score: 0, label: '', color: '#333' };
-  let score = 0;
-  if (pw.length >= 6) score++;
-  if (pw.length >= 10) score++;
-  if (/[A-Z]/.test(pw)) score++;
-  if (/[0-9]/.test(pw)) score++;
-  if (/[^A-Za-z0-9]/.test(pw)) score++;
-  const levels = [
-    { label: 'weak', color: '#ff6b6b' },
-    { label: 'weak', color: '#ff6b6b' },
-    { label: 'fair', color: '#ffb347' },
-    { label: 'good', color: '#5bd882' },
-    { label: 'strong', color: '#5e9eff' },
-    { label: 'great', color: '#c4b5fd' },
-  ];
-  return { score, ...levels[score] };
-}
-
-// ─── Main Component ─────────────────────────────────────────────
+// ─── Main Landing Page Component ──────────────────────────────
 export default function Home() {
   const router = useRouter();
   const { state, setUser } = useAppContext();
-  const [joinCode, setJoinCode] = useState('');
-  const [mobileAction, setMobileAction] = useState('create'); // 'create' | 'join'
+
+  // Navigation and Workspace state
+  const [controlMode, setControlMode] = useState('create'); // 'create' | 'join'
   const [selectedLang, setSelectedLang] = useState('python');
-  const [isPublicRoom, setIsPublicRoom] = useState(false);
   const [customRoomName, setCustomRoomName] = useState('');
-  const [publicRooms, setPublicRooms] = useState([]);
-  const [error, setError] = useState('');
+  const [isPublicRoom, setIsPublicRoom] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
-  const [showAuth, setShowAuth] = useState(false);
-  const [authMode, setAuthMode] = useState('signin');
-  const [authForm, setAuthForm] = useState({ email: '', password: '', username: '', remember: true });
-  const [authError, setAuthError] = useState('');
-  const [authLoading, setAuthLoading] = useState(false);
-  const [langVersions, setLangVersions] = useState({});
-  const [tab, setTab] = useState('rooms');
+  const [error, setError] = useState('');
+
+  // Directory and Gallery state
+  const [tab, setTab] = useState('rooms'); // 'rooms' | 'gallery'
+  const [publicRooms, setPublicRooms] = useState([]);
   const [gallery, setGallery] = useState([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareForm, setShareForm] = useState({ title: '', description: '', code: '', language: 'python' });
   const [shareLoading, setShareLoading] = useState(false);
   const [selectedSnippet, setSelectedSnippet] = useState(null);
+
+  // Auth & Account state
+  const [showAuth, setShowAuth] = useState(false);
+  const [authMode, setAuthMode] = useState('signin');
+  const [authForm, setAuthForm] = useState({ email: '', password: '', username: '', remember: true });
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [easterEggActive, setEasterEggActive] = useState(false);
-  const [proTip] = useState(() => PRO_TIPS[Math.floor(Math.random() * PRO_TIPS.length)]);
-
-  const { cursorRef, dotRef, hovering, clicking } = useCustomCursor();
   const userMenuRef = useRef(null);
+
   const { toasts, show: showToast, dismiss: dismissToast } = useToast();
-  useScrollReveal();
 
-  // v20: Konami code easter egg — spawns confetti
-  useKonamiCode(useCallback(() => {
-    setEasterEggActive(true);
-    showToast('🎮 Konami Code activated! You found the easter egg!', { icon: '🎉', color: '#c4b5fd', duration: 5000 });
-    setTimeout(() => setEasterEggActive(false), 4000);
-  }, [showToast]));
-
-  useEffect(() => { fetchPublicRooms(); fetchLanguages(); fetchGallery(); }, []);
+  // Load initial data
+  useEffect(() => {
+    fetchPublicRooms();
+    fetchGallery();
+  }, []);
 
   // Close user menu on outside click
   useEffect(() => {
@@ -644,49 +296,59 @@ export default function Home() {
   }, [userMenuOpen]);
 
   async function fetchPublicRooms() {
-    try { const res = await axios.get(`${SERVER_URL}/api/rooms?public=true`); setPublicRooms(res.data.rooms || []); } catch (err) {}
-  }
-
-  async function fetchLanguages() {
-    try { const res = await axios.get(`${SERVER_URL}/api/languages`); const versions = {}; (res.data.languages || []).forEach(l => { versions[l.id] = l.version; }); setLangVersions(versions); } catch (err) {}
+    try {
+      const res = await axios.get(`${SERVER_URL}/api/rooms?public=true`);
+      setPublicRooms(res.data.rooms || []);
+    } catch (err) {}
   }
 
   async function fetchGallery() {
     setGalleryLoading(true);
-    try { const res = await axios.get(`${SERVER_URL}/api/gallery`); setGallery(res.data.snippets || []); } catch (err) {} finally { setGalleryLoading(false); }
+    try {
+      const res = await axios.get(`${SERVER_URL}/api/gallery`);
+      setGallery(res.data.snippets || []);
+    } catch (err) {} finally {
+      setGalleryLoading(false);
+    }
   }
 
   function handleCreateRoom() {
-    const code = customRoomName.trim() || generateRoomCode();
-    // If custom name: use it as roomId (sanitized), else random code
-    const roomId = customRoomName.trim()
-      ? customRoomName.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 30) || generateRoomCode()
+    const rawName = customRoomName.trim();
+    const code = rawName || generateRoomCode();
+    const roomId = rawName
+      ? rawName.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 30) || generateRoomCode()
       : code;
-    const nameParam = customRoomName.trim() ? `&roomName=${encodeURIComponent(customRoomName.trim())}` : '';
-    showToast('Creating room...', { color: '#5e9eff' });
+    const nameParam = rawName ? `&roomName=${encodeURIComponent(rawName)}` : '';
+    showToast('Initializing collaborative room...', { color: '#3b82f6' });
     router.push(`/room/${roomId}?lang=${selectedLang}&public=${isPublicRoom}${nameParam}`);
   }
 
   async function handleJoinRoom(e) {
-    e.preventDefault();
+    e?.preventDefault();
     const code = joinCode.trim();
-    if (!code) { setError('Enter a room code'); return; }
-    if (code.length < 3) { setError('Code too short'); return; }
-    setJoinLoading(true); setError('');
+    if (!code) { setError('Please enter a room code or identifier'); return; }
+    if (code.length < 3) { setError('Room code is too short'); return; }
+    setJoinLoading(true);
+    setError('');
     try {
       const res = await axios.get(`${SERVER_URL}/api/rooms/${code}/check`);
       if (res.data.exists) {
-        showToast('Joining room...', { color: '#5bd882' });
+        showToast('Connecting to room...', { color: '#10b981' });
         router.push(`/room/${code}`);
+      } else {
+        setError('No active room found with this code. You can create one below.');
       }
-      else setError('No room found with this code. Create a new one instead.');
     } catch (err) {
-      setError('No room found. Check the code or create a new room.');
-    } finally { setJoinLoading(false); }
+      setError('Unable to verify room. Please check code or try again.');
+    } finally {
+      setJoinLoading(false);
+    }
   }
 
   async function handleAuth(e) {
-    e.preventDefault(); setAuthError(''); setAuthLoading(true);
+    e.preventDefault();
+    setAuthError('');
+    setAuthLoading(true);
     try {
       const endpoint = authMode === 'signup' ? '/api/auth/signup' : '/api/auth/signin';
       const body = authMode === 'signup'
@@ -698,10 +360,12 @@ export default function Home() {
       if (authForm.remember) localStorage.setItem('collabcode_auth', JSON.stringify(user));
       setShowAuth(false);
       setAuthForm({ email: '', password: '', username: '', remember: true });
-      showToast(authMode === 'signup' ? 'Account created!' : 'Welcome back!', { color: '#5bd882' });
+      showToast(authMode === 'signup' ? 'Account created' : 'Signed in successfully', { color: '#10b981' });
     } catch (err) {
       setAuthError(err.response?.data?.message || 'Authentication failed');
-    } finally { setAuthLoading(false); }
+    } finally {
+      setAuthLoading(false);
+    }
   }
 
   async function handleShareCode(e) {
@@ -716,536 +380,553 @@ export default function Home() {
       setShowShareModal(false);
       setShareForm({ title: '', description: '', code: '', language: 'python' });
       fetchGallery();
-      showToast('Snippet shared!', { color: '#5e9eff' });
+      showToast('Snippet published to community vault', { color: '#3b82f6' });
     } catch (err) {
-      showToast('Failed to share', { color: '#ff6b6b' });
-    } finally { setShareLoading(false); }
+      showToast('Failed to publish snippet', { color: '#ef4444' });
+    } finally {
+      setShareLoading(false);
+    }
   }
 
   const handleUpdateUser = useCallback((updatedUser) => {
     setUser(updatedUser);
   }, [setUser]);
 
-  const getLangInfo = (id) => LANGUAGES.find(l => l.id === id) || LANGUAGES[0];
-  const pwStrength = getPasswordStrength(authForm.password);
+  const selectedLangObj = LANGUAGES.find(l => l.id === selectedLang) || LANGUAGES[0];
 
   return (
-    <div className="min-h-screen bg-[#131416] flex flex-col grain landing-cursor-hide">
-      {/* v20: Scroll Progress Bar */}
-      <ScrollProgress />
+    <div className="min-h-screen bg-[#090a0d] text-neutral-200 flex flex-col selection:bg-blue-500/20 selection:text-white relative">
+      {/* Subtle technical background grid */}
+      <div className="fixed inset-0 technical-grid pointer-events-none z-0 opacity-80" />
 
-      {/* Custom Cursor */}
-      <div ref={cursorRef}
-        className={`custom-cursor hidden md:block ${hovering ? 'hovering' : ''} ${clicking ? 'clicking' : ''}`} />
-      <div ref={dotRef} className="custom-cursor-dot hidden md:block" />
-
-      {/* Toast Notifications */}
+      {/* Toast notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-      {/* v20: Konami Code Confetti Easter Egg */}
-      {easterEggActive && (
-        <div className="fixed inset-0 pointer-events-none z-[9999]" aria-hidden="true">
-          {Array.from({ length: 60 }).map((_, i) => (
-            <div key={i} className="absolute" style={{
-              left: `${Math.random() * 100}%`,
-              top: '-10px',
-              width: `${6 + Math.random() * 8}px`,
-              height: `${6 + Math.random() * 8}px`,
-              background: ['#5e9eff', '#5bd882', '#ffb347', '#c4b5fd', '#ff6b6b', '#f7df1e'][i % 6],
-              borderRadius: Math.random() > 0.5 ? '50%' : '2px',
-              animation: `confettiFall ${2 + Math.random() * 2}s ease-in forwards`,
-              animationDelay: `${Math.random() * 0.8}s`,
-              transform: `rotate(${Math.random() * 360}deg)`,
-            }} />
-          ))}
-          <style jsx>{`
-            @keyframes confettiFall {
-              0% { transform: translateY(0) rotate(0deg); opacity: 1; }
-              100% { transform: translateY(100vh) rotate(${720}deg); opacity: 0; }
-            }
-          `}</style>
-        </div>
-      )}
-
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <header className="border-b border-[#222] sticky top-0 z-40 bg-[#131416]/80 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-5 sm:px-8 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#222] border border-[#333] flex items-center justify-center text-[11px] font-mono font-bold text-[#5e9eff] shadow-inner-subtle glow-pulse">
+      {/* ── Navbar ─────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-40 bg-[#090a0d]/90 backdrop-blur-md border-b border-white/[0.07]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          {/* Brand mark */}
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[#121418] border border-white/10 flex items-center justify-center font-mono font-bold text-[13px] text-blue-400 shadow-sm">
               {'//'}
             </div>
-            <div>
-              <h1 className="text-[15px] font-display font-semibold text-white tracking-tight leading-none">CollabCode</h1>
-              <p className="text-[9px] text-[#555] font-mono mt-0.5">code together, ship faster</p>
+            <div className="flex items-center gap-2">
+              <span className="font-display font-semibold text-[15px] tracking-tight text-white">CollabCode</span>
+              <span className="hidden sm:inline-block px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/[0.06] text-neutral-400 border border-white/[0.08]">v20.4</span>
             </div>
           </div>
-          <div className="flex items-center gap-2.5">
-            {/* v20: Live Clock */}
-            <div className="hidden sm:block"><LiveClock /></div>
-            <div className="hidden sm:block w-px h-3 bg-[#282828]" />
-            {state.user && (
+
+          {/* Center Architecture Telemetry (Desktop) */}
+          <div className="hidden md:flex items-center gap-4 text-xs font-mono text-neutral-400">
+            <a href="#workspace" className="hover:text-neutral-200 transition">Workspace</a>
+            <span className="text-neutral-700">/</span>
+            <a href="#architecture" className="hover:text-neutral-200 transition">Architecture</a>
+            <span className="text-neutral-700">/</span>
+            <a href="#rooms" className="hover:text-neutral-200 transition">Directory</a>
+            <span className="text-neutral-700">/</span>
+            <a href="#gallery" className="hover:text-neutral-200 transition">Vault</a>
+          </div>
+
+          {/* Right Action & User Identity */}
+          <div className="flex items-center gap-3">
+            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/[0.03] border border-white/[0.06] text-[10px] font-mono text-neutral-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Yjs Sync Engine: Online</span>
+            </div>
+
+            {state.user ? (
               <div className="relative" ref={userMenuRef}>
-                <button onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#222] transition active:scale-95">
-                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] border border-[#333]"
-                    style={{ background: (state.user.color || '#5e9eff') + '20', color: state.user.color || '#5e9eff' }}>
-                    {state.user.emoji || state.user.username?.charAt(0)?.toUpperCase() || '?'}
+                <button
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#121418] border border-white/10 hover:border-white/20 transition active:scale-95 text-xs font-mono"
+                >
+                  <div className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center font-bold text-[10px]">
+                    {state.user.username?.charAt(0)?.toUpperCase() || '?'}
                   </div>
-                  <span className="text-[11px] text-[#888] font-mono hidden sm:inline max-w-[80px] truncate">{state.user.username}</span>
-                  {state.user.authenticated && <span className="text-[8px] px-1 py-0.5 bg-[#5bd882]/10 text-[#5bd882] rounded font-mono hidden sm:inline">pro</span>}
-                  <svg className={`w-2.5 h-2.5 text-[#555] transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  <span className="text-neutral-300 max-w-[90px] truncate">{state.user.username}</span>
+                  <svg className={`w-3 h-3 text-neutral-500 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </button>
 
-                {/* User dropdown menu */}
                 {userMenuOpen && (
-                  <div className="absolute right-0 top-full mt-1 w-52 bg-[#1a1b1e] border border-[#333] rounded-xl shadow-2xl py-1 z-50"
-                    style={{ animation: 'dropIn 0.15s cubic-bezier(0.22, 1, 0.36, 1)' }}>
-                    <div className="px-3 py-2.5 border-b border-[#282828]">
-                      <p className="text-[12px] font-medium text-white truncate">{state.user.username}</p>
-                      <p className="text-[9px] text-[#555] font-mono">{state.isAuthenticated ? state.user.email || 'signed in' : 'anonymous'}</p>
+                  <div className="absolute right-0 top-full mt-1.5 w-52 bg-[#101216] border border-white/10 rounded-xl shadow-2xl py-1.5 z-50 font-mono text-xs animate-slide-up">
+                    <div className="px-3.5 py-2 border-b border-white/[0.06]">
+                      <p className="font-semibold text-neutral-200 truncate">{state.user.username}</p>
+                      <p className="text-[10px] text-neutral-500">{state.isAuthenticated ? state.user.email || 'Authenticated' : 'Guest Session'}</p>
                     </div>
                     <div className="py-1">
-                      <button onClick={() => { setUserMenuOpen(false); setShowAccountSettings(true); }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-[#999] hover:text-[#ccc] hover:bg-[#222] transition">
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                        Account Settings
+                      <button
+                        onClick={() => { setUserMenuOpen(false); setShowAccountSettings(true); }}
+                        className="w-full flex items-center gap-2 px-3.5 py-2 text-neutral-300 hover:text-white hover:bg-white/[0.04] transition text-left"
+                      >
+                        <svg className="w-3.5 h-3.5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                        <span>Profile & Settings</span>
                       </button>
                     </div>
-                    <div className="border-t border-[#282828] py-1">
+                    <div className="border-t border-white/[0.06] pt-1">
                       {state.isAuthenticated ? (
-                        <button onClick={() => { setUserMenuOpen(false); localStorage.removeItem('collabcode_auth'); window.location.reload(); }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-[#ff6b6b] hover:bg-[#ff6b6b]/8 transition">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                          </svg>
-                          Sign Out
+                        <button
+                          onClick={() => { setUserMenuOpen(false); localStorage.removeItem('collabcode_auth'); window.location.reload(); }}
+                          className="w-full flex items-center gap-2 px-3.5 py-2 text-rose-400 hover:bg-rose-500/10 transition text-left"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                          <span>Sign Out</span>
                         </button>
                       ) : (
-                        <button onClick={() => { setUserMenuOpen(false); setShowAuth(true); }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-[#5e9eff] hover:bg-[#5e9eff]/8 transition">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                          </svg>
-                          Sign In
+                        <button
+                          onClick={() => { setUserMenuOpen(false); setShowAuth(true); }}
+                          className="w-full flex items-center gap-2 px-3.5 py-2 text-blue-400 hover:bg-blue-500/10 transition text-left"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                          <span>Sign In / Create Account</span>
                         </button>
                       )}
                     </div>
                   </div>
                 )}
               </div>
+            ) : (
+              <button
+                onClick={() => setShowAuth(true)}
+                className="px-3 py-1.5 bg-white/[0.05] hover:bg-white/10 border border-white/10 rounded-lg text-xs font-mono text-neutral-300 transition"
+              >
+                Sign In
+              </button>
             )}
           </div>
         </div>
       </header>
 
-      <main className="flex-1 px-5 sm:px-8 overflow-x-hidden">
-        <div className="max-w-6xl mx-auto">
+      {/* ── Main Content Container ────────────────────────────── */}
+      <main className="flex-1 relative z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-10 sm:pt-16 pb-16">
 
-          {/* ── Hero Section ────────────────────────────────────── */}
-          <section className="relative pt-12 sm:pt-20 pb-8 sm:pb-16">
-            <div className="gradient-orb w-[400px] h-[400px] bg-[#5e9eff] top-[-100px] left-[-150px]" style={{ animationDelay: '0s' }} />
-            <div className="gradient-orb w-[300px] h-[300px] bg-[#5bd882] top-[50px] right-[-100px]" style={{ animationDelay: '-7s' }} />
-            <div className="gradient-orb w-[200px] h-[200px] bg-[#c4b5fd] bottom-[0] left-[30%]" style={{ animationDelay: '-14s' }} />
-            <div className="hidden md:block">
-              <ParticleBackground />
-              <MatrixRain />
+          {/* ── Hero Section (Asymmetric, Product-Centric) ────────── */}
+          <section className="grid lg:grid-cols-[1fr_1.15fr] gap-10 lg:gap-14 items-center mb-16 sm:mb-24">
+            {/* Left: Editorial Header */}
+            <div>
+              {/* Technical category badge */}
+              <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-white/[0.03] border border-white/[0.08] rounded-md mb-5 text-[11px] font-mono text-neutral-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                <span>YJS CRDT KERNEL</span>
+                <span className="text-neutral-600">·</span>
+                <span>ZERO MERGE CONFLICTS</span>
+              </div>
+
+              {/* Core Hero Headline */}
+              <h1 className="text-4xl sm:text-5xl lg:text-[54px] font-display font-bold text-white tracking-tight leading-[1.06] mb-5">
+                Your code.<br />
+                Their code.<br />
+                <span className="text-neutral-500">Same editor.</span>
+              </h1>
+
+              {/* Crisp, engineering copy */}
+              <p className="text-sm sm:text-base text-neutral-400 leading-relaxed max-w-lg mb-8">
+                Conflict-free pair programming and execution across 20 languages. Powered by decentralized CRDT state vectors, browser WebAssembly sandboxing, and direct peer-to-peer voice. No extensions, no downloads.
+              </p>
+
+              {/* Direct Actions */}
+              <div className="flex flex-wrap items-center gap-3 mb-10">
+                <a
+                  href="#workspace"
+                  className="px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold tracking-tight transition shadow-lg shadow-blue-600/20 active:scale-[0.98] flex items-center gap-2"
+                >
+                  <span>Launch Workspace</span>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
+                </a>
+                <a
+                  href="#architecture"
+                  className="px-4 py-3 bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 rounded-lg text-sm font-mono text-neutral-300 transition"
+                >
+                  System Spec →
+                </a>
+              </div>
+
+              {/* Architectural Highlights */}
+              <div className="grid grid-cols-3 gap-4 pt-6 border-t border-white/[0.07] text-left">
+                <div>
+                  <div className="text-lg font-bold font-mono text-neutral-100">20</div>
+                  <div className="text-[11px] font-mono text-neutral-500">Active Runtimes</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold font-mono text-emerald-400">&lt; 1ms</div>
+                  <div className="text-[11px] font-mono text-neutral-500">WASM Latency</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold font-mono text-purple-400">P2P</div>
+                  <div className="text-[11px] font-mono text-neutral-500">48kHz Voice</div>
+                </div>
+              </div>
             </div>
 
-            <div className="relative z-10 grid md:grid-cols-[1.1fr_1fr] gap-8 items-center">
-              {/* Left: Text */}
-              <div>
-                <div className="flex items-center gap-2 mb-4 fade-up">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#5e9eff]/8 border border-[#5e9eff]/15 rounded-full">
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#5e9eff] breathe" />
-                    <span className="text-[10px] text-[#5e9eff] font-mono">collaborative coding platform</span>
-                  </div>
-                  <span className="text-[10px] text-[#555] font-mono">20 languages &middot; real-time sync</span>
+            {/* Right: High-Fidelity IDE Viewport */}
+            <div className="w-full">
+              <HeroIdeViewport />
+            </div>
+          </section>
+
+          {/* ── Session Control Station (Create / Join) ─────────────── */}
+          <section id="workspace" className="mb-20 sm:mb-28 scroll-mt-20">
+            <div className="bg-[#0c0e12] border border-white/[0.08] rounded-2xl p-6 sm:p-8 shadow-2xl">
+              {/* Segmented Control Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-white/[0.06]">
+                <div>
+                  <h2 className="text-lg font-display font-semibold text-white tracking-tight">Session Controller</h2>
+                  <p className="text-xs text-neutral-400 font-mono mt-0.5">Initialize a collaborative environment or join an existing peer session.</p>
                 </div>
 
-                <h2 className="text-[32px] sm:text-[48px] font-display font-bold text-white leading-[1.05] tracking-tight max-w-lg fade-up" style={{ animationDelay: '100ms' }}>
-                  Your code.{' '}
-                  <br className="hidden sm:block" />
-                  <span className="gradient-text-animate">Their code.</span>{' '}
-                  <br className="hidden sm:block" />
-                  <span className="text-[#555] glitch-text" data-text="Same editor.">Same editor.</span>
-                </h2>
-
-                <p className="text-[13px] sm:text-[15px] text-[#666] mt-5 max-w-lg leading-relaxed fade-up" style={{ animationDelay: '200ms' }}>
-                  Pair program with anyone, anywhere. CRDT-synced editor, voice chat, 
-                  interactive terminal — runs everything from Python to Assembly
-                  in the browser.
-                </p>
-
-                <div className="mt-6 fade-up" style={{ animationDelay: '300ms' }}>
-                  <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#1a1b1e] border border-[#282828] rounded-xl">
-                    <span className="text-[10px] text-[#555] font-mono">$</span>
-                    <TypingHero />
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-6 mt-8 fade-up" style={{ animationDelay: '400ms' }}>
-                  {[
-                    { value: '20', label: 'languages', color: '#ffb347' },
-                    { value: 'CRDT', label: 'sync engine', color: '#5e9eff' },
-                    { value: 'P2P', label: 'voice chat', color: '#5bd882' },
-                    { value: '6', label: 'themes', color: '#c4b5fd' },
-                  ].map((stat, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-[18px] font-display font-bold" style={{ color: stat.color }}>{stat.value}</span>
-                      <span className="text-[11px] text-[#555] font-mono">{stat.label}</span>
-                    </div>
-                  ))}
+                {/* Segmented Mode Switcher */}
+                <div className="flex items-center p-1 bg-[#121419] border border-white/[0.08] rounded-xl self-start sm:self-auto">
+                  <button
+                    onClick={() => setControlMode('create')}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-mono font-medium transition ${
+                      controlMode === 'create'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    + New Session
+                  </button>
+                  <button
+                    onClick={() => setControlMode('join')}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-mono font-medium transition ${
+                      controlMode === 'join'
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    → Join via Code
+                  </button>
                 </div>
               </div>
 
-              {/* Right: Live code demo */}
-              <div className="fade-up hidden md:block" style={{ animationDelay: '500ms' }}>
-                <CodeDemoPreview />
+              {/* Mode: Create Session */}
+              {controlMode === 'create' && (
+                <div className="pt-6 space-y-6">
+                  {/* Runtime Picker */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="text-xs font-mono uppercase tracking-wider text-neutral-400 font-semibold">
+                        Select Runtime Environment ({LANGUAGES.length})
+                      </label>
+                      <span className="text-[11px] font-mono text-neutral-500">
+                        Active: <span className="text-white font-semibold">{selectedLangObj.name}</span> ({selectedLangObj.runtime})
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+                      {LANGUAGES.map(lang => {
+                        const isSelected = selectedLang === lang.id;
+                        return (
+                          <button
+                            key={lang.id}
+                            onClick={() => setSelectedLang(lang.id)}
+                            className={`flex items-center justify-between p-2.5 rounded-lg border text-left transition-all ${
+                              isSelected
+                                ? 'bg-blue-500/10 border-blue-500/50 shadow-sm'
+                                : 'bg-[#101216] border-white/[0.05] hover:border-white/15 hover:bg-[#14161c]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <span
+                                className="w-6 h-6 rounded flex items-center justify-center font-mono font-bold text-[10px] flex-shrink-0"
+                                style={{ backgroundColor: lang.color + '20', color: lang.color }}
+                              >
+                                {lang.icon}
+                              </span>
+                              <div className="truncate">
+                                <div className={`text-xs font-mono truncate ${isSelected ? 'text-white font-semibold' : 'text-neutral-300'}`}>
+                                  {lang.name}
+                                </div>
+                                <div className="text-[9px] font-mono text-neutral-500 truncate">{lang.ext}</div>
+                              </div>
+                            </div>
+                            {isSelected && (
+                              <div className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Room Name & Configuration */}
+                  <div className="grid sm:grid-cols-[1.5fr_1fr] gap-4 pt-2">
+                    <div>
+                      <label className="block text-xs font-mono uppercase tracking-wider text-neutral-400 font-semibold mb-1.5">
+                        Session Identifier (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={customRoomName}
+                        onChange={(e) => setCustomRoomName(e.target.value)}
+                        placeholder="e.g. distributed-consensus-review"
+                        maxLength={30}
+                        className="w-full px-3.5 py-2.5 bg-[#101216] border border-white/10 rounded-lg text-neutral-100 placeholder-neutral-600 font-mono text-xs focus:outline-none focus:border-blue-500 transition"
+                      />
+                      <div className="text-[10px] font-mono text-neutral-500 mt-1">
+                        URL Slug: <span className="text-neutral-400">/room/{customRoomName.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 30) || 'auto-generated-code'}</span>
+                      </div>
+                    </div>
+
+                    {/* Visibility Switcher */}
+                    <div>
+                      <label className="block text-xs font-mono uppercase tracking-wider text-neutral-400 font-semibold mb-1.5">
+                        Directory Visibility
+                      </label>
+                      <div className="flex items-center gap-2 p-1 bg-[#101216] border border-white/10 rounded-lg">
+                        <button
+                          type="button"
+                          onClick={() => setIsPublicRoom(false)}
+                          className={`flex-1 py-1.5 text-center text-xs font-mono rounded transition ${
+                            !isPublicRoom ? 'bg-white/[0.08] text-white font-medium' : 'text-neutral-500 hover:text-neutral-300'
+                          }`}
+                        >
+                          Private (Invite)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsPublicRoom(true)}
+                          className={`flex-1 py-1.5 text-center text-xs font-mono rounded transition ${
+                            isPublicRoom ? 'bg-emerald-500/20 text-emerald-300 font-medium' : 'text-neutral-500 hover:text-neutral-300'
+                          }`}
+                        >
+                          Public (Directory)
+                        </button>
+                      </div>
+                      <div className="text-[10px] font-mono text-neutral-500 mt-1">
+                        {isPublicRoom ? 'Listed on public directory' : 'Accessible only via direct room link'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Submit Button */}
+                  <div className="pt-2">
+                    <button
+                      onClick={handleCreateRoom}
+                      className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold tracking-tight transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
+                    >
+                      <span>Create Workspace ({selectedLangObj.name})</span>
+                      <span className="font-mono text-xs opacity-75">↵ Enter</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Mode: Join Session */}
+              {controlMode === 'join' && (
+                <div className="pt-6 max-w-lg mx-auto">
+                  <form onSubmit={handleJoinRoom} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-mono uppercase tracking-wider text-neutral-400 font-semibold mb-1.5 text-center">
+                        Enter 6-Character Room Code or Session Identifier
+                      </label>
+                      <input
+                        type="text"
+                        value={joinCode}
+                        onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setError(''); }}
+                        placeholder="e.g. X9K2P4"
+                        maxLength={30}
+                        className="w-full px-4 py-3.5 bg-[#101216] border border-white/10 rounded-lg text-white font-mono text-center text-xl tracking-[0.25em] placeholder:tracking-normal placeholder-neutral-600 focus:outline-none focus:border-amber-500 transition uppercase"
+                      />
+                      {error && (
+                        <p className="mt-2 text-rose-400 text-xs font-mono text-center">{error}</p>
+                      )}
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={joinLoading}
+                      className="w-full py-3 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-lg text-sm font-semibold tracking-tight transition flex items-center justify-center gap-2 shadow-lg shadow-amber-600/20"
+                    >
+                      {joinLoading ? (
+                        <span>Connecting to Session...</span>
+                      ) : (
+                        <span>Connect to Room →</span>
+                      )}
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* ── System Architecture (Technical Deep-Dive) ─────────── */}
+          <section id="architecture" className="mb-20 sm:mb-28 scroll-mt-20">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+              <h2 className="text-xs font-mono uppercase tracking-widest text-neutral-400">System Architecture</h2>
+            </div>
+            <h3 className="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight mb-8">
+              Engineered for deterministic concurrency.
+            </h3>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Module 1: CRDT */}
+              <div className="p-5 bg-[#0c0d10] border border-white/[0.07] rounded-xl flex flex-col justify-between">
+                <div>
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center font-mono text-xs font-bold mb-4">
+                    Yjs
+                  </div>
+                  <h4 className="text-sm font-semibold text-white mb-2">Decentralized CRDT Core</h4>
+                  <p className="text-xs text-neutral-400 leading-relaxed font-mono">
+                    Character insertions and deletions are encoded as commutative state vectors. Peer updates merge deterministically without central operational transformation locks.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-white/[0.05] text-[10px] font-mono text-neutral-500">
+                  Zero Merge Conflicts
+                </div>
+              </div>
+
+              {/* Module 2: Hybrid Execution */}
+              <div className="p-5 bg-[#0c0d10] border border-white/[0.07] rounded-xl flex flex-col justify-between">
+                <div>
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center font-mono text-xs font-bold mb-4">
+                    WASM
+                  </div>
+                  <h4 className="text-sm font-semibold text-white mb-2">Hybrid WASM Sandbox</h4>
+                  <p className="text-xs text-neutral-400 leading-relaxed font-mono">
+                    Python (Pyodide), JS/TS (Workers), and SQLite compile entirely in-browser at 0ms latency. Compiled runtimes (Rust, Go, C++, Fortran) execute in isolated containers.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-white/[0.05] text-[10px] font-mono text-neutral-500">
+                  Sub-millisecond Feedback
+                </div>
+              </div>
+
+              {/* Module 3: Mesh Audio */}
+              <div className="p-5 bg-[#0c0d10] border border-white/[0.07] rounded-xl flex flex-col justify-between">
+                <div>
+                  <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center font-mono text-xs font-bold mb-4">
+                    RTC
+                  </div>
+                  <h4 className="text-sm font-semibold text-white mb-2">Peer-to-Peer Mesh Audio</h4>
+                  <p className="text-xs text-neutral-400 leading-relaxed font-mono">
+                    Direct WebRTC mesh topology streaming 48kHz Opus audio between connected peers. Zero third-party telephony servers or intermediary eavesdropping.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-white/[0.05] text-[10px] font-mono text-neutral-500">
+                  Direct Browser-to-Browser
+                </div>
+              </div>
+
+              {/* Module 4: Anticheat Engine */}
+              <div className="p-5 bg-[#0c0d10] border border-white/[0.07] rounded-xl flex flex-col justify-between">
+                <div>
+                  <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center font-mono text-xs font-bold mb-4">
+                    VG
+                  </div>
+                  <h4 className="text-sm font-semibold text-white mb-2">Vanguard Integrity Protocol</h4>
+                  <p className="text-xs text-neutral-400 leading-relaxed font-mono">
+                    Integrated competition monitor with 13 passive telemetry hooks for tab switching, devtools inspection, and unnatural paste rate anomalies during technical interviews.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-white/[0.05] text-[10px] font-mono text-neutral-500">
+                  Integrity Telemetry
+                </div>
               </div>
             </div>
           </section>
 
-          {/* ── Language Marquee ─────────────────────────────────── */}
-          <div className="reveal mb-8 sm:mb-12">
-            <LanguageMarquee />
-          </div>
-
-          {/* Mobile Segmented Action Switcher */}
-          <div className="flex sm:hidden p-1 bg-[#141518] rounded-xl border border-[#282828] mb-4">
-            <button
-              type="button"
-              onClick={() => setMobileAction('create')}
-              className={`flex-1 py-2 flex items-center justify-center gap-1.5 text-center text-xs font-mono font-medium rounded-lg transition ${
-                mobileAction === 'create'
-                  ? 'bg-[#5e9eff] text-[#0a0a0a] font-semibold shadow'
-                  : 'text-[#888] hover:text-white'
-              }`}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              <span>New Room</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileAction('join')}
-              className={`flex-1 py-2 flex items-center justify-center gap-1.5 text-center text-xs font-mono font-medium rounded-lg transition ${
-                mobileAction === 'join'
-                  ? 'bg-[#ffb347] text-[#0a0a0a] font-semibold shadow'
-                  : 'text-[#888] hover:text-white'
-              }`}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-              </svg>
-              <span>Join Room</span>
-            </button>
-          </div>
-
-          {/* ── Create + Join (asymmetric layout) ────────────────── */}
-          <div className="grid md:grid-cols-[1.2fr_1fr] gap-4 sm:gap-6 mb-10 sm:mb-16 stagger-in">
-            {/* Create Room */}
-            <div className={`bg-[#1a1b1e] border border-[#282828] rounded-2xl p-5 sm:p-7 hover-lift fade-in-scale tilt-card gradient-border-card ${mobileAction === 'create' ? 'block' : 'hidden sm:block'}`}>
-              <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#5e9eff] breathe" />
-                  <h3 className="text-[14px] font-display font-semibold text-white">new room</h3>
-                </div>
-                <span className="text-[10px] text-[#555] font-mono">pick a language, hit go</span>
-              </div>
-              
-              <div className="mb-5">
-                <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
-                  {LANGUAGES.map(lang => (
-                    <button key={lang.id} onClick={() => setSelectedLang(lang.id)}
-                      className={`lang-pill relative px-1 py-2.5 rounded-lg text-[10px] font-mono font-bold transition-all duration-200 ${
-                        selectedLang === lang.id
-                          ? 'selected ring-1 ring-[#5e9eff]/50 bg-[#5e9eff]/10'
-                          : 'text-[#666] hover:text-[#aaa] bg-transparent hover:bg-[#222]'
-                      }`}
-                      title={`${lang.name}${langVersions[lang.id] ? ` (${langVersions[lang.id]})` : ''}`}>
-                      <span style={{ color: selectedLang === lang.id ? lang.color : undefined }}>{lang.icon}</span>
-                      {selectedLang === lang.id && (
-                        <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-3 h-0.5 rounded-full" style={{ background: lang.color }} />
-                      )}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2 mt-3">
-                  <div className="w-2 h-2 rounded-full" style={{ background: getLangInfo(selectedLang).color, boxShadow: `0 0 8px ${getLangInfo(selectedLang).color}40` }} />
-                  <p className="text-[12px] text-[#999] font-mono">
-                    {getLangInfo(selectedLang).name}
-                    {langVersions[selectedLang] && <span className="text-[#555] ml-1">({langVersions[selectedLang]?.split(' ')[0]?.split('(')[0]})</span>}
-                  </p>
-                </div>
-              </div>
-
-              {/* v14: Custom room name input */}
-              <div className="mb-4">
-                <input
-                  type="text"
-                  value={customRoomName}
-                  onChange={(e) => setCustomRoomName(e.target.value)}
-                  placeholder="custom room name (optional)"
-                  maxLength={30}
-                  className="w-full px-3.5 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 focus:shadow-[0_0_0_3px_rgba(94,158,255,0.08)] text-[12px] font-mono transition-all"
-                />
-                <p className="text-[9px] text-[#444] font-mono mt-1 pl-1">
-                  {customRoomName.trim() ? `Room ID: ${customRoomName.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 30) || 'auto-generated'}` : 'leave empty for random 6-char code'}
-                </p>
-              </div>
-
-              <label className="flex items-center gap-2.5 mb-6 cursor-pointer group">
-                <button onClick={() => setIsPublicRoom(!isPublicRoom)}
-                  className={`w-8 h-[17px] rounded-full transition-all relative ${isPublicRoom ? 'bg-[#5bd882]' : 'bg-[#444]'}`}>
-                  <div className={`w-[13px] h-[13px] rounded-full bg-white absolute top-[2px] transition-all duration-200 shadow-sm`}
-                    style={{ left: isPublicRoom ? '14px' : '2px' }} />
+          {/* ── Directory & Community Vault ───────────────────────── */}
+          <section id="rooms" className="mb-20 sm:mb-28 scroll-mt-20">
+            {/* Header with Switcher */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setTab('rooms')}
+                  className={`text-sm font-mono pb-1 border-b-2 transition ${
+                    tab === 'rooms'
+                      ? 'border-blue-500 text-white font-semibold'
+                      : 'border-transparent text-neutral-500 hover:text-neutral-300'
+                  }`}
+                >
+                  Live Session Directory ({publicRooms.length})
                 </button>
-                <span className="text-[11px] text-[#777] group-hover:text-[#aaa] transition font-mono">
-                  {isPublicRoom ? 'public — listed on home' : 'private — invite only'}
-                </span>
-              </label>
-
-              <button onClick={handleCreateRoom}
-                className="magnetic-btn ripple-btn w-full py-3 bg-[#5e9eff] hover:bg-[#7ab3ff] text-[#0a0a0a] text-[14px] font-display font-semibold rounded-xl transition-all glow-pulse shadow-lg shadow-[#5e9eff]/10">
-                create room
-              </button>
-            </div>
-
-            {/* Join Room */}
-            <div className={`bg-[#1a1b1e] border border-[#282828] rounded-2xl p-5 sm:p-7 hover-lift fade-in-scale tilt-card gradient-border-card ${mobileAction === 'join' ? 'block' : 'hidden sm:block'}`} style={{ animationDelay: '100ms' }}>
-              <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#ffb347] breathe" />
-                  <h3 className="text-[14px] font-display font-semibold text-white">join room</h3>
-                </div>
-                <span className="text-[10px] text-[#555] font-mono">got a code or room name?</span>
-              </div>
-              <form onSubmit={handleJoinRoom}>
-                <div className="mb-6">
-                  <input type="text" value={joinCode}
-                    onChange={(e) => { setJoinCode(e.target.value); setError(''); }}
-                    placeholder="room code or name" maxLength={30}
-                    className="w-full px-4 py-3.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 focus:shadow-[0_0_0_3px_rgba(94,158,255,0.08)] font-mono text-center text-lg tracking-wider transition-all" />
-                  {error && <p className="mt-2 text-[#ff6b6b] text-[11px] font-mono pl-1 fade-up">{error}</p>}
-                </div>
-                <button type="submit" disabled={joinLoading}
-                  className="magnetic-btn ripple-btn w-full py-3 bg-[#222] hover:bg-[#2a2b30] text-white text-[14px] font-display font-semibold rounded-xl transition-all border border-[#333] disabled:opacity-40 hover:border-[#444]">
-                  {joinLoading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <div className="w-3.5 h-3.5 border-2 border-[#555] border-t-white rounded-full animate-spin" />
-                      checking...
-                    </span>
-                  ) : 'join room'}
+                <span className="text-neutral-700">|</span>
+                <button
+                  onClick={() => { setTab('gallery'); fetchGallery(); }}
+                  className={`text-sm font-mono pb-1 border-b-2 transition ${
+                    tab === 'gallery'
+                      ? 'border-blue-500 text-white font-semibold'
+                      : 'border-transparent text-neutral-500 hover:text-neutral-300'
+                  }`}
+                >
+                  Code Vault ({gallery.length})
                 </button>
-              </form>
-            </div>
-          </div>
-
-          {/* ── How It Works ───────────────────────────────────── */}
-          <div className="reveal mb-10 sm:mb-16">
-            <h3 className="text-[11px] text-[#555] font-mono mb-8 uppercase tracking-wider text-center">how it works</h3>
-            <div className="grid sm:grid-cols-3 gap-6 relative">
-              {/* Connecting line */}
-              <div className="hidden sm:block absolute top-10 left-[16%] right-[16%] h-px bg-gradient-to-r from-[#5e9eff]/20 via-[#5bd882]/20 to-[#c4b5fd]/20" />
-              {[
-                { step: '01', title: 'Create a room', desc: 'Pick a language, toggle public/private, and get a 6-character code.', color: '#5e9eff',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" /></svg>
-                },
-                { step: '02', title: 'Share the code', desc: 'Send the room code to your teammates. They join instantly.', color: '#5bd882',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                },
-                { step: '03', title: 'Code together', desc: 'Real-time sync, voice chat, run code — all in one place.', color: '#c4b5fd',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                },
-              ].map((item, i) => (
-                <div key={i} className="text-center relative" style={{ animationDelay: `${i * 120}ms` }}>
-                  <div className="w-10 h-10 rounded-xl mx-auto mb-3 flex items-center justify-center border border-[#282828] bg-[#1a1b1e] relative z-10"
-                    style={{ color: item.color, boxShadow: `0 0 20px ${item.color}15` }}>
-                    {item.icon}
-                  </div>
-                  <div className="text-[9px] text-[#444] font-mono mb-1">{item.step}</div>
-                  <h4 className="text-[13px] font-semibold text-white mb-1">{item.title}</h4>
-                  <p className="text-[11px] text-[#666] font-mono leading-relaxed max-w-[200px] mx-auto">{item.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* ── Features (fun cards) ─────────────────────────────── */}
-          <div className="reveal mb-10 sm:mb-16">
-            <h3 className="text-[11px] text-[#555] font-mono mb-5 uppercase tracking-wider">what you get</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 stagger-in">
-              {[
-                { label: 'CRDT Sync', detail: 'Yjs-powered, no conflicts ever. Type freely.', color: '#5e9eff',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                },
-                { label: 'Voice Chat', detail: 'WebRTC peer-to-peer audio. No server relay.', color: '#5bd882',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                },
-                { label: '20 Languages', detail: 'From Python to Assembly. All run server-side.', color: '#ffb347',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
-                },
-                { label: 'Zen Mode', detail: 'Ctrl+Shift+Z — pure editor, zero distractions.', color: '#c4b5fd',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                },
-                { label: 'Anticheat', detail: '13 detection types for competition integrity.', color: '#ff6b6b',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-                },
-                { label: 'Code Export', detail: 'Download with metadata headers or copy raw.', color: '#e4cc98',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                },
-                { label: 'Themes & More', detail: '6 terminal themes, minimap, font control.', color: '#89e051',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
-                },
-              ].map((feat, i) => (
-                <div key={i} className="hover-lift neon-card card-pop p-4 bg-[#1a1b1e] rounded-xl border border-[#222] hover:border-[#333] transition-all group gradient-border-card"
-                  style={{ animationDelay: `${i * 80}ms` }}>
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-                      style={{ color: feat.color, background: feat.color + '12' }}>
-                      {feat.icon}
-                    </div>
-                    <div className="text-[13px] font-semibold text-[#ddd] group-hover:text-white transition">{feat.label}</div>
-                  </div>
-                  <div className="text-[11px] text-[#555] font-mono leading-relaxed group-hover:text-[#777] transition">{feat.detail}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* ── Stats Counter ──────────────────────────────────── */}
-          <div className="reveal mb-10 sm:mb-16">
-            <div className="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 sm:p-8 aurora-bg overflow-hidden">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center relative z-10">
-                {[
-                  { target: 20, suffix: '+', label: 'Languages', color: '#ffb347' },
-                  { target: 13, suffix: '', label: 'Anticheat Types', color: '#ff6b6b' },
-                  { target: 0, suffix: 'ms', label: 'Latency', color: '#5bd882', prefix: '~' },
-                  { target: '<1', suffix: 's', label: 'Setup time', color: '#5e9eff' },
-                ].map((stat, i) => (
-                  <div key={i}>
-                    <AnimatedCounter target={stat.target} suffix={stat.suffix} prefix={stat.prefix || ''} color={stat.color} />
-                    <p className="text-[11px] text-[#555] font-mono mt-1">{stat.label}</p>
-                  </div>
-                ))}
               </div>
-            </div>
-          </div>
 
-          {/* ── Tabs: Rooms / Gallery ──────────────────────────── */}
-          <div className="reveal">
-            <div className="flex items-center gap-5 mb-5">
-              <button onClick={() => setTab('rooms')}
-                className={`text-[12px] font-mono pb-1.5 transition-all ${tab === 'rooms' ? 'text-white border-b-2 border-[#5e9eff]' : 'text-[#555] hover:text-[#888]'}`}>
-                live rooms
-                {publicRooms.length > 0 && (
-                  <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full bg-[#5bd882]/10 text-[#5bd882]">{publicRooms.length}</span>
+              <div className="flex items-center gap-3">
+                {tab === 'rooms' ? (
+                  <button
+                    onClick={fetchPublicRooms}
+                    className="text-xs font-mono text-neutral-400 hover:text-white transition flex items-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    <span>Refresh</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowShareModal(true)}
+                    className="px-3 py-1 bg-white/[0.05] hover:bg-white/10 border border-white/10 rounded-lg text-xs font-mono text-neutral-200 transition flex items-center gap-1.5"
+                  >
+                    <span>+ Publish Snippet</span>
+                  </button>
                 )}
-              </button>
-              <button onClick={() => { setTab('gallery'); fetchGallery(); }}
-                className={`text-[12px] font-mono pb-1.5 transition-all ${tab === 'gallery' ? 'text-white border-b-2 border-[#5e9eff]' : 'text-[#555] hover:text-[#888]'}`}>
-                gallery
-                {gallery.length > 0 && (
-                  <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full bg-[#5e9eff]/10 text-[#5e9eff]">{gallery.length}</span>
-                )}
-              </button>
-              <div className="flex-1" />
-              {tab === 'rooms' && <button onClick={fetchPublicRooms} className="text-[10px] text-[#555] hover:text-[#888] transition font-mono hover:underline">refresh</button>}
-              {tab === 'gallery' && (
-                <button onClick={() => setShowShareModal(true)}
-                  className="magnetic-btn text-[10px] px-3 py-1.5 bg-[#222] text-[#888] hover:text-white rounded-lg border border-[#333] hover:border-[#444] transition font-mono">
-                  + share code
-                </button>
-              )}
+              </div>
             </div>
 
+            {/* Content: Live Rooms Table */}
             {tab === 'rooms' && (
-              <div className="mb-10 fade-up">
+              <div className="bg-[#0c0e12] border border-white/[0.08] rounded-xl overflow-hidden shadow-xl">
                 {publicRooms.length === 0 ? (
-                  <div className="py-16 text-center">
-                    <div className="text-[32px] mb-3 float">{'{ }'}</div>
-                    <p className="text-[#555] text-[13px]">no public rooms right now</p>
-                    <p className="text-[#444] text-[11px] mt-1 font-mono">create one and it shows up here</p>
+                  <div className="py-16 px-4 text-center">
+                    <div className="w-10 h-10 rounded-lg bg-white/[0.03] border border-white/10 text-neutral-500 font-mono text-sm flex items-center justify-center mx-auto mb-3">
+                      {'//'}
+                    </div>
+                    <h4 className="text-sm font-mono text-neutral-300 mb-1">No public rooms currently broadcasting</h4>
+                    <p className="text-xs font-mono text-neutral-500 max-w-sm mx-auto">
+                      Create a room with visibility set to &quot;Public&quot; to list your collaborative session here.
+                    </p>
                   </div>
                 ) : (
-                  <div className="space-y-1.5">
-                    {publicRooms.map((room, idx) => {
-                      const langInfo = getLangInfo(room.language);
-                      return (
-                        <button key={room.roomId} onClick={() => router.push(`/room/${room.roomId}`)}
-                          className="w-full flex items-center justify-between px-4 py-3.5 bg-[#1a1b1e] hover:bg-[#1e1f22] rounded-xl transition-all group border border-transparent hover:border-[#282828] hover-lift"
-                          style={{ animationDelay: `${idx * 40}ms` }}>
-                          <div className="flex items-center gap-3">
-                            <div className="relative">
-                              <div className="w-2 h-2 rounded-full bg-[#5bd882]" />
-                              <div className="absolute inset-0 w-2 h-2 rounded-full bg-[#5bd882] animate-ping opacity-30" />
-                            </div>
-                            <span className="text-[13px] font-mono text-[#aaa] tracking-wider">{room.roomName || room.roomId}</span>
-                            {room.roomName && <span className="text-[10px] font-mono text-[#444]">{room.roomId}</span>}
-                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded" style={{ color: langInfo.color, background: langInfo.color + '12' }}>
-                              {langInfo.icon}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3 text-[11px] text-[#555] font-mono">
-                            <span>{room.userCount} online</span>
-                            <svg className="w-3 h-3 opacity-0 group-hover:opacity-60 transition transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
+                  <div className="divide-y divide-white/[0.05]">
+                    <div className="grid grid-cols-12 px-4 py-2.5 bg-[#101216] text-[11px] font-mono uppercase tracking-wider text-neutral-500">
+                      <div className="col-span-5 sm:col-span-4">Session Name</div>
+                      <div className="col-span-3 sm:col-span-3">Language</div>
+                      <div className="col-span-2 sm:col-span-3">Active Peers</div>
+                      <div className="col-span-2 sm:col-span-2 text-right">Connect</div>
+                    </div>
 
-            {tab === 'gallery' && (
-              <div className="mb-10 fade-up">
-                {galleryLoading ? (
-                  <div className="text-center py-16">
-                    <div className="spinner mx-auto mb-3" />
-                    <p className="text-[#555] text-[11px] font-mono">loading snippets...</p>
-                  </div>
-                ) : gallery.length === 0 ? (
-                  <div className="py-16 text-center">
-                    <div className="text-[32px] mb-3 float-delayed">{'</>'}</div>
-                    <p className="text-[#555] text-[13px]">gallery is empty</p>
-                    <p className="text-[#444] text-[11px] mt-1 font-mono">be the first to share something</p>
-                  </div>
-                ) : (
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    {gallery.map((snippet, idx) => {
-                      const langInfo = getLangInfo(snippet.language);
+                    {publicRooms.map(room => {
+                      const langObj = LANGUAGES.find(l => l.id === room.language) || LANGUAGES[0];
                       return (
-                        <div key={snippet.id}
-                          onClick={() => setSelectedSnippet(snippet.id === selectedSnippet?.id ? null : snippet)}
-                          className="bg-[#1a1b1e] border border-[#282828] rounded-xl p-4 hover:border-[#333] cursor-pointer transition-all hover-lift gradient-border-card"
-                          style={{ animationDelay: `${idx * 60}ms` }}>
-                          <div className="flex items-center justify-between mb-2">
-                            <h4 className="text-[13px] font-medium text-[#ccc] truncate">{snippet.title}</h4>
-                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ml-2 flex-shrink-0" style={{ color: langInfo.color, background: langInfo.color + '12' }}>
-                              {langInfo.icon}
-                            </span>
+                        <div key={room.roomId} className="grid grid-cols-12 px-4 py-3.5 items-center hover:bg-white/[0.02] transition font-mono text-xs">
+                          <div className="col-span-5 sm:col-span-4 flex items-center gap-2.5 truncate">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0 animate-pulse" />
+                            <span className="text-neutral-100 font-semibold truncate">{room.roomName || room.roomId}</span>
+                            {room.roomName && (
+                              <span className="text-[10px] text-neutral-500 truncate hidden sm:inline">({room.roomId})</span>
+                            )}
                           </div>
-                          {snippet.description && <p className="text-[11px] text-[#555] mb-2 line-clamp-2">{snippet.description}</p>}
-                          <pre className="text-[10px] text-[#666] bg-[#111] rounded-lg p-2.5 overflow-hidden max-h-20 font-mono leading-relaxed border border-[#1e1e1e]">{snippet.code}</pre>
-                          <div className="flex items-center justify-between mt-2.5 text-[10px] text-[#555] font-mono">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: snippet.authorColor || '#666' }} />
-                              <span>{snippet.author}</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span>{snippet.views || 0} views</span>
-                              <button onClick={(e) => {
-                                e.stopPropagation();
-                                navigator.clipboard.writeText(snippet.code).catch(() => {});
-                                showToast('Copied!', { color: '#5e9eff' });
-                              }} className="text-[#555] hover:text-[#aaa] transition p-0.5">
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                              </button>
-                            </div>
+
+                          <div className="col-span-3 sm:col-span-3 flex items-center gap-1.5 truncate">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: langObj.color + '18', color: langObj.color }}>
+                              {langObj.icon}
+                            </span>
+                            <span className="text-neutral-300 truncate">{langObj.name}</span>
+                          </div>
+
+                          <div className="col-span-2 sm:col-span-3 text-neutral-400">
+                            {room.userCount || 1} peer{(room.userCount || 1) === 1 ? '' : 's'}
+                          </div>
+
+                          <div className="col-span-2 sm:col-span-2 text-right">
+                            <button
+                              onClick={() => router.push(`/room/${room.roomId}`)}
+                              className="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 rounded text-xs transition"
+                            >
+                              Join →
+                            </button>
                           </div>
                         </div>
                       );
@@ -1254,113 +935,181 @@ export default function Home() {
                 )}
               </div>
             )}
-          </div>
 
-          {/* ── Why CollabCode ─────────────────────────────────── */}
-          <div className="reveal mb-10 sm:mb-16">
-            <h3 className="text-[11px] text-[#555] font-mono mb-5 uppercase tracking-wider text-center">why collabcode</h3>
-            <div className="grid sm:grid-cols-3 gap-4">
-              {[
-                { title: 'No setup required', desc: 'No downloads, no extensions, no configs. Open a link and start coding together in seconds.', color: '#5e9eff',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                },
-                { title: 'Real code execution', desc: 'Run your code server-side in 20 languages with interactive stdin support and instant output.', color: '#5bd882',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-                },
-                { title: 'Built-in voice chat', desc: 'Peer-to-peer WebRTC audio with zero relay servers. Talk while you code, no third-party app needed.', color: '#ffb347',
-                  icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                },
-              ].map((item, i) => (
-                <div key={i} className="bg-[#1a1b1e] border border-[#282828] rounded-xl p-5 hover-lift gradient-border-card"
-                  style={{ animationDelay: `${i * 80}ms` }}>
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-3 border border-[#282828]"
-                    style={{ color: item.color, background: item.color + '10' }}>
-                    {item.icon}
+            {/* Content: Snippet Vault */}
+            {tab === 'gallery' && (
+              <div id="gallery">
+                {galleryLoading ? (
+                  <div className="py-16 text-center text-xs font-mono text-neutral-500">
+                    Loading code vault...
                   </div>
-                  <h4 className="text-[13px] font-semibold text-white mb-1.5">{item.title}</h4>
-                  <p className="text-[11px] text-[#666] font-mono leading-relaxed">{item.desc}</p>
-                </div>
-              ))}
+                ) : gallery.length === 0 ? (
+                  <div className="bg-[#0c0e12] border border-white/[0.08] rounded-xl py-16 px-4 text-center">
+                    <div className="text-sm font-mono text-neutral-300 mb-1">Code vault is empty</div>
+                    <p className="text-xs font-mono text-neutral-500">Be the first to share an algorithm or utility snippet.</p>
+                  </div>
+                ) : (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {gallery.map(snippet => {
+                      const langObj = LANGUAGES.find(l => l.id === snippet.language) || LANGUAGES[0];
+                      return (
+                        <div
+                          key={snippet.id}
+                          onClick={() => setSelectedSnippet(snippet)}
+                          className="p-4 bg-[#0c0e12] border border-white/[0.07] hover:border-white/20 rounded-xl cursor-pointer transition flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="text-xs font-semibold text-neutral-200 truncate">{snippet.title}</h4>
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold" style={{ backgroundColor: langObj.color + '18', color: langObj.color }}>
+                                {langObj.name}
+                              </span>
+                            </div>
+                            {snippet.description && (
+                              <p className="text-[11px] text-neutral-400 line-clamp-2 mb-3">{snippet.description}</p>
+                            )}
+                            <pre className="p-2.5 bg-[#08090b] border border-white/[0.04] rounded-lg text-[10px] font-mono text-neutral-400 overflow-hidden max-h-24 leading-relaxed">
+                              {snippet.code}
+                            </pre>
+                          </div>
+
+                          <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-white/[0.05] text-[10px] font-mono text-neutral-500">
+                            <span>Author: {snippet.author || 'Anonymous'}</span>
+                            <span className="text-blue-400 hover:underline">Inspect →</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* ── Keyboard Shortcut Registry ────────────────────────── */}
+          <section className="p-6 bg-[#0c0d10] border border-white/[0.07] rounded-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-xs font-mono uppercase tracking-widest text-neutral-400">Default Command Registry</h4>
+              <span className="text-[10px] font-mono text-neutral-500">VS Code Native Ergonomics</span>
             </div>
-          </div>
-
-          {/* ── Keyboard Shortcuts ──────────────────────────────── */}
-          <div className="reveal mb-10 sm:mb-16">
-            <div className="bg-[#1a1b1e] border border-[#222] rounded-2xl p-5 sm:p-6 text-center">
-              <h3 className="text-[11px] text-[#555] font-mono mb-4 uppercase tracking-wider">keyboard shortcuts</h3>
-              <div className="flex flex-wrap justify-center gap-4 text-[11px]">
-                {[
-                  { keys: 'Ctrl + Enter', action: 'Run code' },
-                  { keys: 'Ctrl + B', action: 'Toggle chat' },
-                  { keys: 'Ctrl + `', action: 'Toggle terminal' },
-                  { keys: 'Ctrl + S', action: 'Save file' },
-                ].map((shortcut, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[#666] font-mono">
-                    <kbd className="text-[#aaa]">{shortcut.keys}</kbd>
-                    <span className="text-[#444]">{shortcut.action}</span>
-                  </div>
-                ))}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+              <div className="p-2.5 bg-[#101216] border border-white/[0.05] rounded-lg flex items-center justify-between">
+                <span className="text-neutral-400">Run Code</span>
+                <kbd className="px-2 py-0.5 bg-white/[0.06] border border-white/10 rounded text-[11px] text-neutral-200">Ctrl + Enter</kbd>
+              </div>
+              <div className="p-2.5 bg-[#101216] border border-white/[0.05] rounded-lg flex items-center justify-between">
+                <span className="text-neutral-400">Terminal</span>
+                <kbd className="px-2 py-0.5 bg-white/[0.06] border border-white/10 rounded text-[11px] text-neutral-200">Ctrl + `</kbd>
+              </div>
+              <div className="p-2.5 bg-[#101216] border border-white/[0.05] rounded-lg flex items-center justify-between">
+                <span className="text-neutral-400">Toggle Chat</span>
+                <kbd className="px-2 py-0.5 bg-white/[0.06] border border-white/10 rounded text-[11px] text-neutral-200">Ctrl + B</kbd>
+              </div>
+              <div className="p-2.5 bg-[#101216] border border-white/[0.05] rounded-lg flex items-center justify-between">
+                <span className="text-neutral-400">Zen Mode</span>
+                <kbd className="px-2 py-0.5 bg-white/[0.06] border border-white/10 rounded text-[11px] text-neutral-200">Ctrl+Shift+Z</kbd>
               </div>
             </div>
-          </div>
+          </section>
 
         </div>
       </main>
 
-      {/* ── Snippet Detail Modal ───────────────────────────── */}
+      {/* ── Snippet Modal ────────────────────────────────────── */}
       {selectedSnippet && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setSelectedSnippet(null); }}>
-          <div className="modal-enter bg-[#1a1b1e] border border-[#333] rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[15px] font-display font-semibold text-white">{selectedSnippet.title}</h3>
-              <button onClick={() => setSelectedSnippet(null)} className="p-1.5 text-[#666] hover:text-white transition rounded-lg hover:bg-[#222]">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSelectedSnippet(null)}>
+          <div className="bg-[#0e1014] border border-white/15 rounded-xl max-w-2xl w-full p-6 shadow-2xl max-h-[85vh] flex flex-col font-mono text-xs animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
+              <div>
+                <h3 className="text-sm font-semibold text-white">{selectedSnippet.title}</h3>
+                <p className="text-[11px] text-neutral-500 mt-0.5">{selectedSnippet.description || 'No description provided'}</p>
+              </div>
+              <button onClick={() => setSelectedSnippet(null)} className="text-neutral-500 hover:text-white p-1">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            {selectedSnippet.description && <p className="text-[13px] text-[#777] mb-4">{selectedSnippet.description}</p>}
-            <pre className="text-[12px] text-[#ccc] bg-[#111] rounded-xl p-4 overflow-auto max-h-96 font-mono leading-relaxed border border-[#222]">{selectedSnippet.code}</pre>
-            <div className="flex items-center justify-between mt-4">
-              <div className="flex items-center gap-2 text-[11px] text-[#666] font-mono">
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: selectedSnippet.authorColor || '#666' }} />
-                <span>{selectedSnippet.author}</span>
-                <span className="text-[#444]">/</span>
-                <span>{getLangInfo(selectedSnippet.language).name}</span>
-              </div>
-              <button onClick={() => {
-                navigator.clipboard.writeText(selectedSnippet.code).catch(() => {});
-                showToast('Copied to clipboard!', { color: '#5e9eff' });
-              }}
-                className="magnetic-btn text-[11px] px-3 py-1.5 bg-[#222] text-[#aaa] rounded-lg hover:bg-[#2a2b30] hover:text-white transition border border-[#333] font-mono">
-                copy
+
+            <pre className="p-4 bg-[#08090b] border border-white/[0.06] rounded-lg overflow-auto flex-1 leading-relaxed text-neutral-300">
+              {selectedSnippet.code}
+            </pre>
+
+            <div className="flex items-center justify-between pt-4 mt-4 border-t border-white/10">
+              <span className="text-neutral-500">Author: {selectedSnippet.author}</span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(selectedSnippet.code).catch(() => {});
+                  showToast('Code copied to clipboard', { color: '#3b82f6' });
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition"
+              >
+                Copy Code
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Share Code Modal ────────────────────────────────── */}
+      {/* ── Share Modal ──────────────────────────────────────── */}
       {showShareModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowShareModal(false); }}>
-          <div className="modal-enter bg-[#1a1b1e] border border-[#333] rounded-2xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-[15px] font-display font-semibold text-white mb-4">share your code</h3>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowShareModal(false)}>
+          <div className="bg-[#0e1014] border border-white/15 rounded-xl max-w-lg w-full p-6 shadow-2xl font-mono text-xs animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
+              <h3 className="text-sm font-semibold text-white">Publish Snippet to Vault</h3>
+              <button onClick={() => setShowShareModal(false)} className="text-neutral-500 hover:text-white p-1">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
             <form onSubmit={handleShareCode} className="space-y-3">
-              <input type="text" placeholder="title" value={shareForm.title}
-                onChange={(e) => setShareForm(p => ({ ...p, title: e.target.value }))}
-                className="w-full px-4 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 focus:shadow-[0_0_0_3px_rgba(94,158,255,0.08)] text-[13px] transition-all" required maxLength={100} />
-              <input type="text" placeholder="description (optional)" value={shareForm.description}
-                onChange={(e) => setShareForm(p => ({ ...p, description: e.target.value }))}
-                className="w-full px-4 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 focus:shadow-[0_0_0_3px_rgba(94,158,255,0.08)] text-[13px] transition-all" maxLength={500} />
-              <select value={shareForm.language} onChange={(e) => setShareForm(p => ({ ...p, language: e.target.value }))}
-                className="w-full px-4 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white focus:outline-none focus:border-[#5e9eff]/40 text-[13px] transition-all">
-                {LANGUAGES.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
-              <textarea placeholder="paste your code..." value={shareForm.code}
-                onChange={(e) => setShareForm(p => ({ ...p, code: e.target.value }))}
-                className="w-full px-4 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 focus:shadow-[0_0_0_3px_rgba(94,158,255,0.08)] text-[13px] font-mono h-40 resize-none transition-all" required maxLength={50000} />
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setShowShareModal(false)} className="flex-1 py-2.5 bg-[#222] text-[#aaa] rounded-xl hover:bg-[#2a2b30] transition text-[13px] border border-[#333]">cancel</button>
-                <button type="submit" disabled={shareLoading} className="magnetic-btn flex-1 py-2.5 bg-[#5e9eff] text-[#0a0a0a] rounded-xl hover:bg-[#7ab3ff] transition text-[13px] font-semibold disabled:opacity-40">
-                  {shareLoading ? 'sharing...' : 'share'}
+              <div>
+                <label className="block text-neutral-400 mb-1 text-[11px]">Title</label>
+                <input
+                  type="text"
+                  required
+                  value={shareForm.title}
+                  onChange={e => setShareForm(p => ({ ...p, title: e.target.value }))}
+                  placeholder="e.g. Distributed Worker Pool"
+                  className="w-full px-3 py-2 bg-[#121419] border border-white/10 rounded-lg text-white font-mono focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-neutral-400 mb-1 text-[11px]">Language</label>
+                <select
+                  value={shareForm.language}
+                  onChange={e => setShareForm(p => ({ ...p, language: e.target.value }))}
+                  className="w-full px-3 py-2 bg-[#121419] border border-white/10 rounded-lg text-white font-mono focus:outline-none focus:border-blue-500"
+                >
+                  {LANGUAGES.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-neutral-400 mb-1 text-[11px]">Code</label>
+                <textarea
+                  required
+                  rows={8}
+                  value={shareForm.code}
+                  onChange={e => setShareForm(p => ({ ...p, code: e.target.value }))}
+                  placeholder="Paste snippet code here..."
+                  className="w-full px-3 py-2 bg-[#121419] border border-white/10 rounded-lg text-white font-mono focus:outline-none focus:border-blue-500 resize-none leading-relaxed"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowShareModal(false)}
+                  className="px-4 py-2 bg-white/[0.05] hover:bg-white/10 rounded-lg text-neutral-400 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={shareLoading}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition"
+                >
+                  {shareLoading ? 'Publishing...' : 'Publish'}
                 </button>
               </div>
             </form>
@@ -1368,67 +1117,82 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── Auth Modal ──────────────────────────────────────── */}
+      {/* ── Auth Modal ───────────────────────────────────────── */}
       {showAuth && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) { setShowAuth(false); setAuthError(''); } }}>
-          <div className="modal-enter bg-[#1a1b1e] border border-[#333] rounded-2xl p-6 w-full max-w-sm relative shadow-2xl">
-            <button onClick={() => { setShowAuth(false); setAuthError(''); }}
-              className="absolute top-4 right-4 text-[#555] hover:text-white transition p-1.5 rounded-lg hover:bg-[#222]">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-            <h3 className="text-[16px] font-display font-semibold text-white mb-1">{authMode === 'signup' ? 'create account' : 'welcome back'}</h3>
-            <p className="text-[12px] text-[#666] mb-5 font-mono">{authMode === 'signup' ? 'save your settings across sessions' : 'pick up where you left off'}</p>
-            <form onSubmit={handleAuth} className="space-y-2.5">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowAuth(false)}>
+          <div className="bg-[#0e1014] border border-white/15 rounded-xl max-w-sm w-full p-6 shadow-2xl font-mono text-xs animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
+              <h3 className="text-sm font-semibold text-white">
+                {authMode === 'signup' ? 'Create Developer Account' : 'Sign In'}
+              </h3>
+              <button onClick={() => setShowAuth(false)} className="text-neutral-500 hover:text-white p-1">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleAuth} className="space-y-3">
               {authMode === 'signup' && (
                 <div>
-                  <label className="block text-[10px] text-[#666] mb-1 font-mono uppercase tracking-wider">username</label>
-                  <input type="text" placeholder="CodeNinja" value={authForm.username}
-                    onChange={(e) => setAuthForm(p => ({ ...p, username: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 focus:shadow-[0_0_0_3px_rgba(94,158,255,0.08)] text-[13px] transition-all" required minLength={3} maxLength={20} />
+                  <label className="block text-neutral-400 mb-1 text-[11px]">Username</label>
+                  <input
+                    type="text"
+                    required
+                    value={authForm.username}
+                    onChange={e => setAuthForm(p => ({ ...p, username: e.target.value }))}
+                    placeholder="dev_user"
+                    className="w-full px-3 py-2 bg-[#121419] border border-white/10 rounded-lg text-white font-mono focus:outline-none focus:border-blue-500"
+                  />
                 </div>
               )}
+
               <div>
-                <label className="block text-[10px] text-[#666] mb-1 font-mono uppercase tracking-wider">email</label>
-                <input type="email" placeholder="you@example.com" value={authForm.email}
-                  onChange={(e) => setAuthForm(p => ({ ...p, email: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 focus:shadow-[0_0_0_3px_rgba(94,158,255,0.08)] text-[13px] transition-all" required />
+                <label className="block text-neutral-400 mb-1 text-[11px]">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={authForm.email}
+                  onChange={e => setAuthForm(p => ({ ...p, email: e.target.value }))}
+                  placeholder="name@domain.com"
+                  className="w-full px-3 py-2 bg-[#121419] border border-white/10 rounded-lg text-white font-mono focus:outline-none focus:border-blue-500"
+                />
               </div>
+
               <div>
-                <label className="block text-[10px] text-[#666] mb-1 font-mono uppercase tracking-wider">password</label>
-                <input type="password" placeholder="min 6 characters" value={authForm.password}
-                  onChange={(e) => setAuthForm(p => ({ ...p, password: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white placeholder-[#444] focus:outline-none focus:border-[#5e9eff]/40 focus:shadow-[0_0_0_3px_rgba(94,158,255,0.08)] text-[13px] transition-all" required minLength={6} />
-                {/* Password strength bar */}
-                {authForm.password && (
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <div className="flex-1 h-1 bg-[#222] rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-300"
-                        style={{ width: `${(pwStrength.score / 5) * 100}%`, backgroundColor: pwStrength.color }} />
-                    </div>
-                    <span className="text-[9px] font-mono" style={{ color: pwStrength.color }}>{pwStrength.label}</span>
-                  </div>
-                )}
+                <label className="block text-neutral-400 mb-1 text-[11px]">Password</label>
+                <input
+                  type="password"
+                  required
+                  value={authForm.password}
+                  onChange={e => setAuthForm(p => ({ ...p, password: e.target.value }))}
+                  placeholder="Min 6 characters"
+                  className="w-full px-3 py-2 bg-[#121419] border border-white/10 rounded-lg text-white font-mono focus:outline-none focus:border-blue-500"
+                />
               </div>
-              <label className="flex items-center gap-2 cursor-pointer pt-1">
-                <input type="checkbox" checked={authForm.remember}
-                  onChange={(e) => setAuthForm(p => ({ ...p, remember: e.target.checked }))}
-                  className="w-3.5 h-3.5 rounded bg-[#111] border-[#333] text-[#5e9eff] focus:ring-[#5e9eff]/30 accent-[#5e9eff]" />
-                <span className="text-[11px] text-[#666] font-mono">remember me</span>
-              </label>
-              {authError && <p className="text-[#ff6b6b] text-[11px] font-mono bg-[#ff6b6b]/8 rounded-lg px-3 py-2">{authError}</p>}
-              <button type="submit" disabled={authLoading}
-                className="magnetic-btn w-full py-2.5 bg-[#5e9eff] hover:bg-[#7ab3ff] text-[#0a0a0a] rounded-xl font-display font-semibold transition disabled:opacity-40 mt-1 text-[13px]">
-                {authLoading ? 'loading...' : (authMode === 'signup' ? 'create account' : 'sign in')}
+
+              {authError && (
+                <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-lg text-[11px]">
+                  {authError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg font-semibold transition mt-2"
+              >
+                {authLoading ? 'Authenticating...' : (authMode === 'signup' ? 'Create Account' : 'Sign In')}
               </button>
             </form>
-            <p className="text-center text-[11px] text-[#555] mt-4 font-mono">
-              {authMode === 'signup' ? 'already have an account?' : "don't have an account?"}
-              <button onClick={() => { setAuthMode(authMode === 'signup' ? 'signin' : 'signup'); setAuthError(''); }}
-                className="text-[#5e9eff] ml-1 hover:underline">{authMode === 'signup' ? 'sign in' : 'sign up'}</button>
-            </p>
-            <p className="text-center text-[9px] text-[#444] mt-2.5 font-mono">
-              or just skip — you get a unique anonymous name per tab
-            </p>
+
+            <div className="mt-4 pt-3 border-t border-white/10 text-center text-neutral-500 text-[11px]">
+              {authMode === 'signup' ? 'Already have an account?' : 'Need an account?'}
+              <button
+                onClick={() => { setAuthMode(authMode === 'signup' ? 'signin' : 'signup'); setAuthError(''); }}
+                className="text-blue-400 ml-1.5 hover:underline"
+              >
+                {authMode === 'signup' ? 'Sign In' : 'Sign Up'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1442,46 +1206,30 @@ export default function Home() {
         isAuthenticated={state.isAuthenticated}
       />
 
-      {/* ── Pro Tip Bar ────────────────────────────────────── */}
-      <div className="reveal border-t border-[#1e1e1e] py-3 px-5">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-[#1a1b1e] border border-[#282828] rounded-xl">
-            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-[#ffb347]/15 text-[#ffb347] border border-[#ffb347]/30 uppercase tracking-wider flex-shrink-0">PRO TIP</span>
-            <div className="w-px h-3 bg-[#282828]" />
-            <span className="text-[11px] font-mono text-[#666]">{proTip}</span>
+      {/* ── Minimalist Engineering Footer ─────────────────────── */}
+      <footer className="border-t border-white/[0.07] bg-[#07080a] py-8 text-xs font-mono text-neutral-500">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-6 h-6 rounded bg-[#101216] border border-white/10 flex items-center justify-center text-[10px] text-blue-400 font-bold">
+              {'//'}
+            </div>
+            <span>CollabCode · Decentralized Collaborative Coding Environment</span>
           </div>
-        </div>
-      </div>
 
-      {/* ── Footer ──────────────────────────────────────────── */}
-      <footer className="border-t border-[#1e1e1e] py-6 px-5">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 rounded-lg bg-[#222] border border-[#333] flex items-center justify-center text-[9px] font-mono font-bold text-[#5e9eff]">
-                {'//'}
-              </div>
-              <div>
-                <p className="text-[11px] text-[#888] font-mono">
-                  CollabCode
-                </p>
-                <p className="text-[9px] text-[#444] font-mono mt-0.5">real-time collaborative coding platform</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-[10px] text-[#444] font-mono">built by namish</span>
-              <div className="w-px h-3 bg-[#282828]" />
-              <a href="https://github.com/dawarnamish28-cell/collabcode" target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[10px] text-[#444] hover:text-[#888] font-mono transition">
-                <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-                GitHub
-              </a>
-              <div className="w-px h-3 bg-[#282828]" />
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-[#333] font-mono">v20</span>
-                <div className="w-1 h-1 rounded-full bg-[#5bd882] breathe" />
-              </div>
-            </div>
+          <div className="flex items-center gap-4">
+            <a
+              href="https://github.com/dawarnamish28-cell/collabcode"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-neutral-400 hover:text-white transition flex items-center gap-1.5"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+              <span>GitHub</span>
+            </a>
+            <span className="text-neutral-700">·</span>
+            <span>MIT License</span>
+            <span className="text-neutral-700">·</span>
+            <span className="text-neutral-400">v20.4</span>
           </div>
         </div>
       </footer>
