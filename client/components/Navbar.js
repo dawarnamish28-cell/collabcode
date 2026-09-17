@@ -256,185 +256,214 @@ const Navbar = memo(function Navbar({
   }, [roomId]);
 
   return (
-    <nav className="bg-[#19191c] border-b border-[#282828] z-40 flex-shrink-0">
+    <nav className="bg-[#14161a] border-b border-[#252830] z-40 flex-shrink-0 select-none">
       {/* ── Desktop Navbar (hidden sm:flex) ───────────────────── */}
-      <div className="hidden sm:flex items-center justify-between px-2 sm:px-3 h-10 sm:h-9">
-        {/* Left side */}
-        <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
-          {/* Home */}
-          <button onClick={() => router.push('/')} className="flex items-center p-1.5 sm:p-1 rounded-md hover:bg-[#222] transition flex-shrink-0 active:scale-95" title="Home">
-            <div className="w-5 h-5 rounded bg-[#222] border border-[#333] flex items-center justify-center text-[8px] font-mono font-bold text-[#5e9eff]">{'//'}</div>
-          </button>
-
-          {/* File Explorer */}
-          <button onClick={onToggleFiles}
-            className={`p-2 sm:p-1.5 rounded-md transition flex-shrink-0 active:scale-95 ${filesOpen ? 'bg-[#5e9eff]/10 text-[#5e9eff]' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}
-            title="Files">
-            <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
-          </button>
-
-          {/* Libraries */}
-          <button onClick={onToggleLibraries}
-            className={`p-2 sm:p-1.5 rounded-md transition flex-shrink-0 active:scale-95 ${librariesOpen ? 'bg-[#5e9eff]/10 text-[#5e9eff]' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}
-            title="Libraries">
-            <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-          </button>
-
-          <div className="w-px h-3.5 bg-[#282828] hidden sm:block flex-shrink-0" />
-
-          {/* Room Code */}
-          <button onClick={handleCopy} className="flex items-center gap-1 px-1.5 py-1.5 sm:py-1 rounded-md hover:bg-[#222] transition group flex-shrink-0 active:scale-95" title={copied ? 'Copied!' : 'Copy room code'}>
-            <span className="text-[10px] text-[#777] font-mono tracking-widest font-bold">{roomId}</span>
-            {copied ? (
-              <svg className="w-3 h-3 text-[#5bd882]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-            ) : (
-              <svg className="w-3 h-3 text-[#555] group-hover:text-[#888]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
-            )}
-          </button>
-
-          {/* Public/Private */}
-          <button onClick={onTogglePublic}
-            className={`hidden sm:flex items-center gap-1 px-1.5 py-1 rounded-md text-[10px] transition flex-shrink-0 font-mono ${
-              isPublic ? 'text-[#5bd882] bg-[#5bd882]/8' : 'text-[#555] hover:text-[#888] hover:bg-[#222]'
-            }`}
-            title={isPublic ? 'Public' : 'Private'}>
-            {isPublic ? (
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            ) : (
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-            )}
-            <span className="hidden md:inline">{isPublic ? 'pub' : 'prv'}</span>
-          </button>
-
-          <div className="w-px h-3.5 bg-[#282828] hidden sm:block flex-shrink-0" />
-
-          {/* Language Selector */}
+      <div className="hidden sm:flex items-center justify-between px-3 h-12">
+        {/* Left: Brand, Room ID, Visibility, File Actions */}
+        <div className="flex items-center gap-2 min-w-0">
+          {/* Home Logo */}
           <button
-            ref={langBtnRef}
-            onClick={toggleLangDropdown}
-            className={`flex items-center gap-1 px-1.5 py-1.5 sm:py-1 rounded-md transition flex-shrink-0 active:scale-95 ${langOpen ? 'bg-[#222]' : 'hover:bg-[#222]'}`}
-            title={`Language: ${currentLang.name}`}
+            onClick={() => router.push('/')}
+            className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#1c1f26] border border-[#2d3139] hover:border-blue-500/40 hover:bg-[#222733] transition-all flex-shrink-0 active:scale-95 group"
+            title="Return to Home"
           >
-            <span className="text-[10px] font-mono font-bold" style={{ color: currentLang.color }}>{currentLang.icon}</span>
-            <span className="text-[10px] text-[#888] hidden md:inline">{currentLang.name}</span>
-            <svg className={`w-2.5 h-2.5 text-[#555] transition-transform duration-200 ${langOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            <span className="text-[12px] font-mono font-black text-blue-400 group-hover:text-blue-300">{'//'}</span>
           </button>
 
-          {/* File ops */}
-          <div className="flex items-center gap-0.5">
-            <button onClick={onOpenFile} className="p-2 sm:p-1.5 rounded-md text-[#555] hover:text-[#aaa] hover:bg-[#222] transition active:scale-95" title="Open File (Ctrl+O)">
-              <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" /></svg>
+          {/* Room ID Pill with 1-Click Copy */}
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#181a20] border border-[#2d3139] hover:border-[#475569] transition-all flex-shrink-0 active:scale-95 group"
+            title={copied ? 'Copied to clipboard!' : 'Click to copy room code'}
+          >
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: status.color }} />
+            <span className="text-[12px] text-[#f1f5f9] font-mono font-bold tracking-wider">{roomId}</span>
+            {copied ? (
+              <svg className="w-3.5 h-3.5 text-emerald-400 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5 text-[#94a3b8] group-hover:text-white ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            )}
+          </button>
+
+          {/* Public / Private Pill */}
+          <button
+            onClick={onTogglePublic}
+            className={`hidden md:flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono font-medium border transition-all flex-shrink-0 ${
+              isPublic
+                ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/15'
+                : 'text-[#94a3b8] bg-[#181a20] border-[#2d3139] hover:text-white hover:border-[#475569]'
+            }`}
+            title={isPublic ? 'Public room (anyone with link can join)' : 'Private room (requires invite)'}
+          >
+            {isPublic ? (
+              <>
+                <svg className="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span>public</span>
+              </>
+            ) : (
+              <>
+                <svg className="w-3 h-3 text-[#94a3b8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                <span>private</span>
+              </>
+            )}
+          </button>
+
+          <div className="w-px h-5 bg-[#252830] hidden md:block flex-shrink-0" />
+
+          {/* Quick File Ops */}
+          <div className="hidden lg:flex items-center gap-1">
+            <button
+              onClick={onOpenFile}
+              className="p-1.5 rounded-lg text-[#94a3b8] hover:text-white hover:bg-[#20232a] border border-transparent hover:border-[#2d3139] transition active:scale-95"
+              title="Open File from disk (Ctrl+O)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" /></svg>
             </button>
-            <button onClick={onSaveFile} className="p-2 sm:p-1.5 rounded-md text-[#555] hover:text-[#aaa] hover:bg-[#222] transition active:scale-95" title="Save File (Ctrl+S)">
-              <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+            <button
+              onClick={onSaveFile}
+              className="p-1.5 rounded-lg text-[#94a3b8] hover:text-white hover:bg-[#20232a] border border-transparent hover:border-[#2d3139] transition active:scale-95"
+              title="Save File to disk (Ctrl+S)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
             </button>
           </div>
         </div>
 
-        {/* Right side */}
-        <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-          {/* Session timer (compact) */}
-          {sessionTime && (
-            <div className="hidden sm:flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-mono text-[#555]" title="Session duration">
-              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              {sessionTime}
-            </div>
-          )}
+        {/* Center: Language Selector Pill */}
+        <div className="flex items-center">
+          <button
+            ref={langBtnRef}
+            onClick={toggleLangDropdown}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all font-mono text-[12px] font-semibold active:scale-95 ${
+              langOpen
+                ? 'bg-[#1e222b] border-blue-500/50 text-white shadow-sm'
+                : 'bg-[#181a20] border-[#2d3139] hover:border-[#475569] text-[#e2e8f0]'
+            }`}
+            title={`Switch language (current: ${currentLang.name})`}
+          >
+            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: currentLang.color }} />
+            <span className="tracking-wide text-white">{currentLang.name}</span>
+            <svg className={`w-3.5 h-3.5 text-[#94a3b8] transition-transform duration-150 ${langOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
 
-          {/* Connection status */}
-          <div className="flex items-center gap-1.5 px-1.5 py-1" title={status.label}>
-            <div className="relative">
-              <div className="w-[6px] h-[6px] rounded-full" style={{ background: status.color }}>
-                {status.pulse && <div className="absolute inset-0 rounded-full animate-ping opacity-40" style={{ background: status.color }} />}
-              </div>
-            </div>
-            <span className="text-[9px] text-[#555] font-mono hidden sm:inline">{status.label.toLowerCase()}</span>
-          </div>
+        {/* Right: Workspace Toggles, Collaborators, Notifications & Profile */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* File Explorer Toggle */}
+          <button
+            onClick={onToggleFiles}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-mono font-medium border transition-all active:scale-95 ${
+              filesOpen
+                ? 'bg-blue-500/15 text-blue-400 border-blue-500/35 font-semibold'
+                : 'text-[#94a3b8] hover:text-white hover:bg-[#20232a] border-transparent'
+            }`}
+            title="Toggle File Explorer"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+            <span className="hidden xl:inline">Files</span>
+          </button>
 
-          {/* Notification bell */}
+          {/* Libraries Toggle */}
+          <button
+            onClick={onToggleLibraries}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-mono font-medium border transition-all active:scale-95 ${
+              librariesOpen
+                ? 'bg-blue-500/15 text-blue-400 border-blue-500/35 font-semibold'
+                : 'text-[#94a3b8] hover:text-white hover:bg-[#20232a] border-transparent'
+            }`}
+            title="Toggle Library Manager"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+            <span className="hidden xl:inline">Libs</span>
+          </button>
+
+          {/* Terminal Toggle */}
+          <button
+            onClick={onToggleOutput}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-mono font-medium border transition-all active:scale-95 ${
+              outputOpen
+                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/35 font-semibold'
+                : 'text-[#94a3b8] hover:text-white hover:bg-[#20232a] border-transparent'
+            }`}
+            title="Toggle Terminal Output (Ctrl+`)"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            <span className="hidden xl:inline">Console</span>
+          </button>
+
+          {/* Chat Toggle */}
+          <button
+            onClick={onToggleChat}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-mono font-medium border transition-all active:scale-95 ${
+              chatOpen
+                ? 'bg-amber-500/15 text-amber-400 border-amber-500/35 font-semibold'
+                : 'text-[#94a3b8] hover:text-white hover:bg-[#20232a] border-transparent'
+            }`}
+            title="Toggle Chat & Media (Ctrl+B)"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+            <span className="hidden xl:inline">Chat</span>
+          </button>
+
+          <div className="w-px h-5 bg-[#252830] flex-shrink-0" />
+
+          {/* Notification Bell */}
           <button
             ref={notifBtnRef}
             onClick={toggleNotifDropdown}
-            className={`relative p-2 sm:p-1.5 rounded-md transition active:scale-95 ${notifOpen ? 'bg-[#ffb347]/10 text-[#ffb347]' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}
-            title="Notifications">
-            <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            className={`relative p-2 rounded-lg transition active:scale-95 ${
+              notifOpen
+                ? 'bg-amber-500/15 text-amber-300'
+                : 'text-[#94a3b8] hover:text-white hover:bg-[#20232a]'
+            }`}
+            title="Notifications"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
             {unreadNotifs > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-[#ff6b6b] text-white text-[7px] rounded-full flex items-center justify-center font-mono font-bold">
+              <span className="absolute 1.5 top-1.5 -right-0.5 min-w-[15px] h-[15px] px-1 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center font-mono font-bold shadow-md">
                 {unreadNotifs > 9 ? '9+' : unreadNotifs}
               </span>
             )}
           </button>
 
-          {/* Extensions */}
-          <button onClick={onToggleExtensions}
-            className={`p-2 sm:p-1.5 rounded-md transition active:scale-95 ${extensionsOpen ? 'bg-[#c4b5fd]/10 text-[#c4b5fd]' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}
-            title="Settings">
-            <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* Settings Shortcut Button */}
+          <button
+            onClick={onOpenSettings}
+            className="p-2 rounded-lg text-[#94a3b8] hover:text-white hover:bg-[#20232a] transition active:scale-95"
+            title="Preferences & Editor Settings (Ctrl+,)"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </button>
 
-          {/* Terminal */}
-          <button onClick={onToggleOutput} className={`p-2 sm:p-1.5 rounded-md transition active:scale-95 ${outputOpen ? 'bg-[#5e9eff]/10 text-[#5e9eff]' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`} title="Terminal">
-            <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-          </button>
-
-          {/* Chat */}
-          <button onClick={onToggleChat} className={`p-2 sm:p-1.5 rounded-md transition active:scale-95 ${chatOpen ? 'bg-[#5e9eff]/10 text-[#5e9eff]' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`} title="Chat">
-            <svg className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-          </button>
-
-          {/* Live Preview Button */}
-          {onOpenPreview && (
-            <button onClick={onOpenPreview} className="hidden lg:flex p-1.5 rounded-md text-[#555] hover:text-[#5bd882] hover:bg-[#222] transition active:scale-95" title="Live Preview (Sandbox / Markdown)">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-            </button>
-          )}
-
-          {/* CodeShot Studio Button */}
-          {onOpenCodeShot && (
-            <button onClick={onOpenCodeShot} className="hidden lg:flex p-1.5 rounded-md text-[#555] hover:text-[#5e9eff] hover:bg-[#222] transition active:scale-95" title="CodeShot Studio (Carbon / Ray.so card)">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-            </button>
-          )}
-
-          {/* Time Machine Button */}
-          {onOpenTimeMachine && (
-            <button onClick={onOpenTimeMachine} className="hidden lg:flex p-1.5 rounded-md text-[#555] hover:text-[#ffb347] hover:bg-[#222] transition active:scale-95" title="Time Machine (Diffs & History)">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            </button>
-          )}
-
-          {/* Dev Tools Button */}
-          {onOpenDevTools && (
-            <button onClick={onOpenDevTools} className="hidden lg:flex p-1.5 rounded-md text-[#555] hover:text-[#c4b5fd] hover:bg-[#222] transition active:scale-95" title="Dev Tools (Regex & Scratchpad)">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
-            </button>
-          )}
-
-          {/* User count */}
-          <div className="flex items-center gap-1 px-1.5 py-1 bg-[#1e1f22] rounded-md border border-[#282828]">
-            <div className="w-1 h-1 rounded-full bg-[#5bd882]" />
-            <span className="text-[10px] text-[#888] font-mono">{users?.length || 0}</span>
-          </div>
-
-          <div className="w-px h-3.5 bg-[#282828] flex-shrink-0" />
-
-          {/* User Avatar / Profile Button */}
+          {/* User Profile Avatar Pill */}
           <button
             ref={userBtnRef}
             onClick={toggleUserMenu}
-            className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-[#222] transition active:scale-95"
-            title="Profile"
+            className="flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-lg bg-[#181a20] border border-[#2d3139] hover:border-[#475569] hover:bg-[#20232a] transition active:scale-95 ml-0.5"
+            title="Account & Profile Menu"
           >
-            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold border border-[#333]"
-              style={{ background: (currentUser?.color || '#5e9eff') + '20', color: currentUser?.color || '#5e9eff' }}>
+            <div
+              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold font-mono border"
+              style={{
+                backgroundColor: (currentUser?.color || '#5e9eff') + '25',
+                color: currentUser?.color || '#5e9eff',
+                borderColor: (currentUser?.color || '#5e9eff') + '50',
+              }}
+            >
               {currentUser?.username?.charAt(0)?.toUpperCase() || '?'}
             </div>
-            <span className="text-[10px] text-[#888] font-mono hidden sm:inline max-w-[60px] truncate">
+            <span className="text-[12px] text-[#f1f5f9] font-mono font-medium hidden md:inline max-w-[80px] truncate">
               {currentUser?.username || 'user'}
             </span>
           </button>
@@ -442,18 +471,18 @@ const Navbar = memo(function Navbar({
       </div>
 
       {/* ── Mobile Purpose-Built Navbar (flex sm:hidden) ─────── */}
-      <div className="flex sm:hidden items-center justify-between px-2.5 h-12 bg-[#19191c]">
-        {/* Left: Home + Room Code */}
-        <div className="flex items-center gap-1.5">
-          <button onClick={() => router.push('/')} className="w-7 h-7 rounded-lg bg-[#222] border border-[#333] flex items-center justify-center text-[10px] font-mono font-bold text-[#5e9eff] active:scale-90 transition" title="Home">
+      <div className="flex sm:hidden items-center justify-between px-3 h-13 py-2 bg-[#14161a]">
+        {/* Left: Home + Room Code Pill */}
+        <div className="flex items-center gap-2">
+          <button onClick={() => router.push('/')} className="w-8 h-8 rounded-lg bg-[#1c1f26] border border-[#2d3139] flex items-center justify-center text-[11px] font-mono font-bold text-blue-400 active:scale-90 transition" title="Home">
             {'//'}
           </button>
-          <button onClick={handleCopy} className="flex items-center gap-1 px-2 py-1 bg-[#222]/80 border border-[#333] rounded-lg text-[11px] font-mono font-bold text-[#bbb] active:scale-95 transition" title="Tap to copy room code">
+          <button onClick={handleCopy} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#181a20] border border-[#2d3139] rounded-lg text-[12px] font-mono font-bold text-[#f1f5f9] active:scale-95 transition" title="Tap to copy room code">
             <span>{roomId}</span>
             {copied ? (
-              <svg className="w-3 h-3 text-[#5bd882]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
             ) : (
-              <svg className="w-3 h-3 text-[#666]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+              <svg className="w-3.5 h-3.5 text-[#94a3b8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
             )}
           </button>
         </div>
@@ -462,26 +491,21 @@ const Navbar = memo(function Navbar({
         <button
           ref={mobileLangBtnRef}
           onClick={toggleLangDropdown}
-          className="flex items-center gap-1.5 px-2.5 py-1 bg-[#222] border border-[#333] rounded-lg text-xs font-mono font-medium transition active:scale-95"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#181a20] border border-[#2d3139] rounded-lg text-[12px] font-mono font-semibold text-white transition active:scale-95"
         >
           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: currentLang.color }} />
-          <span className="text-white font-semibold">{currentLang.name}</span>
-          <svg className="w-3 h-3 text-[#777]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+          <span>{currentLang.name}</span>
+          <svg className="w-3 h-3 text-[#94a3b8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
         </button>
 
         {/* Right: Status Indicator + Menu Trigger */}
-        <div className="flex items-center gap-1.5">
-          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-[#222] border border-[#333]" title={status.label}>
-            <div className="w-2 h-2 rounded-full relative" style={{ background: status.color }}>
-              {status.pulse && <div className="absolute inset-0 rounded-full animate-ping opacity-60" style={{ background: status.color }} />}
-            </div>
-          </div>
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setMobileMenuOpen(true)}
-            className="w-7 h-7 flex items-center justify-center rounded-lg bg-[#222] text-[#aaa] hover:text-white border border-[#333] active:scale-90 transition"
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#181a20] text-[#cbd5e1] hover:text-white border border-[#2d3139] active:scale-90 transition"
             title="Open Menu"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+            <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
         </div>
       </div>

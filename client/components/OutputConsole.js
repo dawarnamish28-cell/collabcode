@@ -381,88 +381,134 @@ const OutputConsole = memo(forwardRef(function OutputConsole(
   return (
     <div className="h-full flex flex-col font-mono text-[12px] overflow-hidden" style={{ background: theme.bg }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-1 flex-shrink-0"
+      <div className="flex items-center justify-between px-3 h-9 flex-shrink-0"
         style={{ background: theme.headerBg, borderBottom: `1px solid ${theme.border}` }}>
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[10px] font-medium tracking-wide" style={{ color: theme.dim }}>
-            terminal
-          </span>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#e2e8f0]">
+              Console
+            </span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/5 text-[#94a3b8]">
+              {language || 'code'}
+            </span>
+          </div>
+
           {isRunning && (
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: theme.warn }} />
-              <span className="text-[10px] hidden sm:inline" style={{ color: theme.warn }}>running</span>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30">
+              <div className="w-1.5 h-1.5 rounded-full animate-pulse bg-amber-400" />
+              <span className="text-[10px] font-semibold text-amber-300">executing...</span>
             </div>
           )}
+
+          {!isRunning && output?.status && (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold"
+              style={{
+                color: output.type === 'success' ? '#34d399' : '#f87171',
+                background: (output.type === 'success' ? '#10b981' : '#ef4444') + '18',
+                border: `1px solid ${(output.type === 'success' ? '#10b981' : '#ef4444')}35`,
+              }}>
+              <span>{output.type === 'success' ? '✓' : '✕'}</span>
+              <span>{output.status}</span>
+              {output.executionTime && (
+                <span className="text-[10px] font-normal opacity-80">({output.executionTime})</span>
+              )}
+            </div>
+          )}
+
           {!isRunning && runCount > 0 && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ color: theme.dimmer, background: theme.dimmer + '15' }}>
-              #{runCount}
+            <span className="text-[10px] px-1.5 py-0.5 rounded text-[#94a3b8] bg-white/5 hidden sm:inline">
+              run #{runCount}
             </span>
           )}
-          {lineCount > 0 && (
-            <span className="text-[9px] flex-shrink-0 hidden sm:inline" style={{ color: theme.dimmer }}>
-              {lineCount} lines
-            </span>
-          )}
+
           {/* v15: Rate limit countdown with visual progress bar */}
           {rateLimitCountdown > 0 && (
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md flex-shrink-0"
-              style={{ background: theme.error + '10', border: `1px solid ${theme.error}20` }}>
-              <div className="w-12 h-[3px] rounded-full overflow-hidden" style={{ background: theme.error + '20' }}>
-                <div className="h-full rounded-full transition-all duration-1000 ease-linear"
-                  style={{ width: `${Math.max(0, (rateLimitCountdown / 60) * 100)}%`, background: theme.error }} />
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md flex-shrink-0 bg-red-500/15 border border-red-500/30">
+              <div className="w-12 h-[3px] rounded-full overflow-hidden bg-red-500/30">
+                <div className="h-full rounded-full transition-all duration-1000 ease-linear bg-red-400"
+                  style={{ width: `${Math.max(0, (rateLimitCountdown / 60) * 100)}%` }} />
               </div>
-              <span className="text-[9px] font-mono" style={{ color: theme.error }}>
-                {rateLimitCountdown}s
+              <span className="text-[10px] font-mono text-red-400 font-bold">
+                {rateLimitCountdown}s cooldown
               </span>
             </div>
           )}
         </div>
+
+        {/* Toolbar Controls */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          {output?.status && !isRunning && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded"
-              style={{ color: output.type === 'success' ? theme.success : theme.error, background: (output.type === 'success' ? theme.success : theme.error) + '12' }}>
-              {output.status}
-            </span>
-          )}
-          {/* v15: Wrap toggle */}
-          <button onClick={() => setWrapLines(prev => !prev)}
-            className={`p-1 rounded transition ${wrapLines ? 'opacity-100' : 'hover:opacity-80'}`}
-            style={{ color: wrapLines ? theme.accent : theme.dim }} title={wrapLines ? 'Wrap on' : 'Wrap off'}>
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" /></svg>
+          {/* Wrap toggle */}
+          <button
+            onClick={() => setWrapLines(prev => !prev)}
+            className={`p-1.5 rounded-md transition-all active:scale-95 ${
+              wrapLines ? 'bg-blue-500/20 text-blue-400' : 'text-[#94a3b8] hover:text-white hover:bg-white/5'
+            }`}
+            title={wrapLines ? 'Line wrapping ON (click to disable)' : 'Line wrapping OFF (click to enable)'}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" /></svg>
           </button>
+
           {/* Search toggle */}
-          <button onClick={() => { setShowSearch(prev => !prev); setTimeout(() => searchInputRef.current?.focus(), 50); }}
-            className={`p-1 rounded transition ${showSearch ? 'opacity-100' : 'hover:opacity-80'}`}
-            style={{ color: showSearch ? theme.accent : theme.dim }} title="Search (Ctrl+F)">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          <button
+            onClick={() => { setShowSearch(prev => !prev); setTimeout(() => searchInputRef.current?.focus(), 50); }}
+            className={`p-1.5 rounded-md transition-all active:scale-95 ${
+              showSearch ? 'bg-blue-500/20 text-blue-400' : 'text-[#94a3b8] hover:text-white hover:bg-white/5'
+            }`}
+            title="Filter Output (Ctrl+F)"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
           </button>
+
           {/* History toggle */}
-          <button onClick={() => setShowHistory(prev => !prev)}
-            className={`p-1 rounded transition ${showHistory ? 'opacity-100' : 'hover:opacity-80'}`}
-            style={{ color: showHistory ? theme.accent : theme.dim }} title="Run history">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <button
+            onClick={() => setShowHistory(prev => !prev)}
+            className={`p-1.5 rounded-md transition-all active:scale-95 ${
+              showHistory ? 'bg-blue-500/20 text-blue-400' : 'text-[#94a3b8] hover:text-white hover:bg-white/5'
+            }`}
+            title="Execution History"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           </button>
-          {/* v15: Export output */}
-          <button onClick={() => {
-            const text = terminalLines.filter(l => l.type === 'stdout' || l.type === 'stderr' || l.type === 'input').map(l => l.text).join('\n');
-            if (!text) return;
-            const blob = new Blob([text], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = `output-${language || 'code'}-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
-            a.click(); URL.revokeObjectURL(url);
-          }} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Export output">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+
+          <div className="w-px h-4 bg-white/10 mx-0.5" />
+
+          {/* Export output */}
+          <button
+            onClick={() => {
+              const text = terminalLines.filter(l => l.type === 'stdout' || l.type === 'stderr' || l.type === 'input').map(l => l.text).join('\n');
+              if (!text) return;
+              const blob = new Blob([text], { type: 'text/plain' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = `output-${language || 'code'}-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+              a.click(); URL.revokeObjectURL(url);
+            }}
+            className="p-1.5 rounded-md text-[#94a3b8] hover:text-white hover:bg-white/5 transition active:scale-95"
+            title="Export Output as .txt"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
           </button>
-          <button onClick={handleCopy} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Copy output">
+
+          {/* Copy output */}
+          <button
+            onClick={handleCopy}
+            className="p-1.5 rounded-md text-[#94a3b8] hover:text-white hover:bg-white/5 transition active:scale-95"
+            title="Copy Output"
+          >
             {copied ? (
-              <svg className="w-3 h-3" style={{ color: theme.success }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
             ) : (
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
             )}
           </button>
-          <button onClick={handleClear} className="p-1 rounded hover:opacity-80 transition" style={{ color: theme.dim }} title="Clear (Ctrl+L)">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+
+          {/* Clear console */}
+          <button
+            onClick={handleClear}
+            className="p-1.5 rounded-md text-[#94a3b8] hover:text-red-400 hover:bg-red-500/10 transition active:scale-95"
+            title="Clear Console (Ctrl+L)"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
           </button>
         </div>
       </div>

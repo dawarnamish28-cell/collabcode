@@ -1143,132 +1143,137 @@ export default function RoomPage() {
         )}
 
         {/* Main Editor Area */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* v15: Enhanced Breadcrumb Bar — interactive segments, copy path, icons */}
-          {!zenMode && <div className="flex items-center gap-0.5 px-3 py-1 bg-[#19191c] border-b border-[#222] text-[10px] font-mono text-[#555] flex-shrink-0 overflow-hidden group/breadcrumb">
-            <button className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[#222] text-[#555] hover:text-[#aaa] transition active:scale-95" onClick={() => router.push('/')} title="Back to home">
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-              <span className="hidden sm:inline">home</span>
-            </button>
-            <svg className="w-2.5 h-2.5 text-[#333] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-            <span className="px-1.5 py-0.5 rounded text-[#777] bg-[#222]/50 cursor-default" title={`Room: ${roomId}`}>{roomName || roomId}</span>
-            <svg className="w-2.5 h-2.5 text-[#333] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-            <span className="px-1.5 py-0.5 rounded font-medium" style={{ color: (LANGUAGES_MAP[state.language] || '#5e9eff'), background: (LANGUAGES_MAP[state.language] || '#5e9eff') + '10' }}>{state.language}</span>
-            {activeFileId && files.find(f => f.id === activeFileId) && (
-              <>
-                <svg className="w-2.5 h-2.5 text-[#333] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                <span className="px-1.5 py-0.5 rounded text-[#aaa] bg-[#5e9eff]/5 flex items-center gap-1">
-                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                  {files.find(f => f.id === activeFileId)?.name?.split('/').pop()}
-                </span>
-              </>
-            )}
-            {/* Copy breadcrumb path button */}
-            <button
-              className="ml-1 p-0.5 rounded text-[#444] hover:text-[#888] opacity-0 group-hover/breadcrumb:opacity-100 transition-all hover:bg-[#222] active:scale-90"
-              title="Copy path"
-              onClick={() => {
-                const path = `${roomId}/${state.language}${activeFileId && files.find(f => f.id === activeFileId) ? '/' + files.find(f => f.id === activeFileId)?.name?.split('/').pop() : ''}`;
-                navigator.clipboard.writeText(path).catch(() => {});
-                addToast('Path copied to clipboard', 'info');
-              }}>
-              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-            </button>
-            <div className="flex-1" />
-            {/* Quick Pro Tools */}
-            <div className="hidden sm:flex items-center gap-1 mr-2">
-              <button
-                onClick={() => setShowPreview(true)}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[#555] hover:text-[#5bd882] hover:bg-[#222] transition text-[10px]"
-                title="Live Sandbox / Markdown Preview"
-              >
-                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                <span>preview</span>
-              </button>
-              <button
-                onClick={() => setShowCodeShot(true)}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[#555] hover:text-[#5e9eff] hover:bg-[#222] transition text-[10px]"
-                title="Export CodeShot Card"
-              >
-                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                <span>codeshot</span>
-              </button>
-              <button
-                onClick={() => setShowTimeMachine(true)}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[#555] hover:text-[#ffb347] hover:bg-[#222] transition text-[10px]"
-                title="Time Machine (Diffs & Snapshots)"
-              >
-                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                <span>diffs</span>
-              </button>
-              <button
-                onClick={() => setShowDevTools(true)}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[#555] hover:text-[#c4b5fd] hover:bg-[#222] transition text-[10px]"
-                title="Dev Tools (Regex & Scratchpad)"
-              >
-                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
-                <span>tools</span>
-              </button>
-            </div>
-            {/* Auto-save status in breadcrumb */}
-            {autoSaveStatus && (
-              <span className="flex items-center gap-1 mr-2" style={{ color: autoSaveStatus === 'saving' ? '#ffb347' : '#5bd882' }}>
-                {autoSaveStatus === 'saving' ? (
-                  <svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#121316]">
+          {/* Editor Workspace Header Toolbar (File Tabs + Quick Tools + Embedded Run Action) */}
+          {!zenMode && (
+            <div className="flex items-center justify-between px-3 h-10 bg-[#16181d] border-b border-[#252830] flex-shrink-0 select-none">
+              {/* Left: Active File Tabs / File Indicator + Collaborators */}
+              <div className="flex items-center gap-2 min-w-0 overflow-x-auto scrollbar-none py-1">
+                {files.length > 0 ? (
+                  <div className="flex items-center gap-1">
+                    {files.map(file => (
+                      <button
+                        key={file.id}
+                        onClick={() => handleSelectFile(file.id)}
+                        className={`flex items-center gap-2 px-3 py-1 rounded-md text-[12px] font-mono transition-all group min-w-0 ${
+                          file.id === activeFileId
+                            ? 'bg-[#1e222b] text-white border border-[#333a46] font-semibold shadow-sm'
+                            : 'text-[#94a3b8] hover:text-[#cbd5e1] hover:bg-[#1a1d24] border border-transparent'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: LANGUAGES_MAP[state.language] || '#3b82f6' }} />
+                        <span className="truncate max-w-[120px]">{file.name.split('/').pop()}</span>
+                        {file.modified && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />}
+                        <span
+                          onClick={(e) => { e.stopPropagation(); handleRemoveFile(file.id); }}
+                          className="ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-[#2d3139] hover:text-white transition"
+                          title="Close file"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </span>
+                      </button>
+                    ))}
+                    <button
+                      onClick={handleAddFile}
+                      className="p-1 text-[#94a3b8] hover:text-white hover:bg-[#222630] rounded-md transition"
+                      title="New file"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    </button>
+                  </div>
                 ) : (
-                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-[#1e222b] border border-[#333a46] text-white text-[12px] font-mono font-semibold">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANGUAGES_MAP[state.language] || '#3b82f6' }} />
+                      <span>{state.language ? `${state.language}${EXT_MAP[state.language] || '.txt'}` : 'main.code'}</span>
+                    </div>
+                  </div>
                 )}
-                <span className="text-[9px]">{autoSaveStatus === 'saving' ? 'syncing...' : 'saved'}</span>
-              </span>
-            )}
-            <button onClick={() => setShowCommandPalette(true)} className="hidden sm:flex items-center gap-1 text-[#444] hover:text-[#888] transition px-1.5 py-0.5 rounded hover:bg-[#222] active:scale-95">
-              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-              <span>Ctrl+K</span>
-            </button>
-          </div>}
 
-          {/* File Tabs */}
-          {files.length > 0 && !zenMode && (
-            <div className="flex items-center bg-[#19191c] border-b border-[#222] overflow-x-auto flex-shrink-0 scrollbar-none">
-              {files.map(file => (
-                <button key={file.id}
-                  onClick={() => handleSelectFile(file.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono border-r border-[#222] transition group min-w-0 ${
-                    file.id === activeFileId
-                      ? 'bg-[#1a1b1e] text-[#ddd] border-t-2 border-t-[#5e9eff]'
-                      : 'text-[#666] hover:text-[#aaa] hover:bg-[#1e1f22] border-t-2 border-t-transparent'
-                  }`}>
-                  <span className="truncate max-w-[100px]">{file.name.split('/').pop()}</span>
-                  {file.modified && <div className="w-1.5 h-1.5 rounded-full bg-[#ffb347] flex-shrink-0" />}
-                  <span onClick={(e) => { e.stopPropagation(); handleRemoveFile(file.id); }}
-                    className="ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-[#333] transition">
-                    <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                {/* Compact Collaborator Presence */}
+                <div className="hidden md:flex items-center pl-2 border-l border-[#252830]">
+                  <UserPresence users={state.users} currentUser={state.user} awarenessStates={awarenessStates} compact={true} />
+                </div>
+              </div>
+
+              {/* Right: Auto-Save Status, Quick Pro Tools, and Primary RUN Button */}
+              <div className="flex items-center gap-2.5 flex-shrink-0">
+                {/* Auto-save status */}
+                {autoSaveStatus && (
+                  <span className="hidden xl:flex items-center gap-1.5 text-[11px] font-mono font-medium" style={{ color: autoSaveStatus === 'saving' ? '#fbbf24' : '#34d399' }}>
+                    {autoSaveStatus === 'saving' ? (
+                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                    )}
+                    <span>{autoSaveStatus === 'saving' ? 'Syncing...' : 'Synced'}</span>
                   </span>
-                </button>
-              ))}
+                )}
+
+                {/* Quick Pro Tools (Preview, CodeShot, Diffs, DevTools) */}
+                <div className="hidden lg:flex items-center gap-1 bg-[#121316] p-0.5 rounded-lg border border-[#252830]">
+                  <button
+                    onClick={() => setShowPreview(true)}
+                    className="p-1.5 rounded-md text-[#94a3b8] hover:text-emerald-400 hover:bg-[#1e222b] transition active:scale-95"
+                    title="Live Web / Markdown Preview"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                  </button>
+                  <button
+                    onClick={() => setShowCodeShot(true)}
+                    className="p-1.5 rounded-md text-[#94a3b8] hover:text-blue-400 hover:bg-[#1e222b] transition active:scale-95"
+                    title="Export CodeShot Card (Carbon / Ray.so)"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  </button>
+                  <button
+                    onClick={() => setShowTimeMachine(true)}
+                    className="p-1.5 rounded-md text-[#94a3b8] hover:text-amber-400 hover:bg-[#1e222b] transition active:scale-95"
+                    title="Time Machine (Diffs & Snapshots)"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  </button>
+                  <button
+                    onClick={() => setShowDevTools(true)}
+                    className="p-1.5 rounded-md text-[#94a3b8] hover:text-purple-400 hover:bg-[#1e222b] transition active:scale-95"
+                    title="Dev Tools (Regex & Scratchpad)"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                  </button>
+                </div>
+
+                <div className="w-px h-5 bg-[#252830] hidden sm:block" />
+
+                {/* Primary RUN Action Button — embedded directly in toolbar! */}
+                <div className="hidden sm:flex items-center">
+                  <RunButton onRun={handleMainRun} isRunning={isRunning} language={state.language} embedded={true} />
+                </div>
+              </div>
             </div>
           )}
 
-          <UserPresence users={state.users} currentUser={state.user} awarenessStates={awarenessStates} />
-
-          <div className={`flex-1 min-h-0 relative ${mobileTab !== 'editor' ? 'hidden sm:block' : 'block'}`}>
-            {/* v23: Polite notification when backend is waking up (Render cold-start) */}
-            {wakingServer && (
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-[#181a20]/95 border border-[#5e9eff]/40 shadow-xl backdrop-blur text-[11px] font-mono text-[#adcbfb] pointer-events-auto select-none transition-all">
-                <svg className="w-3.5 h-3.5 text-[#5e9eff] flex-shrink-0 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* Polite Notification when Cloud Server is Waking Up (Render Cold-Start) — Non-intrusive alert strip */}
+          {wakingServer && (
+            <div className="px-3 py-1.5 bg-blue-500/10 border-b border-blue-500/25 flex items-center justify-between text-xs font-mono text-blue-300 flex-shrink-0">
+              <div className="flex items-center gap-2 min-w-0 truncate">
+                <svg className="w-4 h-4 text-blue-400 flex-shrink-0 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z" />
                 </svg>
-                <span>Cloud server waking up (~25s)... Offline editing & in-browser execution are ready!</span>
-                <button
-                  type="button"
-                  onClick={() => setWakingServer(false)}
-                  className="ml-1 text-[#666] hover:text-white text-xs px-1 rounded transition"
-                  title="Dismiss"
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
+                <span className="truncate">Cloud execution engine warming up (~25s)... In-browser editing & offline compilation are ready!</span>
               </div>
-            )}
+              <button
+                type="button"
+                onClick={() => setWakingServer(false)}
+                className="ml-2 text-[#94a3b8] hover:text-white p-1 rounded transition"
+                title="Dismiss banner"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Monaco Editor Container — 100% unobstructed viewport! */}
+          <div className={`flex-1 min-h-0 relative ${mobileTab !== 'editor' ? 'hidden sm:block' : 'block'}`}>
             {ready && ydocRef.current ? (
               <div className="relative w-full h-full">
                 <Editor
@@ -1319,7 +1324,6 @@ export default function RoomPage() {
                 </div>
               </div>
             )}
-            <RunButton onRun={handleMainRun} isRunning={isRunning} language={state.language} />
           </div>
 
           {/* Terminal / Output Console Container */}
@@ -1410,186 +1414,167 @@ export default function RoomPage() {
       )}
 
       {/* Status Bar — Desktop */}
-      {!zenMode && <div className="room-status-bar hidden sm:flex items-center gap-2 px-3 py-1 bg-[#19191c] border-t border-[#222] text-[9px] font-mono text-[#555]">
-        {/* Auto-save indicator */}
-        {autoSaveStatus && (
-          <>
-            <div className="flex items-center gap-1" style={{ color: autoSaveStatus === 'saving' ? '#ffb347' : '#5bd882' }}>
-              {autoSaveStatus === 'saving' ? (
-                <svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-              ) : (
-                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-              )}
-              <span>{autoSaveStatus === 'saving' ? 'syncing' : 'saved'}</span>
+      {!zenMode && (
+        <div className="room-status-bar hidden sm:flex items-center justify-between px-3 h-7 bg-[#14161a] border-t border-[#252830] text-[11px] font-mono text-[#94a3b8] select-none flex-shrink-0">
+          {/* Left Zone: AntiCheat + Connection + Session */}
+          <div className="flex items-center gap-3">
+            {/* Docked AntiCheat Indicator */}
+            {anticheatEnabled && (
+              <AnticheatIndicator enabled={anticheatEnabled} docked={true} />
+            )}
+
+            {/* Connection Quality */}
+            <div className="flex items-center gap-1.5" title={`Connection: ${connectionQuality}`}>
+              <div className="flex items-end gap-[1.5px]">
+                <div className="w-[2.5px] h-[4px] rounded-sm" style={{ background: connectionQuality !== 'poor' ? '#34d399' : '#f87171' }} />
+                <div className="w-[2.5px] h-[7px] rounded-sm" style={{ background: connectionQuality === 'good' ? '#34d399' : connectionQuality === 'fair' ? '#fbbf24' : '#f87171' }} />
+                <div className="w-[2.5px] h-[10px] rounded-sm" style={{ background: connectionQuality === 'good' ? '#34d399' : '#333a46' }} />
+              </div>
+              <span className="text-[#cbd5e1]">{connectionQuality}</span>
             </div>
-            <div className="w-px h-2.5 bg-[#333]" />
-          </>
-        )}
-        {/* Connection quality */}
-        <div className="flex items-center gap-1" title={`Connection: ${connectionQuality}`}>
-          <div className="flex items-end gap-[1px]">
-            <div className="w-[2px] h-[4px] rounded-sm" style={{ background: connectionQuality !== 'poor' ? '#5bd882' : '#ff6b6b' }} />
-            <div className="w-[2px] h-[6px] rounded-sm" style={{ background: connectionQuality === 'good' ? '#5bd882' : connectionQuality === 'fair' ? '#ffb347' : '#ff6b6b' }} />
-            <div className="w-[2px] h-[8px] rounded-sm" style={{ background: connectionQuality === 'good' ? '#5bd882' : '#333' }} />
+
+            <div className="w-px h-3 bg-[#252830]" />
+
+            {/* Session Timer */}
+            <div className="flex items-center gap-1 text-[#94a3b8]" title="Session duration">
+              <svg className="w-3 h-3 text-[#64748b]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <span>{sessionTime}</span>
+            </div>
+
+            {/* Execution stats */}
+            {execStats.runs > 0 && (
+              <>
+                <div className="w-px h-3 bg-[#252830]" />
+                <span className="text-[#94a3b8]" title={`${execStats.successes} passed, ${execStats.errors} failed`}>
+                  <span className="text-emerald-400 font-bold">{execStats.successes}✓</span>
+                  {execStats.errors > 0 && <span className="text-red-400 font-bold ml-1">{execStats.errors}✗</span>}
+                  <span className="text-[#64748b] ml-1">({execStats.runs} runs)</span>
+                </span>
+              </>
+            )}
           </div>
-          <span className="hidden sm:inline">{connectionQuality}</span>
-        </div>
-        {/* Language indicator */}
-        <div className="w-px h-2.5 bg-[#333]" />
-        <span style={{ color: LANGUAGES_MAP[state.language] || '#5e9eff' }}>{state.language}</span>
-        {/* v18: Execution stats */}
-        {execStats.runs > 0 && (
-          <>
-            <div className="w-px h-2.5 bg-[#333]" />
-            <span className="hidden sm:inline text-[#888]" title={`${execStats.successes} passed, ${execStats.errors} failed, avg ${execStats.runs > 0 ? Math.round(execStats.totalTime / Math.max(execStats.successes, 1)) : 0}ms`}>
-              <span className="text-[#5bd882]">{execStats.successes}✓</span>
-              {execStats.errors > 0 && <span className="text-[#ff6b6b] ml-1">{execStats.errors}✗</span>}
-              <span className="text-[#555] ml-1">({execStats.runs} runs)</span>
+
+          {/* Center Zone: Cursor & Document Metrics */}
+          <div className="flex items-center gap-3">
+            {lineInfo.chars > 0 && (
+              <span className="text-[#cbd5e1]">
+                Ln {lineInfo.lines}, Col {lineInfo.chars} · {wordCount} words
+              </span>
+            )}
+
+            {/* Activity sparkline */}
+            {activityHistory.length > 3 && (
+              <svg className="sparkline-svg hidden lg:inline-block" width="44" height="12" viewBox="0 0 40 12" title="Edit activity density">
+                <polyline
+                  fill="none"
+                  stroke="#38bdf8"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  points={(() => {
+                    const hist = activityHistory.slice(-20);
+                    if (hist.length < 2) return '0,6 40,6';
+                    const minT = hist[0];
+                    const maxT = hist[hist.length - 1];
+                    const range = maxT - minT || 1;
+                    const bins = 10;
+                    const counts = Array(bins).fill(0);
+                    hist.forEach(t => {
+                      const idx = Math.min(Math.floor(((t - minT) / range) * bins), bins - 1);
+                      counts[idx]++;
+                    });
+                    const maxCount = Math.max(...counts, 1);
+                    return counts.map((c, i) => `${(i / (bins - 1)) * 40},${12 - (c / maxCount) * 10}`).join(' ');
+                  })()}
+                />
+              </svg>
+            )}
+          </div>
+
+          {/* Right Zone: Controls & Tools */}
+          <div className="flex items-center gap-2">
+            <span className="font-semibold" style={{ color: LANGUAGES_MAP[state.language] || '#38bdf8' }}>
+              {state.language}
             </span>
-          </>
-        )}
-        {/* v20: Line/char count */}
-        {lineInfo.chars > 0 && (
-          <>
-            <div className="w-px h-2.5 bg-[#333]" />
-            <span className="hidden sm:inline text-[#555] status-item-enter" title={`${lineInfo.chars} characters, ${wordCount} words`}>
-              Ln {lineInfo.lines} · {wordCount}w
-            </span>
-          </>
-        )}
-        {/* v20: Activity sparkline */}
-        {activityHistory.length > 3 && (
-          <>
-            <div className="w-px h-2.5 bg-[#333]" />
-            <svg className="sparkline-svg hidden sm:inline-block" width="40" height="12" viewBox="0 0 40 12" title="Recent edit activity">
-              <polyline
-                fill="none"
-                stroke="#5e9eff"
-                strokeWidth="1.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                points={(() => {
-                  const hist = activityHistory.slice(-20);
-                  if (hist.length < 2) return '0,6 40,6';
-                  const minT = hist[0];
-                  const maxT = hist[hist.length - 1];
-                  const range = maxT - minT || 1;
-                  // Create density bins
-                  const bins = 10;
-                  const counts = Array(bins).fill(0);
-                  hist.forEach(t => {
-                    const idx = Math.min(Math.floor(((t - minT) / range) * bins), bins - 1);
-                    counts[idx]++;
-                  });
-                  const maxCount = Math.max(...counts, 1);
-                  return counts.map((c, i) => `${(i / (bins - 1)) * 40},${12 - (c / maxCount) * 10}`).join(' ');
-                })()}
-              />
-            </svg>
-          </>
-        )}
-        {/* v20: Last edit time */}
-        {lastEditTime && (
-          <>
-            <div className="w-px h-2.5 bg-[#333]" />
-            <span className="hidden lg:inline text-[#444]" title={lastEditTime.toLocaleString()}>
-              edited {lastEditTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          </>
-        )}
-        {/* Session timer */}
-        <div className="w-px h-2.5 bg-[#333]" />
-        <span className="hidden sm:inline text-[#555]" title="Session time">{sessionTime}</span>
-        {/* Spacer */}
-        <div className="flex-1" />
-        {/* v20: Typing sounds toggle */}
-        <button onClick={() => setTypingSounds(prev => !prev)} title="Ambient typing sounds"
-          className={`flex items-center gap-1 transition px-1.5 py-0.5 rounded active:scale-95 ${typingSounds ? 'text-[#5e9eff] bg-[#5e9eff]/10' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}>
-          {typingSounds ? (
-            <span className="flex items-end gap-[1px] h-[10px]">
-              <span className="sound-wave-bar" style={{ height: '3px' }} />
-              <span className="sound-wave-bar" style={{ height: '7px' }} />
-              <span className="sound-wave-bar" style={{ height: '5px' }} />
-              <span className="sound-wave-bar" style={{ height: '9px' }} />
-            </span>
-          ) : (
-            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
-          )}
-          <span className="hidden sm:inline">{typingSounds ? 'sound' : 'mute'}</span>
-        </button>
-        {/* v20: Zen mode toggle */}
-        <button onClick={() => setZenMode(prev => !prev)} title="Zen Mode (Ctrl+Shift+Z)"
-          className={`flex items-center gap-1 transition px-1.5 py-0.5 rounded active:scale-95 ${zenMode ? 'text-[#c4b5fd] bg-[#c4b5fd]/10' : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'}`}>
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-          </svg>
-          <span className="hidden sm:inline">{zenMode ? 'zen' : 'zen'}</span>
-        </button>
-        {/* v20: Export menu */}
-        <div className="relative">
-          <button onClick={() => setShowExportMenu(prev => !prev)}
-            className="flex items-center gap-1 text-[#555] hover:text-[#aaa] transition px-1.5 py-0.5 rounded hover:bg-[#222] active:scale-95">
-            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-            <span className="hidden sm:inline">export</span>
-          </button>
-          {showExportMenu && (
-            <div className="absolute bottom-full right-0 mb-1 bg-[#1a1b1e] border border-[#333] rounded-lg shadow-xl py-1 min-w-[170px] z-50">
-              <button onClick={() => handleExportSnippet('raw')} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-[#aaa] hover:bg-[#222] hover:text-white transition">
-                <svg className="w-3.5 h-3.5 text-[#5e9eff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                <span>Download raw</span>
+
+            <div className="w-px h-3.5 bg-[#252830]" />
+
+            {/* Typing sounds */}
+            <button
+              onClick={() => setTypingSounds(prev => !prev)}
+              title="Ambient keystroke sounds"
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition ${typingSounds ? 'text-blue-400 bg-blue-500/15' : 'text-[#94a3b8] hover:text-white'}`}
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+              <span>{typingSounds ? 'sound on' : 'mute'}</span>
+            </button>
+
+            {/* Zen Mode */}
+            <button
+              onClick={() => setZenMode(prev => !prev)}
+              title="Zen Mode (Ctrl+Shift+Z)"
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition ${zenMode ? 'text-purple-400 bg-purple-500/15 font-bold' : 'text-[#94a3b8] hover:text-white'}`}
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+              <span>zen</span>
+            </button>
+
+            {/* Export Menu */}
+            <div className="relative">
+              <button
+                onClick={() => setShowExportMenu(prev => !prev)}
+                className="flex items-center gap-1 text-[#94a3b8] hover:text-white transition px-1.5 py-0.5 rounded hover:bg-[#20232a]"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                <span>export</span>
               </button>
-              <button onClick={() => handleExportSnippet('with-header')} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-[#aaa] hover:bg-[#222] hover:text-white transition">
-                <svg className="w-3.5 h-3.5 text-[#ffb347]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                <span>Download with header</span>
-              </button>
-              <button onClick={() => handleExportSnippet('clipboard')} className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-[#aaa] hover:bg-[#222] hover:text-white transition">
-                <svg className="w-3.5 h-3.5 text-[#5bd882]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                <span>Copy to clipboard</span>
-              </button>
+              {showExportMenu && (
+                <div className="absolute bottom-full right-0 mb-1.5 bg-[#181a20] border border-[#2d3139] rounded-xl shadow-2xl py-1 min-w-[180px] z-50 font-mono">
+                  <button onClick={() => handleExportSnippet('raw')} className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-[#cbd5e1] hover:bg-[#222733] hover:text-white transition">
+                    <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    <span>Download raw</span>
+                  </button>
+                  <button onClick={() => handleExportSnippet('with-header')} className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-[#cbd5e1] hover:bg-[#222733] hover:text-white transition">
+                    <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    <span>With file header</span>
+                  </button>
+                  <button onClick={() => handleExportSnippet('clipboard')} className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-[#cbd5e1] hover:bg-[#222733] hover:text-white transition">
+                    <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                    <span>Copy to clipboard</span>
+                  </button>
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Share Room Button */}
+            <button
+              onClick={() => setShowSharePopup(true)}
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/25 transition active:scale-95 font-semibold"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+              <span>Share</span>
+            </button>
+          </div>
         </div>
-        {/* Share button */}
-        <button onClick={() => setShowSharePopup(true)}
-          className="flex items-center gap-1 text-[#555] hover:text-[#aaa] transition px-1.5 py-0.5 rounded hover:bg-[#222] active:scale-95">
-          <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-          <span className="hidden sm:inline">share</span>
-        </button>
-        {/* v19: Competition indicators */}
-        {roomsLocked && (
-          <>
-            <div className="w-px h-2.5 bg-[#333]" />
-            <span className="text-[#ff6b6b] flex items-center gap-1">
-              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-              locked
-            </span>
-          </>
-        )}
-        {competitionMode === 'competition' && (
-          <>
-            <div className="w-px h-2.5 bg-[#333]" />
-            <span className="text-[#c4b5fd]">competition</span>
-          </>
-        )}
-      </div>}
+      )}
 
       {/* Mobile Bottom Navigation Bar (sm:hidden) */}
       {!zenMode && (
-        <div className="flex sm:hidden items-center justify-between bg-[#141518] border-t border-[#282828] px-3 py-1.5 z-40 safe-bottom">
+        <div className="flex sm:hidden items-center justify-between bg-[#14161a] border-t border-[#252830] px-3 py-2 z-40 safe-bottom">
           {/* Code Tab */}
           <button
             type="button"
             onClick={() => setMobileTab('editor')}
-            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-lg transition ${
+            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition ${
               mobileTab === 'editor'
-                ? 'text-[#5e9eff] bg-[#5e9eff]/10 font-semibold'
-                : 'text-[#888] hover:text-[#bbb]'
+                ? 'text-blue-400 bg-blue-500/15 font-bold border border-blue-500/30'
+                : 'text-[#94a3b8] hover:text-[#cbd5e1]'
             }`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
             </svg>
-            <span className="text-[10px] font-mono mt-0.5">Code</span>
+            <span className="text-[11px] font-mono mt-0.5">Code</span>
           </button>
 
           {/* Terminal Tab */}
@@ -1599,19 +1584,19 @@ export default function RoomPage() {
               setMobileTab('terminal');
               if (!state.outputOpen) toggleOutput();
             }}
-            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-lg transition relative ${
+            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition relative ${
               mobileTab === 'terminal'
-                ? 'text-[#5bd882] bg-[#5bd882]/10 font-semibold'
-                : 'text-[#888] hover:text-[#bbb]'
+                ? 'text-emerald-400 bg-emerald-500/15 font-bold border border-emerald-500/30'
+                : 'text-[#94a3b8] hover:text-[#cbd5e1]'
             }`}
           >
             {output && output.content && (
-              <span className="absolute top-1.5 right-4 w-2 h-2 rounded-full bg-[#5bd882] animate-pulse" />
+              <span className="absolute top-1.5 right-4 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             )}
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            <span className="text-[10px] font-mono mt-0.5">Terminal</span>
+            <span className="text-[11px] font-mono mt-0.5">Console</span>
           </button>
 
           {/* Chat Tab */}
@@ -1621,19 +1606,19 @@ export default function RoomPage() {
               setMobileTab('chat');
               if (!state.chatOpen) toggleChat();
             }}
-            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-lg transition relative ${
+            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition relative ${
               mobileTab === 'chat'
-                ? 'text-[#ffb347] bg-[#ffb347]/10 font-semibold'
-                : 'text-[#888] hover:text-[#bbb]'
+                ? 'text-amber-400 bg-amber-500/15 font-bold border border-amber-500/30'
+                : 'text-[#94a3b8] hover:text-[#cbd5e1]'
             }`}
           >
             {messages.length > 0 && (
-              <span className="absolute top-1.5 right-4 w-2 h-2 rounded-full bg-[#ffb347]" />
+              <span className="absolute top-1.5 right-4 w-2 h-2 rounded-full bg-amber-400" />
             )}
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
-            <span className="text-[10px] font-mono mt-0.5">Chat</span>
+            <span className="text-[11px] font-mono mt-0.5">Chat</span>
           </button>
 
           {/* Mobile Run Code Button */}
@@ -1646,13 +1631,13 @@ export default function RoomPage() {
             disabled={isRunning}
             className={`flex items-center justify-center gap-1.5 px-4 py-2 ml-1 rounded-xl font-mono text-[12px] font-bold shadow-md transition active:scale-95 ${
               isRunning
-                ? 'bg-[#ffb347]/20 text-[#ffb347] border border-[#ffb347]/40 animate-pulse'
-                : 'bg-[#5bd882] hover:bg-[#4bc772] text-[#0a1f0f] border border-[#5bd882]'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
+                : 'bg-emerald-500 hover:bg-emerald-400 text-[#091e13] border border-emerald-400 shadow-md'
             }`}
           >
             {isRunning ? (
               <>
-                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
@@ -1660,91 +1645,29 @@ export default function RoomPage() {
               </>
             ) : (
               <>
-                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                   <path d="M8 5v14l11-7z" />
                 </svg>
-                <span>Run</span>
+                <span>RUN</span>
               </>
             )}
           </button>
         </div>
       )}
 
-      {/* v18: Share Room Popup */}
-      {showSharePopup && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowSharePopup(false)}>
-          <div className="modal-enter bg-[#1a1b1e] border border-[#333] rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[15px] font-display font-semibold text-white">Share Room</h3>
-              <button onClick={() => setShowSharePopup(false)} className="p-1.5 text-[#666] hover:text-white transition rounded-lg hover:bg-[#222]">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            {/* Room code */}
-            <div className="mb-4">
-              <label className="text-[10px] text-[#666] font-mono uppercase tracking-wider mb-1 block">Room Code</label>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 px-3 py-2.5 bg-[#111] border border-[#282828] rounded-xl text-white font-mono text-lg text-center tracking-wider">{roomId}</div>
-                <button onClick={() => { navigator.clipboard.writeText(roomId).catch(()=>{}); addToast('Room code copied!', 'info'); }}
-                  className="p-2.5 bg-[#222] border border-[#333] rounded-xl text-[#888] hover:text-white hover:bg-[#2a2b30] transition active:scale-95">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                </button>
-              </div>
-            </div>
-            {/* Full URL */}
-            <div className="mb-4">
-              <label className="text-[10px] text-[#666] font-mono uppercase tracking-wider mb-1 block">Share Link</label>
-              <div className="flex items-center gap-2">
-                <input readOnly value={typeof window !== 'undefined' ? `${window.location.origin}/room/${roomId}` : ''}
-                  className="flex-1 px-3 py-2 bg-[#111] border border-[#282828] rounded-xl text-[#aaa] font-mono text-[11px] truncate" />
-                <button onClick={() => {
-                  const url = `${window.location.origin}/room/${roomId}`;
-                  navigator.clipboard.writeText(url).catch(()=>{});
-                  addToast('Link copied!', 'info');
-                }}
-                  className="p-2.5 bg-[#5e9eff] text-[#0a0a0a] rounded-xl hover:bg-[#7ab3ff] transition active:scale-95 font-semibold text-[11px]">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                </button>
-              </div>
-            </div>
-            {/* Room info */}
-            <div className="bg-[#111] rounded-xl border border-[#222] p-3 space-y-1.5 text-[11px] font-mono">
-              <div className="flex justify-between"><span className="text-[#666]">Language</span><span style={{ color: LANGUAGES_MAP[state.language] || '#5e9eff' }}>{state.language}</span></div>
-              <div className="flex justify-between"><span className="text-[#666]">Users</span><span className="text-[#aaa]">{state.users?.length || 1} online</span></div>
-              <div className="flex justify-between"><span className="text-[#666]">Visibility</span><span className={isPublic ? 'text-[#5bd882]' : 'text-[#ffb347]'}>{isPublic ? 'Public' : 'Private'}</span></div>
-              {roomName && <div className="flex justify-between"><span className="text-[#666]">Name</span><span className="text-[#aaa]">{roomName}</span></div>}
-              <div className="flex justify-between"><span className="text-[#666]">Session</span><span className="text-[#aaa]">{sessionTime}</span></div>
-            </div>
-            {/* Native share (mobile) */}
-            {typeof navigator !== 'undefined' && navigator.share && (
-              <button onClick={() => {
-                navigator.share({ title: `CollabCode — ${roomName || roomId}`, text: `Join my coding room on CollabCode!`, url: `${window.location.origin}/room/${roomId}` }).catch(()=>{});
-              }}
-                className="w-full mt-3 py-2.5 bg-[#222] text-[#aaa] rounded-xl hover:bg-[#2a2b30] transition text-[12px] font-mono border border-[#333] flex items-center justify-center gap-2">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                Share via device...
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* AntiCheat Indicator */}
-      <AnticheatIndicator enabled={anticheatEnabled} violationCount={anticheatViolationCount} flagged={anticheatFlagged} />
-
       {/* Toast Notifications */}
-      <div className="room-toasts fixed top-12 right-3 flex flex-col gap-1.5">
+      <div className="fixed top-14 right-4 z-[9999] flex flex-col gap-2 pointer-events-none max-w-sm">
         {toasts.map(toast => (
           <div key={toast.id}
-            className="flex items-center gap-2 px-3 py-2 bg-[#1a1b1e]/95 border rounded-xl shadow-2xl text-[11px] font-mono backdrop-blur-md pointer-events-auto"
+            className="flex items-center gap-2.5 px-3.5 py-2.5 bg-[#181a20]/95 border rounded-xl shadow-2xl text-[12px] font-mono backdrop-blur-md pointer-events-auto select-none"
             style={{
-              animation: 'toastSlideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1)',
-              color: toast.type === 'join' ? '#5bd882' : toast.type === 'leave' ? '#ff6b6b' : toast.type === 'error' ? '#ff6b6b' : '#999',
-              borderColor: toast.type === 'join' ? '#5bd88225' : toast.type === 'leave' ? '#ff6b6b25' : toast.type === 'error' ? '#ff6b6b25' : '#333',
+              animation: 'toastSlideUp 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
+              color: toast.type === 'join' ? '#34d399' : toast.type === 'leave' ? '#f87171' : toast.type === 'error' ? '#f87171' : '#e2e8f0',
+              borderColor: toast.type === 'join' ? '#10b98140' : toast.type === 'leave' ? '#ef444440' : toast.type === 'error' ? '#ef444440' : '#333a46',
             }}>
-            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-              style={{ background: toast.type === 'join' ? '#5bd882' : toast.type === 'leave' ? '#ff6b6b' : toast.type === 'error' ? '#ff6b6b' : '#5e9eff' }} />
-            {toast.message}
+            <div className="w-2 h-2 rounded-full flex-shrink-0"
+              style={{ background: toast.type === 'join' ? '#34d399' : toast.type === 'leave' ? '#f87171' : toast.type === 'error' ? '#f87171' : '#38bdf8' }} />
+            <span className="font-medium leading-snug">{toast.message}</span>
           </div>
         ))}
       </div>

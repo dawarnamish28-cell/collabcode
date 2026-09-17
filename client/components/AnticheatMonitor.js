@@ -691,7 +691,7 @@ export function useAnticheat(socketRef, enabled, settings, onViolation) {
 }
 
 // ─── Vanguard Proctor HUD & Trust Factor Widget ───────────────────────
-export function AnticheatIndicator({ enabled }) {
+export function AnticheatIndicator({ enabled, docked = false }) {
   const [idleWarning, setIdleWarning] = useState(null);
   const [trustScore, setTrustScore] = useState(100);
   const [trustTier, setTrustTier] = useState('SECURE');
@@ -724,11 +724,80 @@ export function AnticheatIndicator({ enabled }) {
 
   const tierBg = trustTier === 'SECURE' ? '#22c55e' : trustTier === 'ELEVATED_RISK' ? '#eab308' : '#ef4444';
 
+  const drawer = expanded && (
+    <div
+      className={`${
+        docked
+          ? 'absolute bottom-full left-0 mb-2'
+          : 'fixed bottom-12 left-3'
+      } z-[9999] w-72 bg-[#141518] border border-[#2c2d33] rounded-2xl p-3.5 shadow-2xl font-mono text-xs text-[#ccc] backdrop-blur-md`}
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between border-b border-[#25262c] pb-2 mb-2.5">
+        <div className="flex items-center gap-2">
+          <div className="w-5 h-5 rounded bg-[#ff4655]/20 border border-[#ff4655]/40 flex items-center justify-center text-[#ff4655] font-bold text-[10px]">
+            V
+          </div>
+          <span className="font-bold text-white text-[11px]">Vanguard Telemetry</span>
+        </div>
+        <button type="button" onClick={() => setExpanded(false)} className="text-[#888] hover:text-white text-xs px-1">✕</button>
+      </div>
+
+      <div className="space-y-1.5 text-[10px]">
+        <div className="flex justify-between py-0.5 border-b border-[#1e1f24]">
+          <span className="text-[#888]">Trust Factor:</span>
+          <span className="font-bold" style={{ color: tierBg }}>{trustScore}% [{trustTier}]</span>
+        </div>
+        <div className="flex justify-between py-0.5 border-b border-[#1e1f24]">
+          <span className="text-[#888]">Integrity Shield:</span>
+          <span className="text-[#22c55e]">ARMED</span>
+        </div>
+        <div className="flex justify-between py-0.5 border-b border-[#1e1f24]">
+          <span className="text-[#888]">Heuristic Matrix:</span>
+          <span className="text-[#22c55e]">30 VECTORS ACTIVE</span>
+        </div>
+        <div className="flex justify-between py-0.5 border-b border-[#1e1f24]">
+          <span className="text-[#888]">Dual-Tab Collusion:</span>
+          <span className="text-[#22c55e]">MONITORING</span>
+        </div>
+        <div className="flex justify-between py-0.5">
+          <span className="text-[#888]">Autotyper Trap:</span>
+          <span className="text-[#22c55e]">FLIGHT DYNAMICS OK</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (docked) {
+    return (
+      <div className="relative inline-flex items-center">
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono hover:bg-[#282a30] transition border border-[#333a46]/60 bg-[#16181d]"
+          title="Vanguard AntiCheat Telemetry (click to view)"
+        >
+          <div className="w-2 h-2 rounded-full relative" style={{ backgroundColor: tierBg }}>
+            <div className="absolute inset-0 rounded-full animate-ping opacity-40" style={{ backgroundColor: tierBg }} />
+          </div>
+          <span className="font-bold text-[#e2e8f0] text-[10px] tracking-wider">VANGUARD</span>
+          <span className="text-[9px] px-1 py-0.2 rounded font-bold" style={{ backgroundColor: tierBg + '25', color: tierBg }}>
+            {trustScore}%
+          </span>
+          {lastViolation && (
+            <span className="text-[10px] text-[#ef4444] animate-pulse">! {lastViolation}</span>
+          )}
+        </button>
+        {drawer}
+      </div>
+    );
+  }
+
   return (
     <>
-      {/* Vanguard Status Pill (bottom-left) */}
+      {/* Vanguard Status Pill (elevated to avoid overlapping status bar) */}
       <div
-        className="fixed bottom-3 left-3 z-[9999] flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#121316]/95 border border-[#333] shadow-2xl backdrop-blur font-mono text-[11px] select-none cursor-pointer transition active:scale-95"
+        className="fixed bottom-9 left-3 z-[9990] hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#121316]/95 border border-[#333] shadow-2xl backdrop-blur font-mono text-[11px] select-none cursor-pointer transition active:scale-95 hover:border-[#555]"
         onClick={() => setExpanded(!expanded)}
         title="Vanguard Proctoring Matrix"
       >
@@ -747,46 +816,7 @@ export function AnticheatIndicator({ enabled }) {
         )}
       </div>
 
-      {/* Expanded Vanguard Diagnostics Drawer */}
-      {expanded && (
-        <div
-          className="fixed bottom-12 left-3 z-[9999] w-72 bg-[#141518] border border-[#2c2d33] rounded-2xl p-3.5 shadow-2xl font-mono text-xs text-[#ccc]"
-          onClick={e => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between border-b border-[#25262c] pb-2 mb-2.5">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded bg-[#ff4655]/20 border border-[#ff4655]/40 flex items-center justify-center text-[#ff4655] font-bold text-[10px]">
-                V
-              </div>
-              <span className="font-bold text-white text-[11px]">Vanguard Telemetry</span>
-            </div>
-            <button onClick={() => setExpanded(false)} className="text-[#666] hover:text-white text-xs">✕</button>
-          </div>
-
-          <div className="space-y-1.5 text-[10px]">
-            <div className="flex justify-between py-0.5 border-b border-[#1e1f24]">
-              <span className="text-[#666]">Trust Factor:</span>
-              <span className="font-bold" style={{ color: tierBg }}>{trustScore}% [{trustTier}]</span>
-            </div>
-            <div className="flex justify-between py-0.5 border-b border-[#1e1f24]">
-              <span className="text-[#666]">Integrity Shield:</span>
-              <span className="text-[#22c55e]">ARMED</span>
-            </div>
-            <div className="flex justify-between py-0.5 border-b border-[#1e1f24]">
-              <span className="text-[#666]">Heuristic Matrix:</span>
-              <span className="text-[#22c55e]">28 VECTORS ACTIVE</span>
-            </div>
-            <div className="flex justify-between py-0.5 border-b border-[#1e1f24]">
-              <span className="text-[#666]">AI & Overlay Trap:</span>
-              <span className="text-[#22c55e]">MONITORING</span>
-            </div>
-            <div className="flex justify-between py-0.5">
-              <span className="text-[#666]">Autotyper Trap:</span>
-              <span className="text-[#22c55e]">FLIGHT DYNAMICS OK</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {drawer}
 
       {/* Idle Warning Countdown Overlay */}
       {idleWarning && idleWarning <= 30 && (
