@@ -1488,3 +1488,5 @@ export default function Home() {
     </div>
   );
 }
+
+//idk why but this just shows that i wrote the code
