@@ -49,6 +49,7 @@ import VideoChat from '../../components/VideoChat';
 import LibraryPanel from '../../components/LibraryPanel';
 import { useAnticheat, AnticheatIndicator } from '../../components/AnticheatMonitor';
 import { canRunInBrowser, runInBrowser, runInCloud, JUDGE0_LANGUAGE_MAP } from '../../utils/browserExecution';
+import Stopwatch from '../../components/Stopwatch';
 
 const Editor = dynamic(() => import('../../components/Editor'), { ssr: false });
 const CodeShotModal = dynamic(() => import('../../components/CodeShotModal'), { ssr: false });
@@ -158,6 +159,7 @@ export default function RoomPage() {
   const [notifSoundEnabled, setNotifSoundEnabled] = useState(true); // v15: notification sounds
   const [showSharePopup, setShowSharePopup] = useState(false); // v18: share room popup
   const [execStats, setExecStats] = useState({ runs: 0, successes: 0, errors: 0, totalTime: 0 }); // v18: execution stats
+  const [stopwatchSuccessSignal, setStopwatchSuccessSignal] = useState(0); // auto-stop stopwatch on successful run
 
   // v20: Niche features
   const [zenMode, setZenMode] = useState(false); // hide all UI except editor
@@ -739,6 +741,7 @@ export default function RoomPage() {
       } else if (data.success) {
         setOutput({ type: 'success', content: data.output || '', error: data.error || '', status: data.status, ...base });
         setExecStats(prev => ({ ...prev, runs: prev.runs + 1, successes: prev.successes + 1, totalTime: prev.totalTime + (data.executionTime || 0) }));
+        setStopwatchSuccessSignal(Date.now()); // auto-stop stopwatch on successful run
       } else {
         setOutput({ type: 'error', content: data.output || '', error: data.error || data.message || 'Failed', status: data.status, ...base });
         setExecStats(prev => ({ ...prev, runs: prev.runs + 1, errors: prev.errors + 1 }));
@@ -1249,6 +1252,16 @@ export default function RoomPage() {
 
                 <div className="w-px h-5 bg-[#252830] hidden sm:block" />
 
+                {/* Embedded IDE Stopwatch — manually started, auto-stops on successful code run */}
+                <div className="flex items-center">
+                  <Stopwatch
+                    successTrigger={stopwatchSuccessSignal}
+                    addToast={addToast}
+                  />
+                </div>
+
+                <div className="w-px h-5 bg-[#252830] hidden sm:block" />
+
                 {/* Primary RUN Action Button — embedded directly in toolbar! */}
                 <div className="hidden sm:flex items-center">
                   <RunButton onRun={handleMainRun} isRunning={isRunning} language={state.language} embedded={true} />
@@ -1747,6 +1760,8 @@ export default function RoomPage() {
           { label: 'Export Code (with header)', hint: '', icon: '\uD83D\uDCE4', cat: 'file', action: () => { setShowCommandPalette(false); handleExportSnippet('with-header'); } },
           { label: 'Export Code (raw)', hint: '', icon: '\uD83D\uDCBE', cat: 'file', action: () => { setShowCommandPalette(false); handleExportSnippet('raw'); } },
           { label: 'Copy Code to Clipboard', hint: '', icon: '\uD83D\uDCCB', cat: 'code', action: () => { setShowCommandPalette(false); handleExportSnippet('clipboard'); } },
+          { label: 'Start / Pause Stopwatch', hint: '', icon: '⏱️', cat: 'code', action: () => { setShowCommandPalette(false); window.dispatchEvent(new CustomEvent('collabcode:stopwatch', { detail: 'toggle' })); } },
+          { label: 'Reset Stopwatch', hint: '', icon: '↺', cat: 'code', action: () => { setShowCommandPalette(false); window.dispatchEvent(new CustomEvent('collabcode:stopwatch', { detail: 'reset' })); } },
           { label: 'Toggle Typing Sounds', hint: '', icon: '\uD83D\uDD0A', cat: 'settings', action: () => { setShowCommandPalette(false); setTypingSounds(prev => !prev); addToast(typingSounds ? 'Typing sounds off' : 'Typing sounds on', 'info'); } },
         ];
         // Fuzzy filter
