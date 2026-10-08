@@ -174,9 +174,25 @@ export default function RoomPage() {
   // v19: Competition mode state
   const [competitionMode, setCompetitionMode] = useState('normal'); // 'normal' | 'competition'
   const [roomsLocked, setRoomsLocked] = useState(false);
+  const [requireStopwatch, setRequireStopwatch] = useState(false); // Admin enforced: must start stopwatch to code
+  const [stopwatchState, setStopwatchState] = useState({ status: 'idle', isRunning: false, hasStarted: false, elapsedMs: 0 });
   const [roomName, setRoomName] = useState(null); // custom room name
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fullscreenViolationSentRef = useRef(false); // prevent spam
+
+  // Accidental reload protection: prompt if stopwatch is running or active session in progress
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleBeforeUnload = (e) => {
+      if (stopwatchState.isRunning || (stopwatchState.hasStarted && stopwatchState.status !== 'success')) {
+        e.preventDefault();
+        e.returnValue = 'You have an active timed session in progress. Are you sure you want to reload or leave?';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [stopwatchState.isRunning, stopwatchState.hasStarted, stopwatchState.status]);
 
   // v17 (AC): AntiCheat state
   const [anticheatEnabled, setAnticheatEnabled] = useState(false);
@@ -509,6 +525,9 @@ export default function RoomPage() {
       if (data.competition) {
         setCompetitionMode(data.competition.mode || 'normal');
         setRoomsLocked(!!data.competition.roomsLocked);
+        if (data.competition.requireStopwatch !== undefined) {
+          setRequireStopwatch(!!data.competition.requireStopwatch);
+        }
       }
       // v17 (AC): AntiCheat state from server (for late joiners)
       if (data.anticheat) {
@@ -551,6 +570,18 @@ export default function RoomPage() {
       } else {
         addToast('Normal mode restored', 'info');
         addNotification('Normal mode: fullscreen no longer required', 'info', 'competition');
+      }
+    });
+
+    socket.on('competition:require-stopwatch-change', (data) => {
+      const required = !!data.requireStopwatch;
+      setRequireStopwatch(required);
+      if (required) {
+        addToast('Admin: Stopwatch required to code in this room', 'info');
+        addNotification('Stopwatch requirement enabled by admin', 'info', 'competition');
+      } else {
+        addToast('Admin: Stopwatch requirement disabled', 'info');
+        addNotification('Stopwatch requirement disabled by admin', 'info', 'competition');
       }
     });
 
@@ -619,7 +650,7 @@ export default function RoomPage() {
     return () => {
       clearTimeout(coldStartTimer);
       provider.destroy();
-      ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change','room:visibility-changed','competition:lock-change','competition:mode-change','competition:kicked','admin:broadcast','admin:force-disconnect','admin:banned','anticheat:state-change','anticheat:settings-update','anticheat:violation-ack'].forEach(e => socket.off(e));
+      ['connect','disconnect','reconnect','room:state','room:user-joined','room:user-left','chat:history','chat:message','room:language-change','room:visibility-changed','competition:lock-change','competition:mode-change','competition:require-stopwatch-change','competition:kicked','admin:broadcast','admin:force-disconnect','admin:banned','anticheat:state-change','anticheat:settings-update','anticheat:violation-ack'].forEach(e => socket.off(e));
       disconnectSocket();
       setSocketInstance(null);
       ydoc.destroy();
@@ -762,10 +793,18 @@ export default function RoomPage() {
   }, [state.language, state.user, state.outputOpen, toggleOutput]);
 
   const handleMainRun = useCallback(() => {
+    if (roomsLocked) {
+      addToast('Coding is locked by admin', 'error');
+      return;
+    }
+    if (requireStopwatch && !stopwatchState.hasStarted) {
+      addToast('⏱️ Please start the stopwatch first to begin coding', 'info');
+      return;
+    }
     if (!ydocRef.current) return;
     const code = ydocRef.current.getText('monaco').toString();
     handleRunCode(code, undefined);
-  }, [handleRunCode]);
+  }, [handleRunCode, roomsLocked, requireStopwatch, stopwatchState.hasStarted, addToast]);
 
   // ─── Library Import Insertion ─────────────────────────────────────
   const handleInsertImport = useCallback((importStatement) => {
@@ -1255,6 +1294,9 @@ export default function RoomPage() {
                 {/* Embedded IDE Stopwatch — manually started, auto-stops on successful code run */}
                 <div className="flex items-center">
                   <Stopwatch
+                    roomId={roomId}
+                    requireStopwatch={requireStopwatch}
+                    onStatusChange={setStopwatchState}
                     successTrigger={stopwatchSuccessSignal}
                     addToast={addToast}
                   />
@@ -1264,7 +1306,13 @@ export default function RoomPage() {
 
                 {/* Primary RUN Action Button — embedded directly in toolbar! */}
                 <div className="hidden sm:flex items-center">
-                  <RunButton onRun={handleMainRun} isRunning={isRunning} language={state.language} embedded={true} />
+                  <RunButton
+                    onRun={handleMainRun}
+                    isRunning={isRunning}
+                    disabled={roomsLocked || (requireStopwatch && !stopwatchState.hasStarted)}
+                    language={state.language}
+                    embedded={true}
+                  />
                 </div>
               </div>
             </div>
@@ -1302,7 +1350,7 @@ export default function RoomPage() {
                   wordWrap={editorWordWrap} cursorStyle={editorCursorStyle}
                   bracketColors={editorBracketColors} lineNumbers={editorLineNumbers}
                   autoIndent={editorAutoIndent}
-                  readOnly={roomsLocked}
+                  readOnly={roomsLocked || (requireStopwatch && !stopwatchState.hasStarted)}
                 />
                 {/* v19: Lock overlay when rooms are locked */}
                 {roomsLocked && (
@@ -1311,6 +1359,39 @@ export default function RoomPage() {
                       <svg className="w-12 h-12 text-[#ff6b6b] mx-auto mb-3 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                       <p className="text-[#ff6b6b] text-sm font-semibold">Coding is Locked</p>
                       <p className="text-[#666] text-xs mt-1 font-mono">Waiting for admin to start...</p>
+                    </div>
+                  </div>
+                )}
+                {/* Enforced Stopwatch overlay: when requireStopwatch is on and stopwatch hasn't started */}
+                {!roomsLocked && requireStopwatch && !stopwatchState.hasStarted && (
+                  <div className="absolute inset-0 bg-[#0a0a0f]/80 backdrop-blur-sm flex items-center justify-center z-20 px-4">
+                    <div className="max-w-md w-full p-6 rounded-2xl bg-[#12141a]/95 border border-[#3b82f6]/30 shadow-2xl shadow-blue-950/40 text-center animate-in fade-in duration-200">
+                      <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/25 flex items-center justify-center text-2xl text-blue-400 mx-auto mb-4 shadow-inner">
+                        ⏱️
+                      </div>
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[10px] font-mono font-medium text-blue-400 mb-2 uppercase tracking-wider">
+                        Timed Challenge Active
+                      </div>
+                      <h3 className="text-white text-base font-semibold tracking-tight mb-1.5">
+                        Start Stopwatch to Begin Coding
+                      </h3>
+                      <p className="text-[#8892b0] text-xs leading-relaxed mb-5">
+                        The administrator requires the stopwatch to be active for this session. The editor will unlock immediately once started.
+                      </p>
+                      <div className="flex items-center justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.dispatchEvent(new CustomEvent('collabcode:stopwatch', { detail: 'start' }));
+                          }}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                        >
+                          <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                          Start Stopwatch & Unlock Editor
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}

@@ -7,20 +7,22 @@
 
 import { memo } from 'react';
 
-const RunButton = memo(function RunButton({ onRun, isRunning, language, embedded = true }) {
+const RunButton = memo(function RunButton({ onRun, isRunning, disabled = false, language, embedded = true }) {
   const content = (
     <div className="flex items-center gap-1.5">
       {/* Run Action Button */}
       <button
         type="button"
         onClick={onRun}
-        disabled={isRunning}
+        disabled={isRunning || disabled}
         className={`group relative flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-mono text-[12px] font-bold tracking-wide transition-all duration-150 active:scale-[0.97] shadow-sm select-none ${
           isRunning
             ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 cursor-wait animate-pulse'
+            : disabled
+            ? 'bg-[#181a20] text-[#555a69] border border-[#262832] cursor-not-allowed opacity-60'
             : 'bg-emerald-500 hover:bg-emerald-400 text-[#091e13] border border-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.25)] hover:shadow-[0_0_16px_rgba(16,185,129,0.4)]'
         }`}
-        title={`Execute ${language || 'Code'} (Ctrl+Enter)`}
+        title={disabled ? 'Execution locked' : `Execute ${language || 'Code'} (Ctrl+Enter)`}
       >
         {isRunning ? (
           <>

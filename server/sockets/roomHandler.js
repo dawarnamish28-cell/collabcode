@@ -386,6 +386,7 @@ function initRoomHandler(io, ctx) {
         competition: compState ? {
           mode: compState.mode,
           roomsLocked: compState.roomsLocked,
+          requireStopwatch: !!compState.requireStopwatch,
         } : null,
         anticheat: acState ? {
           enabled: acState.enabled,

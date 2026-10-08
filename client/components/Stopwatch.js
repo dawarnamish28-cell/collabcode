@@ -1,11 +1,12 @@
 /**
- * Stopwatch v1.0 — Embedded IDE Coding Timer
+ * Stopwatch v2.0 — Embedded IDE Coding Timer with Reload Protection
  *
  * Designed for interview practice, timed challenges, and LeetCode-style problem solving.
  *  - User can manually start, pause, resume, and reset the stopwatch.
  *  - Automatically stops and records time when code executes successfully.
  *  - High-precision timestamp delta (immune to tab backgrounding / interval drift).
- *  - Compact, high-clarity developer aesthetic.
+ *  - Accidental Reload Protection: persists state to sessionStorage and auto-restores on refresh.
+ *  - Notifies parent via onStatusChange so IDE can enforce "start stopwatch to code".
  *
  * made with <3 by Namish
  */
@@ -29,8 +30,11 @@ function formatStopwatchTime(ms) {
 }
 
 const Stopwatch = memo(function Stopwatch({
+  roomId = '',
+  requireStopwatch = false,
   successTrigger = 0,
   onStopOnSuccess = null,
+  onStatusChange = null,
   addToast = null,
   compact = false,
   className = '',
@@ -43,8 +47,40 @@ const Stopwatch = memo(function Stopwatch({
   const accumulatedRef = useRef(0);
   const timerRef = useRef(null);
   const prevSuccessTriggerRef = useRef(successTrigger);
+  const storageKey = `collabcode_stopwatch_${roomId || 'default'}`;
 
-  // Stop the timer loop
+  // Notify parent whenever status changes
+  useEffect(() => {
+    if (onStatusChange) {
+      onStatusChange({
+        status,
+        elapsedMs,
+        isRunning: status === 'running',
+        hasStarted: status !== 'idle',
+      });
+    }
+  }, [status, onStatusChange]);
+
+  // Save state to sessionStorage for accidental reload protection
+  const saveStateToStorage = useCallback((currStatus, currAccumulated, currStartTime) => {
+    try {
+      if (currStatus === 'idle') {
+        sessionStorage.removeItem(storageKey);
+      } else {
+        sessionStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            status: currStatus,
+            accumulated: currAccumulated,
+            startTime: currStartTime,
+            savedAt: Date.now(),
+          })
+        );
+      }
+    } catch (e) {}
+  }, [storageKey]);
+
+  // Stop the timer interval
   const stopTick = useCallback(() => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -62,25 +98,67 @@ const Stopwatch = memo(function Stopwatch({
     }, 50);
   }, [stopTick]);
 
+  // Restore state from sessionStorage after page reload
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(storageKey);
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (data && data.status && data.status !== 'idle') {
+          if (data.status === 'running') {
+            const now = Date.now();
+            accumulatedRef.current = data.accumulated || 0;
+            startTimeRef.current = data.startTime || now;
+            const currentTotal = accumulatedRef.current + (now - startTimeRef.current);
+            setElapsedMs(currentTotal);
+            setStatus('running');
+            startTick();
+            if (addToast) {
+              addToast('⏱️ Stopwatch session restored', 'info');
+            }
+          } else {
+            accumulatedRef.current = data.accumulated || 0;
+            setElapsedMs(data.accumulated || 0);
+            setStatus(data.status);
+          }
+        }
+      }
+    } catch (e) {}
+  }, [storageKey, startTick, addToast]);
+
+  // Save to storage before window unloads
+  useEffect(() => {
+    const handleUnload = () => {
+      saveStateToStorage(status, accumulatedRef.current, startTimeRef.current);
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [status, saveStateToStorage]);
+
   // Start / Resume handler
   const handleStart = useCallback(() => {
+    let acc = accumulatedRef.current;
     if (status === 'success') {
-      // If was completed, reset and restart
+      acc = 0;
       accumulatedRef.current = 0;
       setElapsedMs(0);
     }
-    startTimeRef.current = Date.now();
+    const start = Date.now();
+    startTimeRef.current = start;
     setStatus('running');
+    saveStateToStorage('running', acc, start);
     startTick();
-  }, [status, startTick]);
+  }, [status, startTick, saveStateToStorage]);
 
   // Pause handler
   const handlePause = useCallback(() => {
     stopTick();
-    accumulatedRef.current += Date.now() - startTimeRef.current;
-    setElapsedMs(accumulatedRef.current);
+    const newAcc = accumulatedRef.current + (Date.now() - startTimeRef.current);
+    accumulatedRef.current = newAcc;
+    setElapsedMs(newAcc);
     setStatus('paused');
-  }, [stopTick]);
+    saveStateToStorage('paused', newAcc, startTimeRef.current);
+  }, [stopTick, saveStateToStorage]);
 
   // Toggle Start / Pause
   const handleToggle = useCallback(() => {
@@ -97,11 +175,11 @@ const Stopwatch = memo(function Stopwatch({
     accumulatedRef.current = 0;
     setElapsedMs(0);
     setStatus('idle');
-  }, [stopTick]);
+    saveStateToStorage('idle', 0, 0);
+  }, [stopTick, saveStateToStorage]);
 
   // Auto-stop when code execution succeeds!
   useEffect(() => {
-    // Check if successTrigger actually updated and is non-zero
     if (successTrigger && successTrigger !== prevSuccessTriggerRef.current) {
       prevSuccessTriggerRef.current = successTrigger;
 
@@ -111,6 +189,7 @@ const Stopwatch = memo(function Stopwatch({
         accumulatedRef.current = finalMs;
         setElapsedMs(finalMs);
         setStatus('success');
+        saveStateToStorage('success', finalMs, startTimeRef.current);
 
         const formatted = formatStopwatchTime(finalMs);
         if (onStopOnSuccess) {
@@ -121,7 +200,7 @@ const Stopwatch = memo(function Stopwatch({
         }
       }
     }
-  }, [successTrigger, status, stopTick, onStopOnSuccess, addToast]);
+  }, [successTrigger, status, stopTick, onStopOnSuccess, addToast, saveStateToStorage]);
 
   // Global event listener for command palette & hotkeys
   useEffect(() => {
@@ -154,6 +233,8 @@ const Stopwatch = memo(function Stopwatch({
           ? 'bg-emerald-500/15 border border-emerald-500/50 text-emerald-300 shadow-[0_0_14px_rgba(16,185,129,0.25)]'
           : status === 'paused'
           ? 'bg-amber-500/10 border border-amber-500/40 text-amber-300'
+          : requireStopwatch
+          ? 'bg-blue-500/15 border border-blue-400 text-blue-300 animate-pulse shadow-[0_0_10px_rgba(59,130,246,0.25)]'
           : 'bg-[#121316] border border-[#252830] text-[#94a3b8] hover:border-[#383d4a] hover:text-[#cbd5e1]'
       } ${className}`}
       title={
@@ -210,6 +291,13 @@ const Stopwatch = memo(function Stopwatch({
       {status === 'success' && (
         <span className="hidden sm:inline-flex items-center px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold uppercase tracking-wider">
           Solved
+        </span>
+      )}
+
+      {/* Required badge when stopwatch is enforced by admin */}
+      {requireStopwatch && status === 'idle' && (
+        <span className="hidden sm:inline-flex items-center px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 text-[9px] font-bold uppercase tracking-wider">
+          Required
         </span>
       )}
 

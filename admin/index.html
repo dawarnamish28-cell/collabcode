@@ -101,7 +101,7 @@
       <!-- OVERVIEW TAB -->
       <div id="panel-overview">
         <!-- Competition Controls -->
-        <div class="grid md:grid-cols-2 gap-4 mb-6 fade-in">
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 fade-in">
           <!-- Lock/Unlock Card -->
           <div id="lock-card" class="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 transition-all">
             <div class="flex items-center justify-between mb-4">
@@ -150,6 +150,31 @@
               </button>
             </div>
             <p id="mode-timestamp" class="text-[10px] text-[#444] mono mt-3 text-center"></p>
+          </div>
+
+          <!-- Require Stopwatch Card -->
+          <div id="stopwatch-card" class="bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 transition-all">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h2 class="text-sm font-semibold text-white flex items-center gap-2">
+                  <svg class="w-4 h-4 text-[#38bdf8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  Stopwatch Requirement
+                </h2>
+                <p class="text-xs text-[#555] mt-0.5 mono">Users must start stopwatch to code</p>
+              </div>
+              <div id="stopwatch-status-badge" class="px-3 py-1 rounded-full text-xs font-medium mono"></div>
+            </div>
+            <div class="flex gap-3">
+              <button onclick="toggleRequireStopwatch(true)" class="btn flex-1 py-3 bg-[#38bdf8] hover:bg-[#60a5fa] text-[#0a0a0a] font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
+                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+                Require Stopwatch
+              </button>
+              <button onclick="toggleRequireStopwatch(false)" class="btn flex-1 py-3 bg-[#333] hover:bg-[#444] text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                Free Coding
+              </button>
+            </div>
+            <p id="stopwatch-timestamp" class="text-[10px] text-[#444] mono mt-3 text-center"></p>
           </div>
         </div>
 
@@ -674,6 +699,30 @@
       } else {
         modeTs.textContent = '';
       }
+
+      const swBadge = document.getElementById('stopwatch-status-badge');
+      const swCard = document.getElementById('stopwatch-card');
+      if (swBadge && swCard) {
+        if (state.requireStopwatch) {
+          swBadge.textContent = 'REQUIRED';
+          swBadge.className = 'px-3 py-1 rounded-full text-xs font-medium mono bg-[#38bdf8]/15 text-[#38bdf8]';
+          swCard.className = 'bg-[#1a1b1e] border border-[#38bdf8]/30 rounded-2xl p-6 transition-all glow-blue';
+        } else {
+          swBadge.textContent = 'FREE CODING';
+          swBadge.className = 'px-3 py-1 rounded-full text-xs font-medium mono bg-[#555]/15 text-[#888]';
+          swCard.className = 'bg-[#1a1b1e] border border-[#282828] rounded-2xl p-6 transition-all';
+        }
+      }
+      const swTs = document.getElementById('stopwatch-timestamp');
+      if (swTs) {
+        if (state.requireStopwatch && state.requireStopwatchChangedAt) {
+          swTs.textContent = `Required since ${new Date(state.requireStopwatchChangedAt).toLocaleTimeString()}`;
+        } else if (!state.requireStopwatch && state.requireStopwatchChangedAt) {
+          swTs.textContent = `Free coding since ${new Date(state.requireStopwatchChangedAt).toLocaleTimeString()}`;
+        } else {
+          swTs.textContent = '';
+        }
+      }
     }
 
     // ─── Format Duration ──────────────────────────────────────────
@@ -817,6 +866,14 @@
       try {
         await api('/competition/mode', { method: 'POST', body: JSON.stringify({ mode }) });
         logAction(`Mode changed to ${mode}`);
+        await refreshAll();
+      } catch (err) { alert('Failed: ' + err.message); }
+    }
+
+    async function toggleRequireStopwatch(requireStopwatch) {
+      try {
+        await api('/competition/require-stopwatch', { method: 'POST', body: JSON.stringify({ requireStopwatch }) });
+        logAction(`Stopwatch requirement ${requireStopwatch ? 'ENABLED' : 'DISABLED'}`);
         await refreshAll();
       } catch (err) { alert('Failed: ' + err.message); }
     }

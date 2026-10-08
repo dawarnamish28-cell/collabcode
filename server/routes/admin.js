@@ -31,6 +31,7 @@ const ADMIN_PASSWORD_HASH_PROMISE = bcrypt.hash(process.env.ADMIN_PASSWORD || 'c
 const competitionState = {
   mode: 'normal',           // 'normal' | 'competition'
   roomsLocked: false,       // true = coding disabled globally
+  requireStopwatch: false,  // true = coding disabled until user starts stopwatch
   lockedAt: null,
   unlockedAt: null,
   modeChangedAt: null,
@@ -201,6 +202,26 @@ router.post('/competition/mode', adminAuthMiddleware, (req, res) => {
 
   console.log(`[Admin] Competition mode: ${mode}`);
   res.json({ success: true, mode: competitionState.mode });
+});
+
+// ─── Toggle Require Stopwatch (must start stopwatch to code) ────────────
+router.post('/competition/require-stopwatch', adminAuthMiddleware, (req, res) => {
+  const { requireStopwatch } = req.body;
+  const io = req.app.get('io');
+
+  competitionState.requireStopwatch = !!requireStopwatch;
+  competitionState.requireStopwatchChangedAt = Date.now();
+
+  // Broadcast to ALL connected clients
+  if (io) {
+    io.emit('competition:require-stopwatch-change', {
+      requireStopwatch: competitionState.requireStopwatch,
+      timestamp: Date.now(),
+    });
+  }
+
+  console.log(`[Admin] Require stopwatch: ${competitionState.requireStopwatch ? 'ENABLED' : 'DISABLED'}`);
+  res.json({ success: true, requireStopwatch: competitionState.requireStopwatch });
 });
 
 // ─── Clear Fullscreen Violations ────────────────────────────────────────
