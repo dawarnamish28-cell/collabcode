@@ -2,10 +2,10 @@
  * Comprehensive Verification & Load Test for Execution Engine v10.0
  */
 
-const { LANGUAGES } = require('./controllers/executionController');
-const { adaptiveQueue } = require('./controllers/executionEngine/queue');
-const { resultCache, singleflight } = require('./controllers/executionEngine/cache');
-const { circuitBreaker, executeCloud } = require('./controllers/executionEngine/cloudRunner');
+const { LANGUAGES } = require('../controllers/executionController');
+const { adaptiveQueue } = require('../controllers/executionEngine/queue');
+const { resultCache, singleflight } = require('../controllers/executionEngine/cache');
+const { circuitBreaker, executeCloud } = require('../controllers/executionEngine/cloudRunner');
 
 // Mock req and res
 function createMockReqRes({ code, language, stdin = '' }) {
@@ -49,7 +49,7 @@ async function runTest() {
   console.log('   STARTING EXECUTION ENGINE v10.0 COMPREHENSIVE TESTS');
   console.log('====================================================\n');
 
-  const { executeCode, getExecutionStats } = require('./controllers/executionController');
+  const { executeCode, getExecutionStats } = require('../controllers/executionController');
 
   // Test 1: Basic execution of diverse languages
   console.log('--- TEST 1: Multi-Language Core Execution ---');

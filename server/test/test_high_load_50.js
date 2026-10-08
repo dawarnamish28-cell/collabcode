@@ -2,7 +2,7 @@
  * 50 Concurrent Request Load Test against Execution Engine v10.0
  */
 
-const { executeCode } = require('./controllers/executionController');
+const { executeCode } = require('../controllers/executionController');
 
 function createMockReqRes({ code, language, stdin = '' }) {
   let resData = null;

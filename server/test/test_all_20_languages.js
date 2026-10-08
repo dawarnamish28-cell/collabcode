@@ -2,7 +2,7 @@
  * Test All 20 Languages against Execution Controller v10.0
  */
 
-const { executeCode, LANGUAGES } = require('./controllers/executionController');
+const { executeCode, LANGUAGES } = require('../controllers/executionController');
 
 function createMockReqRes({ code, language, stdin = '' }) {
   let resData = null;

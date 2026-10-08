@@ -21,7 +21,11 @@ const SOCKET_GC_INTERVAL = 60000; // GC stale socket entries every 60s
 // General API rate limiter
 const generalLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 300,
+  skip: (req) => {
+    // Code execution has its own specialized executionLimiter keyed by session/tab
+    return req.path === '/execute' || req.path === '/execute/cloud' || req.originalUrl?.includes('/execute');
+  },
   message: {
     error: 'Too many requests',
     message: 'Rate limit exceeded. Please try again later.',
